@@ -45,7 +45,7 @@
   },
   "koishi": {
     "description": {
-      "zh": "让大语言模型扮演角色，伪装成群友"
+      "zh": "让大语言模型进行角色扮演，伪装成群友"
     },
     "service": {
       "required": [
