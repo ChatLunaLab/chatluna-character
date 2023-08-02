@@ -1,56 +1,56 @@
 {
-  "name": "@dingyi222666/koishi-plugin-chathub-character",
-  "description": "Let the large language model play a role, disguise as a group friend",
-  "version": "1.0.4",
-  "main": "lib/index.js",
-  "typings": "lib/index.d.ts",
-  "files": [
-    "lib",
-    "dist"
-  ],
-  "license": "AGPL-3.0",
-  "keywords": [
-    "chatbot",
-    "koishi",
-    "plugin",
-    "service",
-    "chatgpt",
-    "chathub",
-    "preset",
-    "market"
-  ],
-  "author": "dingyi222666 <dingyi222666@foxmail.com>",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/ChatHubLab/chathub-character.git",
-    "directory": "."
-  },
-  "bugs": {
-    "url": "https://github.com/ChatHubLab/chathub-character/issues"
-  },
-  "homepage": "https://github.com/ChatHubLab/chathub-character#readme",
-  "dependencies": {},
-  "devDependencies": {
-    "koishi": "^4.13.9"
-  },
-  "peerDependencies": {
-    "@dingyi222666/koishi-plugin-chathub": "^1.0.0-beta.2",
-    "koishi": "^4.13.6"
-  },
-  "scripts": {
-    "build": "yakumo build",
-    "bump": "yakumo version",
-    "dep": "yakumo upgrade",
-    "pub": "yakumo publish"
-  },
-  "koishi": {
-    "description": {
-      "zh": "让大语言模型进行角色扮演，伪装成群友"
+    "name": "@dingyi222666/koishi-plugin-chathub-character",
+    "description": "Let the large language model play a role, disguise as a group friend",
+    "version": "1.0.0",
+    "main": "lib/index.js",
+    "typings": "lib/index.d.ts",
+    "files": [
+        "lib",
+        "dist"
+    ],
+    "license": "AGPL-3.0",
+    "keywords": [
+        "chatbot",
+        "koishi",
+        "plugin",
+        "service",
+        "chatgpt",
+        "chathub",
+        "preset",
+        "market"
+    ],
+    "author": "dingyi222666 <dingyi222666@foxmail.com>",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/ChatHubLab/chathub-character.git",
+        "directory": "."
     },
-    "service": {
-      "required": [
-        "chathub"
-      ]
+    "bugs": {
+        "url": "https://github.com/ChatHubLab/chathub-character/issues"
+    },
+    "homepage": "https://github.com/ChatHubLab/chathub-character#readme",
+    "dependencies": {},
+    "devDependencies": {
+        "koishi": "^4.13.9"
+    },
+    "peerDependencies": {
+        "@dingyi222666/koishi-plugin-chathub": "^1.0.0-beta.2",
+        "koishi": "^4.13.6"
+    },
+    "scripts": {
+        "build": "yakumo build",
+        "bump": "yakumo version",
+        "dep": "yakumo upgrade",
+        "pub": "yakumo publish"
+    },
+    "koishi": {
+        "description": {
+            "zh": "让大语言模型进行角色扮演，伪装成群友"
+        },
+        "service": {
+            "required": [
+                "chathub"
+            ]
+        }
     }
-  }
 }
