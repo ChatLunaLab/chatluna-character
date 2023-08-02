@@ -29,7 +29,9 @@
         "url": "https://github.com/ChatHubLab/chathub-character/issues"
     },
     "homepage": "https://github.com/ChatHubLab/chathub-character#readme",
-    "dependencies": {},
+    "dependencies": {
+        "langchain": "^0.0.120"
+      },
     "devDependencies": {
         "koishi": "^4.13.9"
     },
