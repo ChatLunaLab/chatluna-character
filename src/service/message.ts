@@ -87,7 +87,7 @@ export class MessageCollector {
         const message: Message = {
             content: content,
             name: session.bot.username,
-            id: session.bot.username,
+            id: session.bot.userId ?? "0"
         }
 
         groupArray.push(message)

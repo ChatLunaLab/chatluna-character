@@ -9,7 +9,7 @@ const logger = createLogger("chathub-character/plugins/filter")
 
 export function apply(ctx: Context, config: CharacterPlugin.Config) {
 
-    let maxMessages = config.messageInterval
+    let maxMessages = config.maxMessages < config.messageInterval ? config.messageInterval : config.maxMessages
     let messageCount = 0
     let messageSendProbability = 0
     service.addFilter((session, message) => {

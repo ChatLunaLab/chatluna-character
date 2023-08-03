@@ -24,14 +24,14 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
         const finalMessage = await formatMessage(messages, config, model)
 
         const formattedPrompt = await completionPrompt.format({
-            chat_history: finalMessage,
             time: new Date().toLocaleString(),
         })
 
-        logger.debug("formatted prompt: " + formattedPrompt)
+        logger.debug("messages: " + JSON.stringify(messages))
 
         const responseMessage = await model.call([
-            new SystemMessage(formattedPrompt)
+            new SystemMessage(formattedPrompt),
+            new HumanMessage(finalMessage)
         ])
 
 
@@ -54,29 +54,35 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
 
 
 function parseResponse(response: string) {
-    let parsedJson: any
+    let parsed: string[]
     try {
-        parsedJson = JSON.parse(`{"text":${response}}`)
-        parsedJson = [parsedJson.text]
-        if (typeof parsedJson[0] !== "string") {
+        // parse [name:id:"content"] to content
+        // like [旧梦旧念:2187778735:"嗯？怎么了？"] -> 嗯？怎么了？
+        const regex = /\[.*:\d+:(?:")?(.*?)"]/g;
+        const match = regex.exec(response);
+
+
+        parsed = [match[1]]
+
+        if (typeof parsed[0] !== "string") {
             logger.error("Failed to parse response: " + response)
             return []
         }
     } catch (e) {
+        logger.error(e)
         logger.error("Failed to parse response: " + response)
         return []
     }
 
     let resultElements: Element[][] = []
 
-    for (const message of parsedJson) {
+    for (const message of parsed) {
         let currentElements: Element[] = []
         // match ([at:id(,name:xx)?])?xxxx
         const atMatch = message.match(/\[at:(\d+)(,\w+:[\u4e00-\u9fa5]+)?\]/g)
         if (atMatch) {
             for (const at of atMatch) {
                 const id = at.match(/\d+/g)
-                const name = at.match(/,\w+:[\u4e00-\u9fa5]+/g)
                 if (id) {
                     currentElements.push(h.at(id[0]))
                 } else {
