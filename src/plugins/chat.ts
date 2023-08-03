@@ -54,17 +54,17 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
 
 
 function parseResponse(response: string) {
-    let parsed: string[]
+    let message: string
     try {
         // parse [name:id:"content"] to content
         // like [旧梦旧念:2187778735:"嗯？怎么了？"] -> 嗯？怎么了？
-        const regex = /\[.*:\d+:(?:")?(.*?)"]/g;
+        const regex = /\[.*:.*:(?:")?(.*?)"]/g;
         const match = regex.exec(response);
 
 
-        parsed = [match[1]]
+        message = match[1]
 
-        if (typeof parsed[0] !== "string") {
+        if (typeof message !== "string") {
             logger.error("Failed to parse response: " + response)
             return []
         }
@@ -76,70 +76,74 @@ function parseResponse(response: string) {
 
     let resultElements: Element[][] = []
 
-    for (const message of parsed) {
-        let currentElements: Element[] = []
-        // match ([at:id(,name:xx)?])?xxxx
-        const atMatch = message.match(/\[at:(\d+)(,\w+:[\u4e00-\u9fa5]+)?\]/g)
-        if (atMatch) {
-            for (const at of atMatch) {
-                const id = at.match(/\d+/g)
-                if (id) {
-                    currentElements.push(h.at(id[0]))
+
+    let currentElements: Element[] = []
+    // match ([at:id(,name:xx)?])?xxxx
+    const atMatch = message.match(/\[at:(\d+)(,\w+:[\u4e00-\u9fa5]+)?\]/g)
+    if (atMatch) {
+        for (const at of atMatch) {
+            const id = at.match(/\d+/g)
+            if (id) {
+                currentElements.push(h.at(id[0]))
+            } else {
+                logger.error("Failed to parse at: " + at)
+            }
+        }
+
+        const text = message.replace(/\[at:(\d+)(,\w+:[\u4e00-\u9fa5]+)?\]/g, "")
+
+        currentElements.push(h.text(text))
+
+    } else {
+        currentElements.push(h.text(message))
+    }
+
+
+    for (let currentElement of currentElements) {
+        if (currentElement.type === "text") {
+            // 手动切分句子
+            let text = currentElement.attrs.content as string
+            // 包括市面上常见的标点符号，直接切割成数组，但是需要保留标点符号
+
+            // 如 "你好，我是一个机器人" -> ["你好，", "我是一个机器人。"]
+            // 要求任何语言都能匹配到
+
+            // , . ， 。 、 ? ？ ! ！
+            const matchArray = splitSentence(text)
+
+
+            for (const match of matchArray) {
+
+                // 检查最后一个字符，如果为，。、,. 就去掉
+                let lastChar = match[match.length - 1]
+                //logger.debug("lastChar: " + lastChar)
+
+                // array.some
+                if (["，", "。", "、", ","].some(char => char === lastChar)) {
+                    //  logger.debug("match: " + match)
+                    currentElement = h.text(match.slice(0, match.length - 1))
+                    //   logger.debug("currentElement: " + currentElement.attrs.content)
+                    resultElements.push([currentElement])
+
                 } else {
-                    logger.error("Failed to parse at: " + at)
+
+                    //    logger.debug("fuck match: " + match)
+                    currentElement = h.text(match)
+                    resultElements.push([currentElement])
                 }
             }
 
-            const text = message.replace(/\[at:(\d+)(,\w+:[\u4e00-\u9fa5]+)?\]/g, "")
-
-            currentElements.push(h.text(text))
 
         } else {
-            currentElements.push(h.text(message))
+            resultElements.push([currentElement])
         }
-
-
-        for (let currentElement of currentElements) {
-            if (currentElement.type === "text") {
-                // 手动切分句子
-                let text = currentElement.attrs.content as string
-                // 包括市面上常见的标点符号，直接切割成数组，但是需要保留标点符号
-
-                // 如 "你好，我是一个机器人" -> ["你好，", "我是一个机器人。"]
-                // 要求任何语言都能匹配到
-
-                // , . ， 。 、 ? ？ ! ！
-                const matchArray = splitSentence(text)
-
-
-                for (const match of matchArray) {
-
-                    // 检查最后一个字符，如果为，。、,. 就去掉
-                    let lastChar = match[match.length - 1]
-                    //logger.debug("lastChar: " + lastChar)
-
-                    // array.some
-                    if (["，", "。", "、", ","].some(char => char === lastChar)) {
-                        //  logger.debug("match: " + match)
-                        currentElement = h.text(match.slice(0, match.length - 1))
-                        //   logger.debug("currentElement: " + currentElement.attrs.content)
-                        resultElements.push([currentElement])
-
-                    } else {
-
-                        //    logger.debug("fuck match: " + match)
-                        currentElement = h.text(match)
-                        resultElements.push([currentElement])
-                    }
-                }
-
-
-            } else {
-                resultElements.push([currentElement])
-            }
-        }
-
     }
+
+    if (resultElements[0]?.[0]?.type == "at") {
+        resultElements[1].push(resultElements[0][0])
+        resultElements.shift()
+    }
+
 
     return resultElements
 }
