@@ -16,12 +16,18 @@ export class MessageCollector {
 
     private _lockStatus = false
 
+    private _muteTime = 0
+
     constructor(private _config: CharacterPlugin.Config) {
 
     }
 
     addFilter(filter: MessageCollectorFilter) {
         this._filters.push(filter)
+    }
+
+    mute(time: number) { 
+        this._muteTime = new Date().getTime() + time
     }
 
     collect(func: (session: Session, messages: Message[]) => Promise<void>) {
@@ -77,7 +83,7 @@ export class MessageCollector {
         const groupArray = this._messages[groupId] ? this._messages[groupId] : []
 
 
-        const content = mapElementToString(session.content, elements)
+        const content = mapElementToString(session,session.content, elements)
 
         if (content.length < 1) {
             await this._unlock()
@@ -87,7 +93,7 @@ export class MessageCollector {
         const message: Message = {
             content: content,
             name: session.bot.username,
-            id: session.bot.userId ?? "0"
+            id: session.bot.userId ?? session.bot.selfId ?? "0"
         }
 
         groupArray.push(message)
@@ -115,7 +121,7 @@ export class MessageCollector {
         const groupArray = this._messages[groupId] ? this._messages[groupId] : []
         const elements = session.elements ? session.elements : [h.text(session.content)]
 
-        const content = mapElementToString(session.content, elements)
+        const content = mapElementToString(session,session.content, elements)
 
         if (content.length < 1) {
             await this._unlock()
@@ -127,7 +133,7 @@ export class MessageCollector {
             name: session.author.username,
             id: session.author.userId,
             quote: session.quote ? {
-                content: mapElementToString(session.quote.content, session.quote.elements),
+                content: mapElementToString(session,session.quote.content, session.quote.elements),
                 name: session.quote.author.username,
                 id: session.quote.author.userId
             } : undefined
@@ -144,7 +150,7 @@ export class MessageCollector {
 
         this._messages[groupId] = groupArray
 
-        if (this._filters.some(func => func(session, message))) {
+        if (this._filters.some(func => func(session, message)) && this._muteTime < new Date().getTime() ) {
             this._eventEmitter.emit("collect", session, groupArray)
         }
 
@@ -152,7 +158,7 @@ export class MessageCollector {
     }
 }
 
-function mapElementToString(content: string, elements: h[]) {
+function mapElementToString(session: Session, content: string, elements: h[]) {
     const filteredBuffer: string[] = []
 
     if (content.trimEnd().length < 1) {
@@ -169,7 +175,7 @@ function mapElementToString(content: string, elements: h[]) {
                 filteredBuffer.push(content)
             }
         } else if (element.type === "at") {
-            filteredBuffer.push(`[at:${element.attrs.id},name: ${element.attrs.name}]`)
+            filteredBuffer.push(`[at:${element.attrs.id === session.bot.selfId ? "0" : element.attrs.name === session.bot.username ? "0" : element.attrs.id},name:${element.attrs.name}]`)
         }
 
     }

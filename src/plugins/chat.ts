@@ -31,7 +31,7 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
 
         const responseMessage = await model.call([
             new SystemMessage(formattedPrompt),
-            new HumanMessage(finalMessage)
+            new HumanMessage("切记，你的回复不能超过15个字！\n"+finalMessage)
         ])
 
 
@@ -40,11 +40,12 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
         const response = parseResponse(responseMessage.content)
 
         if (response.length < 1) {
+            service.mute(config.muteTime)
             return
         }
         for (const elements of response) {
             session.send(elements)
-            await sleep(2300)
+            await sleep(config.sleepTime)
         }
 
         service.broadcastOnBot(session, response.flat())
@@ -192,7 +193,7 @@ async function formatMessage(messages: Message[], config: CharacterPlugin.Config
         const jsonMessage = `[${message.name}:${message.id}:"${message.content}"]`
         const jsonMessageToken = await model.getNumTokens(jsonMessage)
 
-        if (currentTokens + jsonMessageToken > maxTokens - 3) {
+        if (currentTokens + jsonMessageToken > maxTokens - 4) {
             break
         } else {
             currentTokens += jsonMessageToken
