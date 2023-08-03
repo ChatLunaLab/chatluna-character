@@ -42,6 +42,7 @@ namespace CharacterPlugin {
         sleepTime: number
         muteTime: number
 
+        disableChatHub: boolean
     }
 
     export const Config = Schema.intersect([
@@ -52,7 +53,10 @@ namespace CharacterPlugin {
                 .description('存储在内存里的最大消息数量')
                 .default(10)
                 .min(3)
-                .max(40)
+                .max(40),
+            disableChatHub: Schema.boolean()
+                .default(true)
+                .description("在使用此插件时，是否禁用 chathub 的功能")
         }).description('基础配置'),
 
         Schema.object({
@@ -109,7 +113,7 @@ namespace CharacterPlugin {
 
 要求：
 1. 不要讨论别的话题或试图结束聊天，也不要一直复读之前说过的话，
-2. 如果有人艾特了你，你就需要根据上下文，来回复他的内容。
+2. 如果有人艾特了你，你尽量少回复他，尽量回复附和的内容。
 3. 风格应该为简短且口语化，切忌把话说的完整或大长，切忌使用书面语言。
 4. 如果需要艾特他人，你可以在你的回答中加入[at:id]，但是只能有一个。
 5. 如果你认为他们聊的话题你不是非常理解，也无法附和的话，或者你遭到辱骂等，或者历史记录上他人让你闭嘴，你代入人设后认为你不想回复的话，请直接返回给我空字符。
