@@ -15,10 +15,6 @@ export function apply(ctx: Context, config: CharacterPlugin.Config) {
 
 
     service.addFilter((session, message) => {
-        if (session.parsed.appel) {
-            return true
-        }
-
         const info = groupInfos[session.guildId] || {
             messageCount: 0,
             messageSendProbability: 0
@@ -27,13 +23,15 @@ export function apply(ctx: Context, config: CharacterPlugin.Config) {
         let { messageCount, messageSendProbability } = info
 
         // 保底必出
-        if (messageCount > maxMessages || messageSendProbability > 1) {
+        if (messageCount > maxMessages || messageSendProbability > 1 || session.parsed.appel) {
             info.messageCount = 0
             info.messageSendProbability = 0
 
             groupInfos[session.guildId] = info
             return true
         }
+
+
 
         // 按照概率出
         if (Math.random() < messageSendProbability) {

@@ -44,8 +44,9 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
             return
         }
         for (const elements of response) {
+            const text = elements.map(element => element.attrs.content ?? "").join("")
             session.send(elements)
-            await sleep(config.sleepTime)
+            await sleep(text.length * config.sleepTime)
         }
 
         service.broadcastOnBot(session, response.flat())
@@ -145,7 +146,7 @@ function parseResponse(response: string) {
     if (resultElements[0]?.[0]?.type == "at") {
         resultElements[1].unshift(h.text(" "))
         resultElements[1].unshift(resultElements[0][0])
-    
+
         resultElements.shift()
     }
 

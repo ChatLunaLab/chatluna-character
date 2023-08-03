@@ -80,10 +80,10 @@ namespace CharacterPlugin {
                 .description('随机发送消息的间隔'),
 
             sleepTime: Schema.number()
-                .default(2400)
+                .default(540)
                 .min(100)
                 .max(5000)
-                .description('发送多条消息时的间隔'),
+                .description('发送消息时打一个字的间隔'),
 
             muteTime: Schema.number()
                 .default(1000 * 60)
