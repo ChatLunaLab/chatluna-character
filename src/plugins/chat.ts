@@ -31,7 +31,7 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
 
         const responseMessage = await model.call([
             new SystemMessage(formattedPrompt),
-            new HumanMessage("切记，你的回复不能超过15个字！\n"+finalMessage)
+            new HumanMessage("切记，你的回复不能超过15个字！\n" + finalMessage)
         ])
 
 
@@ -40,7 +40,7 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
         const response = parseResponse(responseMessage.content)
 
         if (response.length < 1) {
-            service.mute(config.muteTime)
+            service.mute(session, config.muteTime)
             return
         }
         for (const elements of response) {

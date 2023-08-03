@@ -35,7 +35,7 @@ export function apply(ctx: Context, config: CharacterPlugin.Config) {
         logger.debug(`messageCount: ${messageCount}, messageSendProbability: ${messageSendProbability}. content: ${JSON.stringify(message)}`)
 
         messageCount++
-        messageSendProbability += (1 / maxMessages) * 0.7
+        messageSendProbability += (1 / maxMessages) * 0.4
 
         return false
     })

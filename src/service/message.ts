@@ -14,9 +14,9 @@ export class MessageCollector {
 
     private _filters: MessageCollectorFilter[] = []
 
-    private _lockStatus = false
 
-    private _muteTime = 0
+
+    private _groupLocks: Record<string, GroupLock> = {}
 
     constructor(private _config: CharacterPlugin.Config) {
 
@@ -26,9 +26,12 @@ export class MessageCollector {
         this._filters.push(filter)
     }
 
-    mute(time: number) { 
-        this._muteTime = new Date().getTime() + time
+    mute(session: Session, time: number) {
+        const lock = this._getGroupLocks(session.guildId)
+        lock.mute = new Date().getTime() + time
     }
+
+
 
     collect(func: (session: Session, messages: Message[]) => Promise<void>) {
         this._eventEmitter.on("collect", func)
@@ -38,11 +41,28 @@ export class MessageCollector {
         return this._messages[groupId]
     }
 
-    private _lock() {
+    private _isMute(session: Session) {
+        const lock = this._getGroupLocks(session.guildId)
+
+        return lock.mute > new Date().getTime()
+    }
+
+    private _getGroupLocks(groupId: string) {
+        if (!this._groupLocks[groupId]) {
+            this._groupLocks[groupId] = {
+                lock: false,
+                mute: 0
+            }
+        }
+        return this._groupLocks[groupId]
+    }
+
+    private _lock(session: Session) {
+        const groupLock = this._getGroupLocks(session.guildId)
         return new Promise<void>((resolve) => {
             const interval = setInterval(() => {
-                if (!this._lockStatus) {
-                    this._lockStatus = true
+                if (!groupLock.lock) {
+                    groupLock.lock = true
                     clearInterval(interval)
                     resolve()
                 }
@@ -50,11 +70,12 @@ export class MessageCollector {
         })
     }
 
-    private _unlock() {
+    private _unlock(session: Session) {
+        const groupLock = this._getGroupLocks(session.guildId)
         return new Promise<void>((resolve) => {
             const interval = setInterval(() => {
-                if (this._lockStatus) {
-                    this._lockStatus = false
+                if (groupLock.lock) {
+                    groupLock.lock = false
                     clearInterval(interval)
                     resolve()
                 }
@@ -76,17 +97,17 @@ export class MessageCollector {
             return
         }
 
-        await this._lock()
+        await this._lock(session)
 
         const groupId = session.guildId
         const maxMessageSize = this._config.maxMessages
         const groupArray = this._messages[groupId] ? this._messages[groupId] : []
 
 
-        const content = mapElementToString(session,session.content, elements)
+        const content = mapElementToString(session, session.content, elements)
 
         if (content.length < 1) {
-            await this._unlock()
+            await this._unlock(session)
             return
         }
 
@@ -106,7 +127,7 @@ export class MessageCollector {
 
         this._messages[groupId] = groupArray
 
-        await this._unlock()
+        await this._unlock(session)
     }
 
     async broadcast(session: Session) {
@@ -114,17 +135,17 @@ export class MessageCollector {
             return
         }
 
-        await this._lock()
+        await this._lock(session)
 
         const groupId = session.guildId
         const maxMessageSize = this._config.maxMessages
         const groupArray = this._messages[groupId] ? this._messages[groupId] : []
         const elements = session.elements ? session.elements : [h.text(session.content)]
 
-        const content = mapElementToString(session,session.content, elements)
+        const content = mapElementToString(session, session.content, elements)
 
         if (content.length < 1) {
-            await this._unlock()
+            await this._unlock(session)
             return
         }
 
@@ -133,7 +154,7 @@ export class MessageCollector {
             name: session.author.username,
             id: session.author.userId,
             quote: session.quote ? {
-                content: mapElementToString(session,session.quote.content, session.quote.elements),
+                content: mapElementToString(session, session.quote.content, session.quote.elements),
                 name: session.quote.author.username,
                 id: session.quote.author.userId
             } : undefined
@@ -150,11 +171,11 @@ export class MessageCollector {
 
         this._messages[groupId] = groupArray
 
-        if (this._filters.some(func => func(session, message)) && this._muteTime < new Date().getTime() ) {
+        if (this._filters.some(func => func(session, message)) && !this._isMute(session)) {
             this._eventEmitter.emit("collect", session, groupArray)
         }
 
-        await this._unlock()
+        await this._unlock(session)
     }
 }
 
@@ -184,3 +205,8 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
 }
 
 type MessageCollectorFilter = (session: Session, message: Message) => boolean
+
+interface GroupLock {
+    lock: boolean
+    mute: number
+}
