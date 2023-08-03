@@ -49,6 +49,7 @@
         "description": {
             "zh": "让大语言模型进行角色扮演，伪装成群友"
         },
+        "preview": true,
         "service": {
             "required": [
                 "chathub"
