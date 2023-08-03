@@ -80,21 +80,24 @@ function parseResponse(response: string) {
 
     let currentElements: Element[] = []
     // match ([at:id(??)])
-    const atMatch = message.match(/\[at:(\d+)(.*)?\]/g)
+    logger.debug("message: " + message)
+    const atMatch = message.match(/\(at\-(\d+)(.*)?\)/g)
+    logger.debug("atMatch: " + JSON.stringify(atMatch))
     if (atMatch) {
         for (const at of atMatch) {
             const id = at.match(/\d+/)
+            logger.debug("id: " + id)
             if (id) {
                 currentElements.push(h.at(id[0]))
             } else {
                 logger.error("Failed to parse at: " + at)
             }
         }
-        const text = message.replace(/\[at:(\d+)(.*)?\]/g, "")
-
+        const text = message.replace(/\(at\-(\d+)(.*)?\)/g, "")
+        logger.debug("text: " + text)
         currentElements.push(h.text(text))
-
     } else {
+
         currentElements.push(h.text(message))
     }
 
@@ -140,7 +143,9 @@ function parseResponse(response: string) {
     }
 
     if (resultElements[0]?.[0]?.type == "at") {
-        resultElements[1].push(resultElements[0][0])
+        resultElements[1].unshift(h.text(" "))
+        resultElements[1].unshift(resultElements[0][0])
+    
         resultElements.shift()
     }
 
