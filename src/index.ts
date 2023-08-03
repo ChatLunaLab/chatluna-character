@@ -21,7 +21,7 @@ class CharacterPlugin extends ChatHubPlugin<CharacterPlugin.Config> {
 
         ctx.on("message", async (session) => {
             if (!session.isDirect || !config.applyGroup.some(group => group === session.guildId)) {
-                return false
+                return 
             }
             await service.broadcast(session)
         })
