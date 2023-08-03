@@ -20,6 +20,9 @@ class CharacterPlugin extends ChatHubPlugin<CharacterPlugin.Config> {
         }, 0)
 
         ctx.on("message", async (session) => {
+            if (!session.isDirect || !config.applyGroup.some(group => group === session.guildId)) {
+                return false
+            }
             await service.broadcast(session)
         })
     }
@@ -72,9 +75,9 @@ namespace CharacterPlugin {
 
         Schema.object({
             messageInterval: Schema.number()
-                .default(5)
+                .default(14)
                 .min(5)
-                .max(20)
+                .max(30)
                 .description('随机发送消息的间隔'),
 
             sleepTime: Schema.number()
@@ -86,7 +89,7 @@ namespace CharacterPlugin {
             muteTime: Schema.number()
                 .default(1000 * 60)
                 .min(1000)
-                .max(1000 * 60 * 10)
+                .max(1000 * 60 * 10 * 10)
                 .description('闭嘴时的禁言时间'),
 
         }).description('对话设置'),
