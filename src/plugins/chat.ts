@@ -79,19 +79,18 @@ function parseResponse(response: string) {
 
 
     let currentElements: Element[] = []
-    // match ([at:id(,name:xx)?])?xxxx
-    const atMatch = message.match(/\[at:(\d+)(,\w+:[\u4e00-\u9fa5]+)?\]/g)
+    // match ([at:id(??)])
+    const atMatch = message.match(/\[at:(\d+)(.*)?\]/g)
     if (atMatch) {
         for (const at of atMatch) {
-            const id = at.match(/\d+/g)
+            const id = at.match(/\d+/)
             if (id) {
                 currentElements.push(h.at(id[0]))
             } else {
                 logger.error("Failed to parse at: " + at)
             }
         }
-
-        const text = message.replace(/\[at:(\d+)(,\w+:[\u4e00-\u9fa5]+)?\]/g, "")
+        const text = message.replace(/\[at:(\d+)(.*)?\]/g, "")
 
         currentElements.push(h.text(text))
 
