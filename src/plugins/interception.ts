@@ -14,6 +14,6 @@ const logger = createLogger("chathub-character/plugins/interception")
 export function apply(ctx: Context, config: CharacterPlugin.Config) {
 
     ctx.on("chathub/before-check-sender", async (session) => {
-        return ((session.parsed.appel && !session.isDirect) || config.disableChatHub) && config.applyGroup.some(group => group === session.guildId)
+        return ((session.parsed.appel && !session.isDirect )  || !session.isDirect || config.disableChatHub) && config.applyGroup.some(group => group === session.guildId)
     })
 }

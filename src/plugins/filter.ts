@@ -17,7 +17,6 @@ export function apply(ctx: Context, config: CharacterPlugin.Config) {
             return true
         }
 
-
         // 保底必出
         if (messageCount > maxMessages || messageSendProbability > 1) {
             messageCount = 0
