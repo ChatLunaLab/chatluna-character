@@ -28,15 +28,19 @@ export function apply(ctx: Context, config: CharacterPlugin.Config) {
 
         // 保底必出
         if (messageCount > maxMessages || messageSendProbability > 1) {
-            messageCount = 0
-            messageSendProbability = 0
+            info.messageCount = messageCount
+            info.messageSendProbability = messageSendProbability
+
+            groupInfos[session.guildId] = info
             return true
         }
 
         // 按照概率出
         if (Math.random() < messageSendProbability) {
-            messageCount = 0
-            messageSendProbability = 0
+            info.messageCount = messageCount
+            info.messageSendProbability = messageSendProbability
+
+            groupInfos[session.guildId] = info
             return true
         }
 
