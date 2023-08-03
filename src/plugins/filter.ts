@@ -10,12 +10,21 @@ const logger = createLogger("chathub-character/plugins/filter")
 export function apply(ctx: Context, config: CharacterPlugin.Config) {
 
     let maxMessages = config.maxMessages > config.messageInterval ? config.messageInterval : config.maxMessages
-    let messageCount = 0
-    let messageSendProbability = 0
+
+    const groupInfos: Record<string, GroupInfo> = {}
+
+
     service.addFilter((session, message) => {
         if (session.parsed.appel) {
             return true
         }
+
+        const info = groupInfos[session.guildId] || {
+            messageCount: 0,
+            messageSendProbability: 0
+        }
+
+        let { messageCount, messageSendProbability } = info
 
         // 保底必出
         if (messageCount > maxMessages || messageSendProbability > 1) {
@@ -36,6 +45,17 @@ export function apply(ctx: Context, config: CharacterPlugin.Config) {
         messageCount++
         messageSendProbability += (1 / maxMessages) * 0.001
 
+        info.messageCount = messageCount
+        info.messageSendProbability = messageSendProbability
+
+        groupInfos[session.guildId] = info
+
         return false
     })
+}
+
+
+interface GroupInfo {
+    messageCount: number
+    messageSendProbability: number
 }
