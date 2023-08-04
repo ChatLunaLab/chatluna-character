@@ -23,7 +23,7 @@ export function apply(ctx: Context, config: CharacterPlugin.Config) {
         let { messageCount, messageSendProbability } = info
 
         // 保底必出
-        if (messageCount > maxMessages || messageSendProbability > 1 || session.parsed.appel) {
+        if ((messageCount > maxMessages || messageSendProbability > 1 || session.parsed.appel) && !service.isMute(session)) {
             info.messageCount = 0
             info.messageSendProbability = 0
 
@@ -34,7 +34,7 @@ export function apply(ctx: Context, config: CharacterPlugin.Config) {
 
 
         // 按照概率出
-        if (Math.random() < messageSendProbability) {
+        if (Math.random() < messageSendProbability && !service.isMute(session)) {
             info.messageCount = 0
             info.messageSendProbability = 0
 
@@ -60,4 +60,5 @@ export function apply(ctx: Context, config: CharacterPlugin.Config) {
 export interface GroupInfo {
     messageCount: number
     messageSendProbability: number
+
 }

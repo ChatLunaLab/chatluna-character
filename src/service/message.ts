@@ -41,10 +41,10 @@ export class MessageCollector {
         return this._messages[groupId]
     }
 
-    private _isMute(session: Session) {
+    isMute(session: Session) {
         const lock = this._getGroupLocks(session.guildId)
 
-        return lock.mute > new Date().getTime()
+        return lock.mute > new Date().getTime() && !session.parsed.appel
     }
 
     private _getGroupLocks(groupId: string) {
@@ -171,7 +171,7 @@ export class MessageCollector {
 
         this._messages[groupId] = groupArray
 
-        if (this._filters.some(func => func(session, message)) && !this._isMute(session)) {
+        if (this._filters.some(func => func(session, message)) && !this.isMute(session)) {
             this._eventEmitter.emit("collect", session, groupArray)
         }
 

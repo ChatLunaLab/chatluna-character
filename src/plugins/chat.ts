@@ -52,9 +52,12 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
         }
         for (const elements of response) {
             const text = elements.map(element => element.attrs.content ?? "").join("")
-            await sleep(text.length * config.sleepTime)
+            await sleep(text.length * 200 + config.typingTime)
             session.send(elements)
         }
+
+
+        service.mute(session, config.coolDown * 1000)
 
         service.broadcastOnBot(session, response.flat())
 
@@ -215,7 +218,7 @@ async function formatMessage(messages: Message[], config: CharacterPlugin.Config
 
     logger.debug(`maxTokens: ${maxTokens}, currentTokens: ${currentTokens}`)
 
-    const [splittedLeftMessages, splittedRightMessages] = spiltArray(calculatedMessages, calculatedMessages.length > 5 ? calculatedMessages.length - 5 : 5)
+    const [splittedLeftMessages, splittedRightMessages] = spiltArray(calculatedMessages, calculatedMessages.length > 3 ? calculatedMessages.length - 3 : 0)
 
     return [splittedLeftMessages.length < 1 ? "" : splittedLeftMessages.join(), splittedRightMessages.join()]
 }
