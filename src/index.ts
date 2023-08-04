@@ -83,7 +83,7 @@ namespace CharacterPlugin {
         Schema.object({
             messageInterval: Schema.number()
                 .default(14)
-                .min(5)
+                .min(0)
                 .role('slider')
                 .max(30)
                 .description('随机发送消息的间隔'),
