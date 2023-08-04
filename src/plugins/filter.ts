@@ -12,9 +12,7 @@ export const groupInfos: Record<string, GroupInfo> = {}
 
 export function apply(ctx: Context, config: CharacterPlugin.Config) {
 
-    let maxMessages = config.maxMessages > config.messageInterval ? config.messageInterval : config.maxMessages
-
-
+    let maxMessages = config.messageInterval
 
     service.addFilter((session, message) => {
         const info = groupInfos[session.guildId] || {

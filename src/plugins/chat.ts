@@ -1,38 +1,45 @@
-import { Context, Element, Schema, h, sleep } from 'koishi';
+import { Context, Element, h, sleep } from 'koishi';
 import CharacterPlugin from '..';
-import { Factory } from "@dingyi222666/koishi-plugin-chathub/lib/llm-core/chat/factory"
 import { createLogger } from "@dingyi222666/koishi-plugin-chathub/lib/llm-core/utils/logger"
 import { service } from '..';
-import { PromptTemplate } from 'langchain';
+import { PromptTemplate } from 'langchain/prompts'
 import { Message } from '../types';
 import { ChatHubBaseChatModel } from '@dingyi222666/koishi-plugin-chathub/lib/llm-core/model/base';
 import { HumanMessage, SystemMessage } from 'langchain/schema';
-import { parse } from 'path';
 
 
 const logger = createLogger("chathub-character/plugins/chat")
 
 export async function apply(ctx: Context, config: CharacterPlugin.Config) {
-
     const modelNameSpitted = config.model.split("/")
     const model = await ctx.chathub.createChatModel(modelNameSpitted[0], modelNameSpitted[1])
 
-    const completionPrompt = PromptTemplate.fromTemplate(config.defaultPrompt)
+    const systemPrompt = PromptTemplate.fromTemplate(config.defaultPrompt)
+
+    const completionPrompt = PromptTemplate.fromTemplate(config.historyPrompt)
 
     service.collect(async (session, messages) => {
 
-        const finalMessage = await formatMessage(messages, config, model)
+        const [finalMessage1, finalMessage2] = await formatMessage(messages, config, model)
 
-        const formattedPrompt = await completionPrompt.format({
+        const formattedSystemPrompt = await systemPrompt.format({
             time: new Date().toLocaleString(),
         })
 
-        logger.debug("messages: " + JSON.stringify(messages))
+        logger.debug("messages_old: " + JSON.stringify(finalMessage1))
+        logger.debug("messages_new: " + JSON.stringify(finalMessage2))
 
-        const responseMessage = await model.call([
-            new SystemMessage(formattedPrompt),
-            new HumanMessage("切记，你的回复不能超过15个字！\n" + finalMessage)
-        ])
+        const completionMessage = [
+            new SystemMessage(formattedSystemPrompt),
+            new HumanMessage(await completionPrompt.format({
+                history_old: finalMessage1.length < 1 ? "empty" : finalMessage1,
+                history_new: finalMessage2
+            }))
+        ]
+
+        logger.debug("completion message: " + JSON.stringify(completionMessage.map(it => it.content)))
+
+        const responseMessage = await model.call(completionMessage)
 
 
         logger.debug("model response: " + responseMessage.content)
@@ -188,7 +195,7 @@ async function formatMessage(messages: Message[], config: CharacterPlugin.Config
     let currentTokens = 0
 
     currentTokens += await model.getNumTokens(config.defaultPrompt)
-
+    currentTokens += await model.getNumTokens(config.historyPrompt)
 
     const calculatedMessages: string[] = []
 
@@ -208,5 +215,22 @@ async function formatMessage(messages: Message[], config: CharacterPlugin.Config
 
     logger.debug(`maxTokens: ${maxTokens}, currentTokens: ${currentTokens}`)
 
-    return calculatedMessages.join("\n")
+    const [splittedLeftMessages, splittedRightMessages] = spiltArray(calculatedMessages, calculatedMessages.length > 5 ? calculatedMessages.length - 5 : 5)
+
+    return [splittedLeftMessages.length < 1 ? "" : splittedLeftMessages.join(), splittedRightMessages.join()]
+}
+
+function spiltArray<T>(array: Array<T>, left: number): [Array<T>, Array<T>] {
+    const leftArray: Array<T> = []
+    const rightArray: Array<T> = []
+
+    for (let i = 0; i < array.length; i++) {
+        if (i < left) {
+            leftArray.push(array[i])
+        } else {
+            rightArray.push(array[i])
+        }
+    }
+
+    return [leftArray, rightArray]
 }
