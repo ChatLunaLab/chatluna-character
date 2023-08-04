@@ -20,20 +20,21 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
 
     service.collect(async (session, messages) => {
 
-        const [finalMessage1, finalMessage2] = await formatMessage(messages, config, model)
+        const [historyMessage, recentMessage, lastMessage] = await formatMessage(messages, config, model)
 
         const formattedSystemPrompt = await systemPrompt.format({
             time: new Date().toLocaleString(),
         })
 
-        logger.debug("messages_old: " + JSON.stringify(finalMessage1))
-        logger.debug("messages_new: " + JSON.stringify(finalMessage2))
+        logger.debug("messages_old: " + JSON.stringify(historyMessage))
+        logger.debug("messages_new: " + JSON.stringify(recentMessage))
 
         const completionMessage = [
             new SystemMessage(formattedSystemPrompt),
             new HumanMessage(await completionPrompt.format({
-                history_old: finalMessage1.length < 1 ? "empty" : finalMessage1,
-                history_new: finalMessage2
+                history_old: historyMessage.length < 1 ? "empty" : historyMessage,
+                history_new: recentMessage,
+                history_last: lastMessage
             }))
         ]
 
@@ -57,7 +58,7 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
         }
 
 
-        service.mute(session, config.coolDown * 1000)
+        service.mute(session, config.coolDownTime * 1000)
 
         service.broadcastOnBot(session, response.flat())
 
@@ -218,9 +219,12 @@ async function formatMessage(messages: Message[], config: CharacterPlugin.Config
 
     logger.debug(`maxTokens: ${maxTokens}, currentTokens: ${currentTokens}`)
 
-    const [splittedLeftMessages, splittedRightMessages] = spiltArray(calculatedMessages, calculatedMessages.length > 3 ? calculatedMessages.length - 3 : 0)
+    const [splittedLeftMessages, splittedRightMessages] = spiltArray(calculatedMessages, calculatedMessages.length > 5 ? calculatedMessages.length - 5 : 0)
 
-    return [splittedLeftMessages.length < 1 ? "" : splittedLeftMessages.join(), splittedRightMessages.join()]
+
+    const lastMessage = splittedRightMessages.pop()
+
+    return [splittedLeftMessages.length < 1 ? "" : splittedLeftMessages.join(), splittedRightMessages.join(), lastMessage]
 }
 
 function spiltArray<T>(array: Array<T>, left: number): [Array<T>, Array<T>] {

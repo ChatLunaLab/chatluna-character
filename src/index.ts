@@ -42,7 +42,7 @@ namespace CharacterPlugin {
         historyPrompt: string
 
 
-        coolDown: number
+        coolDownTime: number
         typingTime: number
         muteTime: number
 
@@ -82,7 +82,7 @@ namespace CharacterPlugin {
                 .description('随机发送消息的间隔'),
 
 
-            coolDown: Schema.number()
+            coolDownTime: Schema.number()
                 .default(10)
                 .min(1)
                 .max(60 * 24)
@@ -108,15 +108,24 @@ namespace CharacterPlugin {
                 .role("textarea")
                 .description('用于聊天历史记录的 prompt')
                 .default(
-                    `
-久远聊天记录(此块记录不回复，仅提供参考)：[
+                    `现在请你按照上面的下面的聊天记录、根据你的预设、回复风格和聊天规则判断下面的内容你是否需要回复，如果则输出你的回复，否则输出[你的名字:id:""]。
+
+你需要从几个方面来思考：
+1. 这段聊天记录是否有人艾特了你，如果有，你需要回复。
+2. 这些话题你是否感兴趣，如果感兴趣，你需要回复。
+3. 这些话题是否都是几个人在重复类似的意思刷屏？如果是，你不需要回复。
+
+记住，把你的回复精简到20字以内，直接输出内容。
+这是输出的例子：[你的名字:id:"回复内容"]
+
+久远聊天记录：
     {history_old}
-]
 
-现在请你按照上面的久远记录和下面的聊天记录、根据你的预设、回复风格和聊天规则判断下面的内容你是否感兴趣，如果有你感兴趣则输出你的回复，如果没有你感兴趣的内容则输出[你的名字:id:""]。记住，请把你的回复精简到20字以内，直接输出内容，如：[你的名字:id:"回复内容"]
+近期聊天记录： 
+    {history_new}
 
-{history_new}`),
-
+最新一条聊天记录，请你回复这条消息：
+    {history_last}`),
             defaultPrompt: Schema.string()
                 .role("textarea")
                 .description('用于角色扮演的 prompt')
@@ -159,7 +168,7 @@ namespace CharacterPlugin {
 ]
 
 你的特别关注（必定回复的消息）[
-       你特别感兴趣的话题：代码
+    你特别感兴趣的话题：代码
 ]
 
 群聊规则（请务必记住群聊规则的格式，否则你的回复将无法被识别。）[
