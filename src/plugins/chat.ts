@@ -45,8 +45,8 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
         }
         for (const elements of response) {
             const text = elements.map(element => element.attrs.content ?? "").join("")
-            session.send(elements)
             await sleep(text.length * config.sleepTime)
+            session.send(elements)
         }
 
         service.broadcastOnBot(session, response.flat())

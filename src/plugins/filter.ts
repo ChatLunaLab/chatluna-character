@@ -3,15 +3,17 @@ import CharacterPlugin from '..';
 import { Factory } from "@dingyi222666/koishi-plugin-chathub/lib/llm-core/chat/factory"
 import { createLogger } from "@dingyi222666/koishi-plugin-chathub/lib/llm-core/utils/logger"
 import { service } from '..';
+import { group } from 'console';
 
 
 const logger = createLogger("chathub-character/plugins/filter")
+
+export const groupInfos: Record<string, GroupInfo> = {}
 
 export function apply(ctx: Context, config: CharacterPlugin.Config) {
 
     let maxMessages = config.maxMessages > config.messageInterval ? config.messageInterval : config.maxMessages
 
-    const groupInfos: Record<string, GroupInfo> = {}
 
 
     service.addFilter((session, message) => {
@@ -45,7 +47,7 @@ export function apply(ctx: Context, config: CharacterPlugin.Config) {
         logger.debug(`messageCount: ${messageCount}, messageSendProbability: ${messageSendProbability}. content: ${JSON.stringify(message)}`)
 
         messageCount++
-        messageSendProbability += (1 / maxMessages) * 0.001
+        messageSendProbability += (1 / maxMessages) * 0.01
 
         info.messageCount = messageCount
         info.messageSendProbability = messageSendProbability
@@ -57,7 +59,7 @@ export function apply(ctx: Context, config: CharacterPlugin.Config) {
 }
 
 
-interface GroupInfo {
+export interface GroupInfo {
     messageCount: number
     messageSendProbability: number
 }
