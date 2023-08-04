@@ -199,7 +199,7 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
                 filteredBuffer.push(content)
             }
         } else if (element.type === "at") {
-            filteredBuffer.push(`(at-${element.attrs.id === session.bot.selfId ? "0" : element.attrs.name === session.bot.username ? "0" : element.attrs.id},name-${element.attrs.name})`)
+            filteredBuffer.push(`@${element.attrs.name} `)
         }
 
     }

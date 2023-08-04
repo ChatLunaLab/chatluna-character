@@ -1,7 +1,7 @@
 import { Context, Element, h, sleep } from 'koishi';
 import CharacterPlugin from '..';
 import { createLogger } from "@dingyi222666/koishi-plugin-chathub/lib/llm-core/utils/logger"
-import { service } from '..';
+import { service, stickerService } from '..';
 import { PromptTemplate } from 'langchain/prompts'
 import { Message } from '../types';
 import { ChatHubBaseChatModel } from '@dingyi222666/koishi-plugin-chathub/lib/llm-core/model/base';
@@ -51,12 +51,19 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
             service.mute(session, config.muteTime)
             return
         }
+
         for (const elements of response) {
             const text = elements.map(element => element.attrs.content ?? "").join("")
             await sleep(text.length * 200 + config.typingTime)
             session.send(elements)
         }
 
+        const sticker = stickerService.randomStick()
+
+        if (sticker) {
+            logger.debug(`send sticker: ${JSON.stringify(sticker)}`)
+            session.send(sticker)
+        }
 
         service.mute(session, config.coolDownTime * 1000)
 

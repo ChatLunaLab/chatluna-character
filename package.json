@@ -6,7 +6,8 @@
   "typings": "lib/index.d.ts",
   "files": [
     "lib",
-    "dist"
+    "dist",
+    "resources"
   ],
   "license": "AGPL-3.0",
   "keywords": [

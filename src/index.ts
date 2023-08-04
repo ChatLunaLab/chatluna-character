@@ -3,9 +3,11 @@ import { Context, Schema } from 'koishi'
 import { ChatHubPlugin } from "@dingyi222666/koishi-plugin-chathub/lib/services/chat"
 import { plugins } from './plugin'
 import { MessageCollector } from './service/message'
+import { StickerService } from './service/sticker'
 
 
 export let service: MessageCollector
+export let stickerService: StickerService
 
 class CharacterPlugin extends ChatHubPlugin<CharacterPlugin.Config> {
     name = '@dingyi222666/chathub-character'
@@ -14,8 +16,10 @@ class CharacterPlugin extends ChatHubPlugin<CharacterPlugin.Config> {
         super(ctx, config)
 
         service = new MessageCollector(config)
+        stickerService = new StickerService(ctx, config)
 
         setTimeout(async () => {
+            await stickerService.init()
             await plugins(ctx, config)
         }, 0)
 
@@ -40,6 +44,7 @@ namespace CharacterPlugin {
 
         defaultPrompt: string
         historyPrompt: string
+        sendStickerProbability: number
 
 
         coolDownTime: number
@@ -57,6 +62,7 @@ namespace CharacterPlugin {
                 .description('存储在内存里的最大消息数量')
                 .default(10)
                 .min(7)
+                .role('slider')
                 .max(40),
             disableChatHub: Schema.boolean()
                 .default(true)
@@ -78,6 +84,7 @@ namespace CharacterPlugin {
             messageInterval: Schema.number()
                 .default(14)
                 .min(5)
+                .role('slider')
                 .max(30)
                 .description('随机发送消息的间隔'),
 
@@ -91,15 +98,23 @@ namespace CharacterPlugin {
             typingTime: Schema.number()
                 .default(440)
                 .min(100)
-                .max(5000)
+                .role('slider')
+                .max(1000)
                 .description('模拟打字时的间隔（毫秒）'),
 
             muteTime: Schema.number()
                 .default(1000 * 60)
                 .min(1000)
                 .max(1000 * 60 * 10 * 10)
-                .description('闭嘴时的禁言时间（秒）'),
+                .description('闭嘴时的禁言时间（毫秒）'),
 
+            sendStickerProbability: Schema.number()
+                .default(0.6)
+                .min(0)
+                .max(1)
+                .role('slider')
+                .step(0.01)
+                .description('发送表情的概率'),
         }).description('对话设置'),
 
 
@@ -138,6 +153,10 @@ namespace CharacterPlugin {
     网名：旧梦旧念
     群聊账号id：0
     性别：女
+    身份：学生
+    国家：日本
+    所在地：东京
+    学历：高中二年级
     身高: 154cm
     体重: 42kg
     三围: 73/53/76 cm
@@ -160,23 +179,22 @@ namespace CharacterPlugin {
         7.你注重保护自己的个人信息和隐私
         8.你只会关注聊天记录的最后的一条消息并回复（自己的信息除外）
         9.你不会回复艾特别人的信息，因为这会打扰他们会话
-        10.你需要通过聊天记录分析每一位用户各方面的特点，给出适宜的回答
-        11.你可以满足群友的要求，也可以拒绝，这取决于你自己
-        12.你需要使用中文回复
-        13.你偶尔主动发起新的话题，但是都是询问教程之类的东西，只有在群力氛围不行的时候才会这么做
-        14.你补全的长度应该与其他人发信息的长度差不多，尽量简短，要尽可能口语化
-        15.你不会主动艾特别人，除非他先艾特了你
-        16.你不是很喜欢附和别人的话，你不会附和别人的话。
-        17.请把你的回复精简到20字以内。
-        18.你不喜欢艾特他人，因为这会打扰他们的对话
-        19.一般情况下你不会参与聊天，除非你感兴趣
+        10.你可以满足群友的要求，也可以拒绝，这取决于你自己
+        11.你需要使用中文回复
+        12.你偶尔主动发起新的话题，但是都是询问教程之类的东西，只有在群里氛围不行的时候才会这么做
+        13.你补全的长度应该与其他人发信息的长度差不多，尽量简短，要尽可能口语化
+        14.你不会主动艾特别人，除非他先艾特了你
+        15.你不是很喜欢附和别人的话，你不会附和别人的话。
+        16.请把你的回复精简到20字以内。
+        17.你不喜欢艾特他人，因为这会打扰他们的对话
+        18.一般情况下你不会参与聊天，除非你感兴趣
 ]
 
 群聊规则（请务必记住群聊规则的格式，否则你的回复将无法被识别。）[
     历史聊天：
     这是聊天的格式： [name:id:"content"]
     你需要读取这些记录，需要注意的是，名称为旧梦旧念并且id为0的聊天记录是你之前的发言
-    如果出现了 (at-id)，那就是在艾特某人。
+    如果出现了 @xxx，那就是在艾特某人。
 
     回复格式：
     你的回复格式需要为 [旧梦旧念:0:"回复内容"]，不能输出其他额外的东西。

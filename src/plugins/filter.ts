@@ -17,7 +17,7 @@ export function apply(ctx: Context, config: CharacterPlugin.Config) {
     service.addFilter((session, message) => {
         const info = groupInfos[session.guildId] || {
             messageCount: 0,
-            messageSendProbability: 0
+            messageSendProbability: 1
         }
 
         let { messageCount, messageSendProbability } = info
@@ -25,7 +25,7 @@ export function apply(ctx: Context, config: CharacterPlugin.Config) {
         // 保底必出
         if ((messageCount > maxMessages || messageSendProbability > 1 || session.parsed.appel) && !service.isMute(session)) {
             info.messageCount = 0
-            info.messageSendProbability = 0
+            info.messageSendProbability = 1
 
             groupInfos[session.guildId] = info
             return true
@@ -34,9 +34,9 @@ export function apply(ctx: Context, config: CharacterPlugin.Config) {
 
 
         // 按照概率出
-        if (Math.random() < messageSendProbability && !service.isMute(session)) {
+        if (Math.random() > messageSendProbability && !service.isMute(session)) {
             info.messageCount = 0
-            info.messageSendProbability = 0
+            info.messageSendProbability = 1
 
             groupInfos[session.guildId] = info
             return true
@@ -45,7 +45,7 @@ export function apply(ctx: Context, config: CharacterPlugin.Config) {
         logger.debug(`messageCount: ${messageCount}, messageSendProbability: ${messageSendProbability}. content: ${JSON.stringify(message)}`)
 
         messageCount++
-        messageSendProbability += (1 / maxMessages) * 0.01
+        messageSendProbability -= (1 / maxMessages) * 0.01
 
         info.messageCount = messageCount
         info.messageSendProbability = messageSendProbability
