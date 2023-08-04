@@ -14,8 +14,6 @@ export class MessageCollector {
 
     private _filters: MessageCollectorFilter[] = []
 
-
-
     private _groupLocks: Record<string, GroupLock> = {}
 
     constructor(private _config: CharacterPlugin.Config) {
@@ -28,9 +26,14 @@ export class MessageCollector {
 
     mute(session: Session, time: number) {
         const lock = this._getGroupLocks(session.guildId)
-        lock.mute = new Date().getTime() + time
+        let mute = lock.mute ?? 0
+        if (mute < new Date().getTime()) {
+            mute = new Date().getTime() + time
+        } else {
+            mute = mute + time
+        }
+        lock.mute = mute
     }
-
 
 
     collect(func: (session: Session, messages: Message[]) => Promise<void>) {

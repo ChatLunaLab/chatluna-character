@@ -98,8 +98,9 @@ function parseResponse(response: string) {
     if (atMatch) {
         for (const at of atMatch) {
             const id = at.match(/\d+/)
+
             logger.debug("id: " + id)
-            if (id) {
+            if (id && id[0] !== "0") {
                 currentElements.push(h.at(id[0]))
             } else {
                 logger.error("Failed to parse at: " + at)
