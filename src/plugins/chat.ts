@@ -5,7 +5,7 @@ import { service, stickerService } from '..';
 import { PromptTemplate } from 'langchain/prompts'
 import { Message } from '../types';
 import { ChatHubBaseChatModel } from '@dingyi222666/koishi-plugin-chathub/lib/llm-core/model/base';
-import { HumanMessage, SystemMessage } from 'langchain/schema';
+import { BaseMessage, HumanMessage, SystemMessage } from 'langchain/schema';
 
 
 const logger = createLogger("chathub-character/plugins/chat")
@@ -40,7 +40,18 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
 
         logger.debug("completion message: " + JSON.stringify(completionMessage.map(it => it.content)))
 
-        const responseMessage = await model.call(completionMessage)
+        let responseMessage: BaseMessage
+
+        for (let i = 0; i < 3; i++) {
+            try {
+                responseMessage = await model.call(completionMessage)
+                break
+            } catch (e) {
+                logger.error(e)
+                await sleep(2000)
+                continue
+            }
+        }
 
 
         logger.debug("model response: " + responseMessage.content)
@@ -76,13 +87,12 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
 function parseResponse(response: string) {
     let message: string
     try {
-        // parse [name:id:"content"] to content
-        // like [旧梦旧念:2187778735:"嗯？怎么了？"] -> 嗯？怎么了？
-        const regex = /\[.*:.*:(?:")?(.*?)"]/g;
+        // parse name:id:"content" to content
+        // like 旧梦旧念:2187778735:"嗯？怎么了？" -> 嗯？怎么了？
+        const regex = /\.*:.*:(?:")?(.*?)"/g;
         const match = regex.exec(response);
 
-
-        message = match[1]
+        message = match?.[1]
 
         if (typeof message !== "string") {
             logger.error("Failed to parse response: " + response)
@@ -214,7 +224,7 @@ async function formatMessage(messages: Message[], config: CharacterPlugin.Config
     for (let i = messages.length - 1; i >= 0; i--) {
         const message = messages[i]
 
-        const jsonMessage = `[${message.name}:${message.id}:"${message.content}"]`
+        const jsonMessage = `${message.name}:${message.id}:"${message.content}"`
         const jsonMessageToken = await model.getNumTokens(jsonMessage)
 
         if (currentTokens + jsonMessageToken > maxTokens - 4) {

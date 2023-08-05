@@ -1,7 +1,7 @@
 {
   "name": "@dingyi222666/koishi-plugin-chathub-character",
   "description": "Let the large language model play a role, disguise as a group friend",
-  "version": "0.0.15",
+  "version": "0.0.16",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
@@ -34,7 +34,7 @@
     "langchain": "^0.0.120"
   },
   "devDependencies": {
-    "koishi": "^4.13.9"
+    "koishi": "^4.14.0"
   },
   "peerDependencies": {
     "@dingyi222666/koishi-plugin-chathub": "^1.0.0-beta.4",
