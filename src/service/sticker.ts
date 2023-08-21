@@ -46,6 +46,7 @@ export class StickerService {
             return null
         }
 
-        return h.image("file:///" + sticker)
+
+        return h.image("file://" + sticker.startsWith("/") ? sticker : "/" + sticker)
     }
 }

@@ -19,7 +19,6 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
     const completionPrompt = PromptTemplate.fromTemplate(config.historyPrompt)
 
     service.collect(async (session, messages) => {
-
         const [historyMessage, recentMessage, lastMessage] = await formatMessage(messages, config, model)
 
         const formattedSystemPrompt = await systemPrompt.format({

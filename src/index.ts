@@ -149,7 +149,7 @@ namespace CharacterPlugin {
 最后一条消息，你只能对这条消息回复，不能回复其他消息：
     {history_last}
 
-接下来请你直接回复对于最后一条消息你的回复内容，为空请直接回复空字符:
+接下来请你直接回复对于最后一条消息你的回复,把你的回复内容精简到20字以内，为空请直接回复空字符:
 `),
             defaultPrompt: Schema.string()
                 .role("textarea")
