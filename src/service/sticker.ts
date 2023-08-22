@@ -1,7 +1,10 @@
 import { Context, h } from 'koishi';
 import path from 'path';
-import fs from "fs/promises"
+import fs, { readFile } from "fs/promises"
 import CharacterPlugin from '..';
+import { createLogger } from '@dingyi222666/koishi-plugin-chathub/lib/llm-core/utils/logger';
+
+const logger = createLogger("chathub-character/service/sticker")
 
 export class StickerService {
 
@@ -31,7 +34,7 @@ export class StickerService {
 
     }
 
-    randomStick(): h | null {
+    async randomStick(): Promise<h> {
         const random = Math.random()
 
         if (random >= this._config.sendStickerProbability) {
@@ -46,7 +49,16 @@ export class StickerService {
             return null
         }
 
+        logger.debug(`send sticker: ${sticker}`)
 
-        return h.image("file://" + sticker.startsWith("/") ? sticker : "/" + sticker)
+        return h.image(await readFile(sticker),`image/${getFileType(sticker)}`)
     }
+}
+
+function getFileType(path: string) {
+    const type = path.split(".").pop().toLocaleLowerCase()
+    if (type === "jpg") {
+        return "jpeg"
+    }
+    return type
 }

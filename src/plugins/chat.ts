@@ -68,11 +68,10 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
             session.send(elements)
         }
 
-        const sticker = stickerService.randomStick()
+        const sticker = await stickerService.randomStick()
 
         if (sticker) {
-            logger.debug(`send sticker: ${JSON.stringify(sticker)}`)
-            session.send(sticker)
+            session.send( sticker)
         }
 
         service.mute(session, config.coolDownTime * 1000)
