@@ -19,19 +19,18 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
     const completionPrompt = PromptTemplate.fromTemplate(config.historyPrompt)
 
     service.collect(async (session, messages) => {
-        const [historyMessage, recentMessage, lastMessage] = await formatMessage(messages, config, model)
+        const [recentMessage, lastMessage] = await formatMessage(messages, config, model)
 
         const formattedSystemPrompt = await systemPrompt.format({
             time: new Date().toLocaleString(),
         })
 
-        logger.debug("messages_old: " + JSON.stringify(historyMessage))
+
         logger.debug("messages_new: " + JSON.stringify(recentMessage))
 
         const completionMessage = [
             new SystemMessage(formattedSystemPrompt),
             new HumanMessage(await completionPrompt.format({
-                history_old: historyMessage.length < 1 ? "empty" : historyMessage,
                 history_new: recentMessage,
                 history_last: lastMessage
             }))
@@ -71,7 +70,7 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
         const sticker = await stickerService.randomStick()
 
         if (sticker) {
-            session.send( sticker)
+            session.send(sticker)
         }
 
         service.mute(session, config.coolDownTime * 1000)
@@ -235,12 +234,9 @@ async function formatMessage(messages: Message[], config: CharacterPlugin.Config
 
     logger.debug(`maxTokens: ${maxTokens}, currentTokens: ${currentTokens}`)
 
-    const [splittedLeftMessages, splittedRightMessages] = spiltArray(calculatedMessages, calculatedMessages.length > 5 ? calculatedMessages.length - 5 : 0)
+    const lastMessage = calculatedMessages.pop()
 
-
-    const lastMessage = splittedRightMessages.pop()
-
-    return [splittedLeftMessages.length < 1 ? "" : splittedLeftMessages.join(), splittedRightMessages.join(), lastMessage]
+    return [calculatedMessages, lastMessage]
 }
 
 function spiltArray<T>(array: Array<T>, left: number): [Array<T>, Array<T>] {
