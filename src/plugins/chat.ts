@@ -86,13 +86,17 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
 function parseResponse(response: string) {
     let message: string
     try {
-        // parse [name:id:"content"] to content
-        // like [旧梦旧念:2187778735:"嗯？怎么了？"] -> 嗯？怎么了？
-        const regex = /\[.*:.*:(?:")?(.*?)"\]/g;
-        const match = regex.exec(response);
+        // parse [name:id:"content"] [name:id:"content2"] to content2
+        // like [旧梦旧念:2187778735:"嗯？怎么了？？"] [旧梦旧念:2187778735:"嗯？怎么了？"] -> 嗯？怎么了？
+        // use matchAll
+        const match = response.matchAll(/\[.*?\]/g)
 
-        message = match?.[1]
+        message = [...match].pop()?.[0] ?? ""
 
+        logger.debug("message: " + message)
+        message = message.match(/\[.*:.*:(.*)\]/)?.[1] ?? ""
+        message = message.match(/"(.*)"/)?.[1] ?? message
+        logger.debug("message: " + message)
         if (typeof message !== "string") {
             logger.error("Failed to parse response: " + response)
             return []
@@ -108,7 +112,6 @@ function parseResponse(response: string) {
 
     let currentElements: Element[] = []
     // match ([at:id(??)])
-    logger.debug("message: " + message)
     const atMatch = message.match(/\(at\-(\d+)(.*)?\)/g)
     logger.debug("atMatch: " + JSON.stringify(atMatch))
     if (atMatch) {
@@ -151,7 +154,7 @@ function parseResponse(response: string) {
                 //logger.debug("lastChar: " + lastChar)
 
                 // array.some
-                if (["，", "。", "、", ","].some(char => char === lastChar)) {
+                if (["，", "。", "、", ",", "\"", "'", ":"].some(char => char === lastChar)) {
                     //  logger.debug("match: " + match)
                     currentElement = h.text(match.slice(0, match.length - 1))
                     //   logger.debug("currentElement: " + currentElement.attrs.content)
@@ -207,7 +210,7 @@ function splitSentence(sentence: string): string[] {
         }
     }
     // 返回最终的数组
-    return final;
+    return final.filter(it => !punctuations.some(char => char === it))
 }
 
 
