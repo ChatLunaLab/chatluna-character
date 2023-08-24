@@ -199,8 +199,17 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
                 filteredBuffer.push(content)
             }
         } else if (element.type === "at") {
-            filteredBuffer.push(`@${element.attrs.name} `)
+            let name = element.attrs?.name
+            if (element.attrs.id === session.bot.selfId) {
+                name = name ?? session.bot.username ?? "0"
+            }
+            if (name == null) {
+                name = element.attrs.id ?? "0"
+            }
+
+            filteredBuffer.push(`@${name} `)
         }
+      
 
     }
 

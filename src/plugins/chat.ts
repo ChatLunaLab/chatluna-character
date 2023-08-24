@@ -28,6 +28,8 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
 
         logger.debug("messages_new: " + JSON.stringify(recentMessage))
 
+        logger.debug("messages_last: " + JSON.stringify(lastMessage))
+
         const completionMessage = [
             new SystemMessage(formattedSystemPrompt),
             new HumanMessage(await completionPrompt.format({
@@ -84,9 +86,9 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
 function parseResponse(response: string) {
     let message: string
     try {
-        // parse name:id:"content" to content
-        // like 旧梦旧念:2187778735:"嗯？怎么了？" -> 嗯？怎么了？
-        const regex = /\.*:.*:(?:")?(.*?)"/g;
+        // parse [name:id:"content"] to content
+        // like [旧梦旧念:2187778735:"嗯？怎么了？"] -> 嗯？怎么了？
+        const regex = /\[.*:.*:(?:")?(.*?)"\]/g;
         const match = regex.exec(response);
 
         message = match?.[1]
@@ -221,7 +223,7 @@ async function formatMessage(messages: Message[], config: CharacterPlugin.Config
     for (let i = messages.length - 1; i >= 0; i--) {
         const message = messages[i]
 
-        const jsonMessage = `${message.name}:${message.id}:"${message.content}"`
+        const jsonMessage = `[${message.name}:${message.id}:"${message.content}]"`
         const jsonMessageToken = await model.getNumTokens(jsonMessage)
 
         if (currentTokens + jsonMessageToken > maxTokens - 4) {
