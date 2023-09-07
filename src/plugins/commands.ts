@@ -1,13 +1,12 @@
 import { Context, Schema, sleep } from 'koishi';
-import CharacterPlugin from '..';
-import { Factory } from "@dingyi222666/koishi-plugin-chathub/lib/llm-core/chat/factory"
-import { createLogger } from "@dingyi222666/koishi-plugin-chathub/lib/llm-core/utils/logger"
-import { service } from '..';
+
+import { createLogger } from "@dingyi222666/koishi-plugin-chathub/lib/utils/logger"
+import { Config, service } from '..';
 import { groupInfos } from './filter';
 
-const logger = createLogger("chathub-character/plugins/commands")
+const logger = createLogger("chathub-character")
 
-export function apply(ctx: Context, config: CharacterPlugin.Config) {
+export function apply(ctx: Context, config: Config) {
 
 
     ctx.command("chathub.character", "角色扮演相关命令")

@@ -1,10 +1,10 @@
 import { Logger, Session, h } from 'koishi';
 import { Message } from '../types';
 import EventEmitter from 'events';
-import { createLogger } from "@dingyi222666/koishi-plugin-chathub/lib/llm-core/utils/logger"
-import CharacterPlugin from '..';
+import { createLogger } from "@dingyi222666/koishi-plugin-chathub/lib/utils/logger"
+import { Config } from '..';
 
-const logger = createLogger("chathub-character/MessageCollector")
+const logger = createLogger("chathub-character")
 
 export class MessageCollector {
 
@@ -16,7 +16,7 @@ export class MessageCollector {
 
     private _groupLocks: Record<string, GroupLock> = {}
 
-    constructor(private _config: CharacterPlugin.Config) {
+    constructor(private _config: Config) {
 
     }
 
@@ -209,7 +209,7 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
 
             filteredBuffer.push(`@${name} `)
         }
-      
+
 
     }
 

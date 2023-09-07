@@ -1,18 +1,19 @@
 import { Context, Element, h, sleep } from 'koishi';
-import CharacterPlugin from '..';
-import { createLogger } from "@dingyi222666/koishi-plugin-chathub/lib/llm-core/utils/logger"
+import { Config } from '..';
+import { createLogger } from "@dingyi222666/koishi-plugin-chathub/lib/utils/logger"
 import { service, stickerService } from '..';
 import { PromptTemplate } from 'langchain/prompts'
 import { Message } from '../types';
-import { ChatHubBaseChatModel } from '@dingyi222666/koishi-plugin-chathub/lib/llm-core/model/base';
+import { parseRawModelName } from '@dingyi222666/koishi-plugin-chathub/lib/llm-core/utils/count_tokens';
 import { BaseMessage, HumanMessage, SystemMessage } from 'langchain/schema';
+import { ChatHubChatModel } from '@dingyi222666/koishi-plugin-chathub/lib/llm-core/platform/model';
 
 
-const logger = createLogger("chathub-character/plugins/chat")
+const logger = createLogger("chathub-character")
 
-export async function apply(ctx: Context, config: CharacterPlugin.Config) {
-    const modelNameSpitted = config.model.split("/")
-    const model = await ctx.chathub.createChatModel(modelNameSpitted[0], modelNameSpitted[1])
+export async function apply(ctx: Context, config: Config) {
+    const [platform, modelName] = parseRawModelName(config.model)
+    const model = (await ctx.chathub.createChatModel(platform, modelName)) as ChatHubChatModel
 
     const systemPrompt = PromptTemplate.fromTemplate(config.defaultPrompt)
 
@@ -65,7 +66,7 @@ export async function apply(ctx: Context, config: CharacterPlugin.Config) {
 
         for (const elements of response) {
             const text = elements.map(element => element.attrs.content ?? "").join("")
-            await sleep(text.length * 200 + config.typingTime)
+            await sleep(text.length * config.typingTime + 100)
             session.send(elements)
         }
 
@@ -214,7 +215,7 @@ function splitSentence(sentence: string): string[] {
 }
 
 
-async function formatMessage(messages: Message[], config: CharacterPlugin.Config, model: ChatHubBaseChatModel) {
+async function formatMessage(messages: Message[], config: Config, model: ChatHubChatModel) {
     let maxTokens = config.maxTokens
     let currentTokens = 0
 
@@ -242,19 +243,4 @@ async function formatMessage(messages: Message[], config: CharacterPlugin.Config
     const lastMessage = calculatedMessages.pop()
 
     return [calculatedMessages, lastMessage]
-}
-
-function spiltArray<T>(array: Array<T>, left: number): [Array<T>, Array<T>] {
-    const leftArray: Array<T> = []
-    const rightArray: Array<T> = []
-
-    for (let i = 0; i < array.length; i++) {
-        if (i < left) {
-            leftArray.push(array[i])
-        } else {
-            rightArray.push(array[i])
-        }
-    }
-
-    return [leftArray, rightArray]
 }

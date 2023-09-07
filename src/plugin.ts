@@ -1,9 +1,9 @@
 import { Context } from 'koishi';
 import fs from 'fs/promises';
-import CharacterPlugin from '.';
+import { Config } from '.';
 
 
-export async function plugins(ctx: Context, config: CharacterPlugin.Config) {
+export async function plugins(ctx: Context, config: Config) {
 
     const list = await fs.readdir(`${__dirname}/plugins`)
 
@@ -13,7 +13,7 @@ export async function plugins(ctx: Context, config: CharacterPlugin.Config) {
         }
 
         const command: {
-            apply: (ctx: Context, config: CharacterPlugin.Config) => PromiseLike<void> | void
+            apply: (ctx: Context, config: Config) => PromiseLike<void> | void
         } = await require(`./plugins/${file}`)
 
         if (command.apply) {

@@ -1,16 +1,16 @@
 import { Context, h } from 'koishi';
 import path from 'path';
 import fs, { readFile } from "fs/promises"
-import CharacterPlugin from '..';
-import { createLogger } from '@dingyi222666/koishi-plugin-chathub/lib/llm-core/utils/logger';
+import { Config } from '..';
+import { createLogger } from '@dingyi222666/koishi-plugin-chathub/lib/utils/logger';
 
-const logger = createLogger("chathub-character/service/sticker")
+const logger = createLogger("chathub-character")
 
 export class StickerService {
 
     private _stickers: string[]
 
-    constructor(private _ctx: Context, private _config: CharacterPlugin.Config) { }
+    constructor(private _ctx: Context, private _config: Config) { }
 
     async init() {
         const sickerDir = path.resolve(this._ctx.baseDir, "data/chathub/character/sticker")
@@ -51,7 +51,7 @@ export class StickerService {
 
         logger.debug(`send sticker: ${sticker}`)
 
-        return h.image(await readFile(sticker),`image/${getFileType(sticker)}`)
+        return h.image(await readFile(sticker), `image/${getFileType(sticker)}`)
     }
 }
 

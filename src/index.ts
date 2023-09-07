@@ -9,121 +9,115 @@ import { StickerService } from './service/sticker'
 export let service: MessageCollector
 export let stickerService: StickerService
 
-class CharacterPlugin extends ChatHubPlugin<CharacterPlugin.Config> {
-    name = '@dingyi222666/chathub-character'
+export function apply(ctx: Context, config: Config) {
 
-    public constructor(protected ctx: Context, public readonly config: CharacterPlugin.Config) {
-        super(ctx, config)
+    service = new MessageCollector(config)
+    stickerService = new StickerService(ctx, config)
 
-        service = new MessageCollector(config)
-        stickerService = new StickerService(ctx, config)
+    setTimeout(async () => {
+        await stickerService.init()
+        await plugins(ctx, config)
+    }, 0)
 
-        setTimeout(async () => {
-            await stickerService.init()
-            await plugins(ctx, config)
-        }, 0)
-
-        ctx.on("message", async (session) => {
-            if (!session.isDirect && config.applyGroup.some(group => group === session.guildId)) {
-                await service.broadcast(session)
-            }
-        })
-    }
-
+    ctx.on("message", async (session) => {
+        if (!session.isDirect && config.applyGroup.some(group => group === session.guildId)) {
+            await service.broadcast(session)
+        }
+    })
 }
 
-namespace CharacterPlugin {
-    export interface Config extends ChatHubPlugin.Config {
-        model: string,
-        maxMessages: number,
 
-        messageInterval: number,
-        checkPromptInject: boolean
-        maxTokens: number,
-        applyGroup: string[]
+export interface Config extends ChatHubPlugin.Config {
+    model: string,
+    maxMessages: number,
 
-        defaultPrompt: string
-        historyPrompt: string
-        sendStickerProbability: number
+    messageInterval: number,
+    checkPromptInject: boolean
+    maxTokens: number,
+    applyGroup: string[]
 
-
-        coolDownTime: number
-        typingTime: number
-        muteTime: number
-
-        disableChatHub: boolean
-    }
-
-    export const Config = Schema.intersect([
-        Schema.object({
-            applyGroup: Schema.array(Schema.string())
-                .description('应用到的群组'),
-            maxMessages: Schema.number()
-                .description('存储在内存里的最大消息数量')
-                .default(10)
-                .min(7)
-                .role('slider')
-                .max(40),
-            disableChatHub: Schema.boolean()
-                .default(true)
-                .description("在使用此插件时，是否禁用 chathub 的功能")
-        }).description('基础配置'),
-
-        Schema.object({
-            model: Schema.dynamic('model')
-                .description('使用的模型'),
-            maxTokens: Schema.number()
-                .default(2048)
-                .min(1024)
-                .max(8072)
-                .description('使用聊天的最大 token 数'),
-        }).description('模型配置'),
+    defaultPrompt: string
+    historyPrompt: string
+    sendStickerProbability: number
 
 
-        Schema.object({
-            messageInterval: Schema.number()
-                .default(14)
-                .min(0)
-                .role('slider')
-                .max(30)
-                .description('随机发送消息的间隔'),
+    coolDownTime: number
+    typingTime: number
+    muteTime: number
+
+    disableChatHub: boolean
+}
+
+export const Config = Schema.intersect([
+    Schema.object({
+        applyGroup: Schema.array(Schema.string())
+            .description('应用到的群组'),
+        maxMessages: Schema.number()
+            .description('存储在内存里的最大消息数量')
+            .default(10)
+            .min(7)
+            .role('slider')
+            .max(40),
+        disableChatHub: Schema.boolean()
+            .default(true)
+            .description("在使用此插件时，是否禁用 chathub 的功能")
+    }).description('基础配置'),
+
+    Schema.object({
+        model: Schema.dynamic('model')
+            .description('使用的模型'),
+        maxTokens: Schema.number()
+            .default(2048)
+            .min(1024)
+            .max(8072)
+            .description('使用聊天的最大 token 数'),
+    }).description('模型配置'),
 
 
-            coolDownTime: Schema.number()
-                .default(10)
-                .min(1)
-                .max(60 * 24)
-                .description('冷却发言时间（秒）'),
-
-            typingTime: Schema.number()
-                .default(440)
-                .min(100)
-                .role('slider')
-                .max(1000)
-                .description('模拟打字时的间隔（毫秒）'),
-
-            muteTime: Schema.number()
-                .default(1000 * 60)
-                .min(1000)
-                .max(1000 * 60 * 10 * 10)
-                .description('闭嘴时的禁言时间（毫秒）'),
-
-            sendStickerProbability: Schema.number()
-                .default(0.6)
-                .min(0)
-                .max(1)
-                .role('slider')
-                .step(0.01)
-                .description('发送表情的概率'),
-        }).description('对话设置'),
+    Schema.object({
+        messageInterval: Schema.number()
+            .default(14)
+            .min(0)
+            .role('slider')
+            .max(30)
+            .description('随机发送消息的间隔'),
 
 
-        Schema.object({
-            historyPrompt: Schema.string()
-                .role("textarea")
-                .description('用于聊天历史记录的 prompt')
-                .default(
-                    `你需要阅读最近消息，代入上下文在来阅读最后一条消息，然后代入你的人设来一步步思考你是否需要回复最后一条消息，并且需要按你的人设回复：
+        coolDownTime: Schema.number()
+            .default(10)
+            .min(1)
+            .max(60 * 24)
+            .description('冷却发言时间（秒）'),
+
+        typingTime: Schema.number()
+            .default(440)
+            .min(100)
+            .role('slider')
+            .max(1000)
+            .description('模拟打字时的间隔（毫秒）'),
+
+        muteTime: Schema.number()
+            .default(1000 * 60)
+            .min(1000)
+            .max(1000 * 60 * 10 * 10)
+            .description('闭嘴时的禁言时间（毫秒）'),
+
+        sendStickerProbability: Schema.number()
+            .default(0.6)
+            .min(0)
+            .max(1)
+            .role('slider')
+            .step(0.01)
+            .description('发送表情的概率'),
+    }).description('对话设置'),
+
+
+    Schema.object({
+        historyPrompt: Schema.string()
+            .role("textarea")
+            .description('用于聊天历史记录的 prompt')
+            .default(
+                `你需要阅读最近消息，代入上下文在来阅读最后一条消息，然后代入你的人设来一步步思考你是否需要回复最后一条消息，并且需要按你的人设回复：
 
 1. 最后一条消息是否艾特了你，如果是，你必须回复最后一条消息
 2. 最近消息你是否感兴趣，如果感兴趣，你需要回复
@@ -153,11 +147,11 @@ namespace CharacterPlugin {
 2.（代入人设列出你为什么需要回复，给出思考过程）
 3.（再思考润色一遍回复后）我的最终回复结果：[旧梦旧念:0:"回复内容在这里"]
 `),
-            defaultPrompt: Schema.string()
-                .role("textarea")
-                .description('用于角色扮演的 prompt')
-                .default(
-                    `当前时间：{time}，你正在群聊中和群友聊天。你的网名是旧梦旧念，请你接受以下信息进入角色扮演：
+        defaultPrompt: Schema.string()
+            .role("textarea")
+            .description('用于角色扮演的 prompt')
+            .default(
+                `当前时间：{time}，你正在群聊中和群友聊天。你的网名是旧梦旧念，请你接受以下信息进入角色扮演：
 
 个人信息[
     网名：旧梦旧念
@@ -212,13 +206,12 @@ namespace CharacterPlugin {
     [旧梦旧念:id:""]
 ]`).description('prompt 配置'),
 
-        }),
+    }),
 
 
-    ]) as Schema<CharacterPlugin.Config>
+]) as Schema<Config>
 
 
-    export const using = ['chathub']
-}
+export const using = ['chathub']
 
-export default CharacterPlugin
+export const name = '@dingyi222666/chathub-character'
