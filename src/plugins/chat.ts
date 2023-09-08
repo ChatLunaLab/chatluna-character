@@ -31,7 +31,7 @@ export async function apply(ctx: Context, config: Config) {
 
         logger.debug("messages_last: " + JSON.stringify(lastMessage))
 
-        const completionMessage = [
+        const completionMessage: BaseMessage[] = [
             new SystemMessage(formattedSystemPrompt),
             new HumanMessage(await completionPrompt.format({
                 history_new: recentMessage,

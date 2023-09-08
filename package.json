@@ -31,10 +31,10 @@
   },
   "homepage": "https://github.com/ChatHubLab/chathub-character#readme",
   "dependencies": {
-    "langchain": "^0.0.120"
+    "langchain": "^0.0.146"
   },
   "devDependencies": {
-    "koishi": "^4.14.2"
+    "koishi": "^4.14.4"
   },
   "peerDependencies": {
     "@dingyi222666/koishi-plugin-chathub": "^1.0.0-beta.6",
