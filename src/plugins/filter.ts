@@ -1,17 +1,13 @@
-import { Context, Schema, sleep } from 'koishi';
-import { Config } from '..';
-import { createLogger } from "@dingyi222666/koishi-plugin-chathub/lib/utils/logger"
-import { service } from '..';
-import { group } from 'console';
+import { Context } from 'koishi'
+import { Config, service } from '..'
+import { createLogger } from '@dingyi222666/koishi-plugin-chathub/lib/utils/logger'
 
-
-const logger = createLogger("chathub-character")
+const logger = createLogger('chathub-character')
 
 export const groupInfos: Record<string, GroupInfo> = {}
 
 export function apply(ctx: Context, config: Config) {
-
-    let maxMessages = config.messageInterval
+    const maxMessages = config.messageInterval
 
     service.addFilter((session, message) => {
         const info = groupInfos[session.guildId] || {
@@ -22,15 +18,16 @@ export function apply(ctx: Context, config: Config) {
         let { messageCount, messageSendProbability } = info
 
         // 保底必出
-        if ((messageCount > maxMessages || messageSendProbability > 1 || session.parsed.appel) && !service.isMute(session)) {
+        if (
+            (messageCount > maxMessages || messageSendProbability > 1 || session.parsed.appel) &&
+            !service.isMute(session)
+        ) {
             info.messageCount = 0
             info.messageSendProbability = 1
 
             groupInfos[session.guildId] = info
             return true
         }
-
-
 
         // 按照概率出
         if (Math.random() > messageSendProbability && !service.isMute(session)) {
@@ -41,7 +38,11 @@ export function apply(ctx: Context, config: Config) {
             return true
         }
 
-        logger.debug(`messageCount: ${messageCount}, messageSendProbability: ${messageSendProbability}. content: ${JSON.stringify(message)}`)
+        logger.debug(
+            `messageCount: ${messageCount}, messageSendProbability: ${messageSendProbability}. content: ${JSON.stringify(
+                message
+            )}`
+        )
 
         messageCount++
         messageSendProbability -= (1 / maxMessages) * 0.05
@@ -55,9 +56,7 @@ export function apply(ctx: Context, config: Config) {
     })
 }
 
-
 export interface GroupInfo {
     messageCount: number
     messageSendProbability: number
-
 }

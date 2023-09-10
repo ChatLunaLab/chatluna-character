@@ -12,15 +12,23 @@ export function apply(ctx: Context, config: Config) {
     service = new MessageCollector(config)
     stickerService = new StickerService(ctx, config)
 
-    setTimeout(async () => {
+    ctx.on('ready', async () => {
         await stickerService.init()
         await plugins(ctx, config)
-    }, 0)
+    })
 
     ctx.on('message', async (session) => {
+        if (!service) {
+            return
+        }
         if (!session.isDirect && config.applyGroup.some((group) => group === session.guildId)) {
             await service.broadcast(session)
         }
+    })
+
+    ctx.on('dispose', async () => {
+        service = null
+        stickerService = null
     })
 }
 
