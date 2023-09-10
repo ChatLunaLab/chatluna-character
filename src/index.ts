@@ -1,16 +1,14 @@
 import { Context, Schema } from 'koishi'
 
-import { ChatHubPlugin } from "@dingyi222666/koishi-plugin-chathub/lib/services/chat"
+import { ChatHubPlugin } from '@dingyi222666/koishi-plugin-chathub/lib/services/chat'
 import { plugins } from './plugin'
 import { MessageCollector } from './service/message'
 import { StickerService } from './service/sticker'
-
 
 export let service: MessageCollector
 export let stickerService: StickerService
 
 export function apply(ctx: Context, config: Config) {
-
     service = new MessageCollector(config)
     stickerService = new StickerService(ctx, config)
 
@@ -19,27 +17,25 @@ export function apply(ctx: Context, config: Config) {
         await plugins(ctx, config)
     }, 0)
 
-    ctx.on("message", async (session) => {
-        if (!session.isDirect && config.applyGroup.some(group => group === session.guildId)) {
+    ctx.on('message', async (session) => {
+        if (!session.isDirect && config.applyGroup.some((group) => group === session.guildId)) {
             await service.broadcast(session)
         }
     })
 }
 
-
 export interface Config extends ChatHubPlugin.Config {
-    model: string,
-    maxMessages: number,
+    model: string
+    maxMessages: number
 
-    messageInterval: number,
+    messageInterval: number
     checkPromptInject: boolean
-    maxTokens: number,
+    maxTokens: number
     applyGroup: string[]
 
     defaultPrompt: string
     historyPrompt: string
     sendStickerProbability: number
-
 
     coolDownTime: number
     typingTime: number
@@ -50,8 +46,7 @@ export interface Config extends ChatHubPlugin.Config {
 
 export const Config = Schema.intersect([
     Schema.object({
-        applyGroup: Schema.array(Schema.string())
-            .description('应用到的群组'),
+        applyGroup: Schema.array(Schema.string()).description('应用到的群组'),
         maxMessages: Schema.number()
             .description('存储在内存里的最大消息数量')
             .default(10)
@@ -60,19 +55,17 @@ export const Config = Schema.intersect([
             .max(40),
         disableChatHub: Schema.boolean()
             .default(true)
-            .description("在使用此插件时，是否禁用 chathub 的功能")
+            .description('在使用此插件时，是否禁用 chathub 的功能')
     }).description('基础配置'),
 
     Schema.object({
-        model: Schema.dynamic('model')
-            .description('使用的模型'),
+        model: Schema.dynamic('model').description('使用的模型'),
         maxTokens: Schema.number()
             .default(2048)
             .min(1024)
             .max(8072)
-            .description('使用聊天的最大 token 数'),
+            .description('使用聊天的最大 token 数')
     }).description('模型配置'),
-
 
     Schema.object({
         messageInterval: Schema.number()
@@ -81,7 +74,6 @@ export const Config = Schema.intersect([
             .role('slider')
             .max(30)
             .description('随机发送消息的间隔'),
-
 
         coolDownTime: Schema.number()
             .default(10)
@@ -108,13 +100,12 @@ export const Config = Schema.intersect([
             .max(1)
             .role('slider')
             .step(0.01)
-            .description('发送表情的概率'),
+            .description('发送表情的概率')
     }).description('对话设置'),
-
 
     Schema.object({
         historyPrompt: Schema.string()
-            .role("textarea")
+            .role('textarea')
             .description('用于聊天历史记录的 prompt')
             .default(
                 `你需要阅读最近消息，代入上下文在来阅读最后一条消息，然后代入你的人设来一步步思考你是否需要回复最后一条消息，并且需要按你的人设回复：
@@ -146,9 +137,10 @@ export const Config = Schema.intersect([
 1.（总结最近的消息）
 2.（代入人设列出你为什么需要回复，给出思考过程）
 3.（再思考润色一遍回复后）我的最终回复结果：[旧梦旧念:0:"回复内容在这里"]
-`),
+`
+            ),
         defaultPrompt: Schema.string()
-            .role("textarea")
+            .role('textarea')
             .description('用于角色扮演的 prompt')
             .default(
                 `当前时间：{time}，你正在群聊中和群友聊天。你的网名是旧梦旧念，请你接受以下信息进入角色扮演：
@@ -204,13 +196,11 @@ export const Config = Schema.intersect([
     如果你认为他们聊的话题你不理解，不想参与的，或遭到辱骂等让你认为无需回复的话，请直接返回空字符
     无需回复：
     [旧梦旧念:id:""]
-]`).description('prompt 配置'),
-
-    }),
-
-
+]`
+            )
+            .description('prompt 配置')
+    })
 ]) as Schema<Config>
-
 
 export const using = ['chathub']
 

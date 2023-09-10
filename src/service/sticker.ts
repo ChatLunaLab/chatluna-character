@@ -1,20 +1,21 @@
-import { Context, h } from 'koishi';
-import path from 'path';
-import fs, { readFile } from "fs/promises"
-import { Config } from '..';
-import { createLogger } from '@dingyi222666/koishi-plugin-chathub/lib/utils/logger';
+import { Context, h } from 'koishi'
+import path from 'path'
+import fs, { readFile } from 'fs/promises'
+import { Config } from '..'
+import { createLogger } from '@dingyi222666/koishi-plugin-chathub/lib/utils/logger'
 
-const logger = createLogger("chathub-character")
+const logger = createLogger('chathub-character')
 
 export class StickerService {
-
     private _stickers: string[]
 
-    constructor(private _ctx: Context, private _config: Config) { }
+    constructor(
+        private _ctx: Context,
+        private _config: Config
+    ) {}
 
     async init() {
-        const sickerDir = path.resolve(this._ctx.baseDir, "data/chathub/character/sticker")
-
+        const sickerDir = path.resolve(this._ctx.baseDir, 'data/chathub/character/sticker')
 
         // check if the dir exists
 
@@ -23,15 +24,16 @@ export class StickerService {
         } catch (error) {
             // copy the resource dir to the target dir
             await fs.mkdir(sickerDir, { recursive: true })
-            await fs.cp(path.resolve(__dirname, "../../resources/sticker"), sickerDir, { recursive: true })
+            await fs.cp(path.resolve(__dirname, '../../resources/sticker'), sickerDir, {
+                recursive: true
+            })
         }
 
         // read the dir
 
         const files = await fs.readdir(sickerDir)
 
-        this._stickers = files.map(file => path.resolve(sickerDir, file))
-
+        this._stickers = files.map((file) => path.resolve(sickerDir, file))
     }
 
     async randomStick(): Promise<h> {
@@ -56,9 +58,9 @@ export class StickerService {
 }
 
 function getFileType(path: string) {
-    const type = path.split(".").pop().toLocaleLowerCase()
-    if (type === "jpg") {
-        return "jpeg"
+    const type = path.split('.').pop().toLocaleLowerCase()
+    if (type === 'jpg') {
+        return 'jpeg'
     }
     return type
 }

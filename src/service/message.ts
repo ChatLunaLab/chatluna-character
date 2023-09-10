@@ -1,13 +1,9 @@
-import { Logger, Session, h } from 'koishi';
-import { Message } from '../types';
-import EventEmitter from 'events';
-import { createLogger } from "@dingyi222666/koishi-plugin-chathub/lib/utils/logger"
-import { Config } from '..';
-
-const logger = createLogger("chathub-character")
+import { h, Session } from 'koishi'
+import { Message } from '../types'
+import EventEmitter from 'events'
+import { Config } from '..'
 
 export class MessageCollector {
-
     private _messages: Record<string, Message[]> = {}
 
     private _eventEmitter = new EventEmitter()
@@ -16,9 +12,7 @@ export class MessageCollector {
 
     private _groupLocks: Record<string, GroupLock> = {}
 
-    constructor(private _config: Config) {
-
-    }
+    constructor(private _config: Config) {}
 
     addFilter(filter: MessageCollectorFilter) {
         this._filters.push(filter)
@@ -35,9 +29,8 @@ export class MessageCollector {
         lock.mute = mute
     }
 
-
     collect(func: (session: Session, messages: Message[]) => Promise<void>) {
-        this._eventEmitter.on("collect", func)
+        this._eventEmitter.on('collect', func)
     }
 
     getMessages(groupId: string) {
@@ -94,7 +87,6 @@ export class MessageCollector {
         }
     }
 
-
     async broadcastOnBot(session: Session, elements: h[]) {
         if (session.isDirect) {
             return
@@ -106,7 +98,6 @@ export class MessageCollector {
         const maxMessageSize = this._config.maxMessages
         const groupArray = this._messages[groupId] ? this._messages[groupId] : []
 
-
         const content = mapElementToString(session, session.content, elements)
 
         if (content.length < 1) {
@@ -115,9 +106,9 @@ export class MessageCollector {
         }
 
         const message: Message = {
-            content: content,
+            content,
             name: session.bot.username,
-            id: session.bot.userId ?? session.bot.selfId ?? "0"
+            id: session.bot.userId ?? session.bot.selfId ?? '0'
         }
 
         groupArray.push(message)
@@ -153,14 +144,20 @@ export class MessageCollector {
         }
 
         const message: Message = {
-            content: content,
+            content,
             name: session.author.username,
             id: session.author.userId,
-            quote: session.quote ? {
-                content: mapElementToString(session, session.quote.content, session.quote.elements),
-                name: session.quote.author.username,
-                id: session.quote.author.userId
-            } : undefined
+            quote: session.quote
+                ? {
+                      content: mapElementToString(
+                          session,
+                          session.quote.content,
+                          session.quote.elements
+                      ),
+                      name: session.quote.author.username,
+                      id: session.quote.author.userId
+                  }
+                : undefined
         }
 
         groupArray.push(message)
@@ -171,11 +168,10 @@ export class MessageCollector {
             }
         }
 
-
         this._messages[groupId] = groupArray
 
-        if (this._filters.some(func => func(session, message)) && !this.isMute(session)) {
-            this._eventEmitter.emit("collect", session, groupArray)
+        if (this._filters.some((func) => func(session, message)) && !this.isMute(session)) {
+            this._eventEmitter.emit('collect', session, groupArray)
         }
 
         await this._unlock(session)
@@ -190,7 +186,7 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
     }
 
     for (const element of elements) {
-        if (element.type === "text") {
+        if (element.type === 'text') {
             const content = element.attrs.content as string
 
             if (content.trimEnd().length < 1) {
@@ -198,22 +194,20 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
             } else {
                 filteredBuffer.push(content)
             }
-        } else if (element.type === "at") {
+        } else if (element.type === 'at') {
             let name = element.attrs?.name
             if (element.attrs.id === session.bot.selfId) {
-                name = name ?? session.bot.username ?? "0"
+                name = name ?? session.bot.username ?? '0'
             }
             if (name == null) {
-                name = element.attrs.id ?? "0"
+                name = element.attrs.id ?? '0'
             }
 
             filteredBuffer.push(`@${name} `)
         }
-
-
     }
 
-    return filteredBuffer.join("")
+    return filteredBuffer.join('')
 }
 
 type MessageCollectorFilter = (session: Session, message: Message) => boolean
