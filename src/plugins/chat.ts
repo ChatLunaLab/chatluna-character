@@ -93,7 +93,7 @@ function parseResponse(response: string) {
         message = [...match].pop()?.[0] ?? ''
 
         logger.debug('message: ' + message)
-        message = message.match(/\[.*:.*:(.*)\]/)?.[1] ?? ''
+        message = message.match(/\[.*(:|：).*(:|：)(.*)\]/)?.[3] ?? ''
         message = message.match(/"(.*)"/)?.[1] ?? message
         logger.debug('message: ' + message)
         if (typeof message !== 'string') {

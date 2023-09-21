@@ -4,7 +4,11 @@ import { PlatformService } from '@dingyi222666/koishi-plugin-chathub/lib/llm-cor
 import { ModelType } from '@dingyi222666/koishi-plugin-chathub/lib/llm-core/platform/types'
 
 export function apply(ctx: Context, config: Config) {
-    ctx.on('chathub/model-added', async (service, platform, client) => {
+    ctx.on('chathub/model-added', async (service) => {
+        ctx.schema.set('model', Schema.union(await getModelNames(service)))
+    })
+
+    ctx.on('chathub/model-removed', async (service) => {
         ctx.schema.set('model', Schema.union(await getModelNames(service)))
     })
 }

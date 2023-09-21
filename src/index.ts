@@ -9,10 +9,10 @@ export let service: MessageCollector
 export let stickerService: StickerService
 
 export function apply(ctx: Context, config: Config) {
-    service = new MessageCollector(config)
-    stickerService = new StickerService(ctx, config)
-
     ctx.on('ready', async () => {
+        service = new MessageCollector(config)
+        stickerService = new StickerService(ctx, config)
+
         await stickerService.init()
         await plugins(ctx, config)
     })
