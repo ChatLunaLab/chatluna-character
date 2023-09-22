@@ -22,5 +22,6 @@ export interface PresetTemplate {
     nick_name: string[]
     input: PromptTemplate
     system: PromptTemplate
+    mute_keyword?: string[]
     path?: string
 }

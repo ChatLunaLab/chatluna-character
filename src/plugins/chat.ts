@@ -1,4 +1,4 @@
-import { Context, Element, h, sleep } from 'koishi'
+import { Context, Element, h, Random, sleep } from 'koishi'
 import { createLogger } from '@dingyi222666/koishi-plugin-chathub/lib/utils/logger'
 import { Config, preset, service, stickerService } from '..'
 import { Message } from '../types'
@@ -87,11 +87,14 @@ export async function apply(ctx: Context, config: Config) {
             return
         }
 
+        const random = new Random()
+
         for (const elements of response) {
             const text = elements
                 .map((element) => element.attrs.content ?? '')
                 .join('')
-            await sleep(text.length * config.typingTime + 100)
+            const maxTime = text.length * config.typingTime + 100
+            await sleep(random.int(maxTime / 2, maxTime))
             session.send(elements)
         }
 

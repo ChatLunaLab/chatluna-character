@@ -53,6 +53,7 @@ export interface Config extends ChatHubPlugin.Config {
     defaultPreset: string
 
     isNickname: boolean
+    isForceMute: boolean
     sendStickerProbability: number
 
     coolDownTime: number
@@ -88,6 +89,11 @@ export const Config = Schema.intersect([
     Schema.object({
         isNickname: Schema.boolean()
             .description('允许 bot 配置中的昵称引发回复')
+            .default(true),
+        isForceMute: Schema.boolean()
+            .description(
+                '是否启用强制禁言（当聊天涉及到关键词时则会禁言，关键词需要在预设文件里配置）'
+            )
             .default(true),
         messageInterval: Schema.number()
             .default(14)

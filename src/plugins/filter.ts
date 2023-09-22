@@ -19,6 +19,19 @@ export async function apply(ctx: Context, config: Config) {
 
         let { messageCount, messageSendProbability } = info
 
+        // 在计算之前先检查是否需要禁言。
+
+        if (config.isForceMute && selectedPreset.mute_keyword?.length > 0) {
+            const needMute = selectedPreset.mute_keyword.some((value) =>
+                message.content.includes(value)
+            )
+
+            if (needMute) {
+                logger.debug(`mute content: ${message.content}`)
+                service.mute(session, config.muteTime)
+            }
+        }
+
         // 保底必出
         if (
             (messageCount > maxMessages ||

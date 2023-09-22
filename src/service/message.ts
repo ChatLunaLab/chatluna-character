@@ -42,7 +42,8 @@ export class MessageCollector {
     isMute(session: Session) {
         const lock = this._getGroupLocks(session.guildId)
 
-        return lock.mute > new Date().getTime() && !session.parsed.appel
+        // 移除对 at 的权重
+        return lock.mute > new Date().getTime()
     }
 
     async updateTemp(session: Session, temp: GroupTemp) {
