@@ -52,6 +52,7 @@ export interface Config extends ChatHubPlugin.Config {
 
     defaultPreset: string
 
+    isNickname: boolean
     sendStickerProbability: number
 
     coolDownTime: number
@@ -85,6 +86,9 @@ export const Config = Schema.intersect([
     }).description('模型配置'),
 
     Schema.object({
+        isNickname: Schema.boolean()
+            .description('允许 bot 配置中的昵称引发回复')
+            .default(true),
         messageInterval: Schema.number()
             .default(14)
             .min(0)

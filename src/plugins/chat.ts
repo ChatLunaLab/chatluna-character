@@ -164,7 +164,6 @@ function parseResponse(response: string) {
             const text = currentElement.attrs.content as string
 
             const matchArray = splitSentence(text).filter((x) => x.length > 0)
-            console.log(matchArray)
 
             for (const match of matchArray) {
                 currentElement = h.text(match)

@@ -1,15 +1,15 @@
 import { Context } from 'koishi'
-import { Config, service } from '..'
+import { Config, preset, service } from '..'
 import { createLogger } from '@dingyi222666/koishi-plugin-chathub/lib/utils/logger'
 
 const logger = createLogger('chathub-character')
 
 export const groupInfos: Record<string, GroupInfo> = {}
 
-export function apply(ctx: Context, config: Config) {
+export async function apply(ctx: Context, config: Config) {
     const maxMessages = config.messageInterval
 
-    // const selectedPreset = await preset.getPreset(config.defaultPreset)
+    const selectedPreset = await preset.getPreset(config.defaultPreset)
 
     service.addFilter((session, message) => {
         const info = groupInfos[session.guildId] || {
@@ -23,7 +23,11 @@ export function apply(ctx: Context, config: Config) {
         if (
             (messageCount > maxMessages ||
                 messageSendProbability > 1 ||
-                session.stripped.appel) &&
+                session.stripped.appel ||
+                (config.isNickname &&
+                    selectedPreset.nick_name.some((value) =>
+                        message.content.startsWith(value)
+                    ))) &&
             !service.isMute(session)
         ) {
             info.messageCount = 0
