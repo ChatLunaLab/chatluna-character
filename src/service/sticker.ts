@@ -15,7 +15,10 @@ export class StickerService {
     ) {}
 
     async init() {
-        const sickerDir = path.resolve(this._ctx.baseDir, 'data/chathub/character/sticker')
+        const sickerDir = path.resolve(
+            this._ctx.baseDir,
+            'data/chathub/character/sticker'
+        )
 
         // check if the dir exists
 
@@ -24,9 +27,13 @@ export class StickerService {
         } catch (error) {
             // copy the resource dir to the target dir
             await fs.mkdir(sickerDir, { recursive: true })
-            await fs.cp(path.resolve(__dirname, '../../resources/sticker'), sickerDir, {
-                recursive: true
-            })
+            await fs.cp(
+                path.resolve(__dirname, '../../resources/sticker'),
+                sickerDir,
+                {
+                    recursive: true
+                }
+            )
         }
 
         // read the dir

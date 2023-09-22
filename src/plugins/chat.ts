@@ -1,7 +1,6 @@
 import { Context, Element, h, sleep } from 'koishi'
 import { createLogger } from '@dingyi222666/koishi-plugin-chathub/lib/utils/logger'
-import { Config, service, stickerService } from '..'
-import { PromptTemplate } from 'langchain/prompts'
+import { Config, preset, service, stickerService } from '..'
 import { Message } from '../types'
 import { parseRawModelName } from '@dingyi222666/koishi-plugin-chathub/lib/llm-core/utils/count_tokens'
 import { BaseMessage, HumanMessage, SystemMessage } from 'langchain/schema'
@@ -11,14 +10,27 @@ const logger = createLogger('chathub-character')
 
 export async function apply(ctx: Context, config: Config) {
     const [platform, modelName] = parseRawModelName(config.model)
-    const model = (await ctx.chathub.createChatModel(platform, modelName)) as ChatHubChatModel
+    const model = (await ctx.chathub.createChatModel(
+        platform,
+        modelName
+    )) as ChatHubChatModel
 
-    const systemPrompt = PromptTemplate.fromTemplate(config.defaultPrompt)
+    const selectedPreset = await preset.getPreset(config.defaultPreset)
 
-    const completionPrompt = PromptTemplate.fromTemplate(config.historyPrompt)
+    const systemPrompt = selectedPreset.system
+
+    const completionPrompt = selectedPreset.input
 
     service.collect(async (session, messages) => {
-        const [recentMessage, lastMessage] = await formatMessage(messages, config, model)
+        const [recentMessage, lastMessage] = await formatMessage(
+            messages,
+            config,
+            model,
+            systemPrompt.template,
+            completionPrompt.template
+        )
+
+        const temp = await service.getTemp(session)
 
         const formattedSystemPrompt = await systemPrompt.format({
             time: new Date().toLocaleString()
@@ -28,25 +40,34 @@ export async function apply(ctx: Context, config: Config) {
 
         logger.debug('messages_last: ' + JSON.stringify(lastMessage))
 
-        const completionMessage: BaseMessage[] = [
-            new SystemMessage(formattedSystemPrompt),
-            new HumanMessage(
-                await completionPrompt.format({
-                    history_new: recentMessage,
-                    history_last: lastMessage
-                })
+        const humanMessage = new HumanMessage(
+            await completionPrompt.format({
+                history_new: recentMessage,
+                history_last: lastMessage,
+                time: new Date().toLocaleString()
+            })
+        )
+
+        const completionMessages: BaseMessage[] =
+            await formatCompletionMessages(
+                [new SystemMessage(formattedSystemPrompt)].concat(
+                    temp.completionMessages
+                ),
+                humanMessage,
+                config,
+                model
             )
-        ]
 
         logger.debug(
-            'completion message: ' + JSON.stringify(completionMessage.map((it) => it.content))
+            'completion message: ' +
+                JSON.stringify(completionMessages.map((it) => it.content))
         )
 
         let responseMessage: BaseMessage
 
         for (let i = 0; i < 3; i++) {
             try {
-                responseMessage = await model.call(completionMessage)
+                responseMessage = await model.call(completionMessages)
                 break
             } catch (e) {
                 logger.error(e)
@@ -59,13 +80,17 @@ export async function apply(ctx: Context, config: Config) {
 
         const response = parseResponse(responseMessage.content)
 
+        temp.completionMessages.push(humanMessage, responseMessage)
+
         if (response.length < 1) {
             service.mute(session, config.muteTime)
             return
         }
 
         for (const elements of response) {
-            const text = elements.map((element) => element.attrs.content ?? '').join('')
+            const text = elements
+                .map((element) => element.attrs.content ?? '')
+                .join('')
             await sleep(text.length * config.typingTime + 100)
             session.send(elements)
         }
@@ -85,9 +110,6 @@ export async function apply(ctx: Context, config: Config) {
 function parseResponse(response: string) {
     let message: string
     try {
-        // parse [name:id:"content"] [name:id:"content2"] to content2
-        // like [旧梦旧念:2187778735:"嗯？怎么了？？"] [旧梦旧念:2187778735:"嗯？怎么了？"] -> 嗯？怎么了？
-        // use matchAll
         const match = response.matchAll(/\[.*?\]/g)
 
         message = [...match].pop()?.[0] ?? ''
@@ -109,55 +131,44 @@ function parseResponse(response: string) {
     const resultElements: Element[][] = []
 
     const currentElements: Element[] = []
-    // match ([at:id(??)])
-    const atMatch = message.match(/\(at\-(\d+)(.*)?\)/g)
-    logger.debug('atMatch: ' + JSON.stringify(atMatch))
-    if (atMatch) {
-        for (const at of atMatch) {
-            const id = at.match(/\d+/)
+    // match [at:name:id] -> id
 
-            logger.debug('id: ' + id)
-            if (id && id[0] !== '0') {
-                currentElements.push(h.at(id[0]))
-            } else {
-                logger.error('Failed to parse at: ' + at)
+    const atMatch = matchAt(message)
+
+    logger.debug('atMatch: ' + JSON.stringify(atMatch))
+    if (atMatch.length > 0) {
+        let lastAtIndex = 0
+        for (const at of atMatch) {
+            const before = message.substring(lastAtIndex, at.start)
+
+            if (before.length > 0) {
+                currentElements.push(h.text(before))
             }
+
+            currentElements.push(h.at(at.at))
+
+            lastAtIndex = at.end + 1
         }
-        const text = message.replace(/\(at\-(\d+)(.*)?\)/g, '')
-        logger.debug('text: ' + text)
-        currentElements.push(h.text(text))
+
+        const after = message.substring(lastAtIndex)
+
+        if (after.length > 0) {
+            currentElements.push(h.text(after))
+        }
     } else {
         currentElements.push(h.text(message))
     }
 
     for (let currentElement of currentElements) {
         if (currentElement.type === 'text') {
-            // 手动切分句子
             const text = currentElement.attrs.content as string
-            // 包括市面上常见的标点符号，直接切割成数组，但是需要保留标点符号
 
-            // 如 "你好，我是一个机器人" -> ["你好，", "我是一个机器人。"]
-            // 要求任何语言都能匹配到
-
-            // , . ， 。 、 ? ？ ! ！
-            const matchArray = splitSentence(text)
+            const matchArray = splitSentence(text).filter((x) => x.length > 0)
+            console.log(matchArray)
 
             for (const match of matchArray) {
-                // 检查最后一个字符，如果为，。、,. 就去掉
-                const lastChar = match[match.length - 1]
-                // logger.debug("lastChar: " + lastChar)
-
-                // array.some
-                if (['，', '。', '、', ',', '"', "'", ':'].some((char) => char === lastChar)) {
-                    //  logger.debug("match: " + match)
-                    currentElement = h.text(match.slice(0, match.length - 1))
-                    //   logger.debug("currentElement: " + currentElement.attrs.content)
-                    resultElements.push([currentElement])
-                } else {
-                    //    logger.debug("fuck match: " + match)
-                    currentElement = h.text(match)
-                    resultElements.push([currentElement])
-                }
+                currentElement = h.text(match)
+                resultElements.push([currentElement])
             }
         } else {
             resultElements.push([currentElement])
@@ -174,57 +185,185 @@ function parseResponse(response: string) {
     return resultElements
 }
 
-// 定义一个函数，用于分割句子
-function splitSentence(sentence: string): string[] {
-    // 定义一个正则表达式，用于匹配中英文的标点符号
-    const regex = /([，。？！；：,?!;:])/g
-    // 定义一个数组，存放所有可能出现的标点符号
-    const punctuations = ['，', '。', '？', '！', '；', '：', ',', '?', '!', ';', ':']
-    // 使用split方法和正则表达式来分割句子，并过滤掉空字符串
-    const result = sentence.split(regex).filter((s) => s !== '')
+function splitSentence(text: string): string[] {
+    const result: string[] = []
 
-    // 定义一个新的数组，用于存放最终的结果
-    const final: string[] = []
-    // 遍历分割后的数组
-    for (let i = 0; i < result.length; i++) {
-        // 如果当前元素是一个标点符号
-        if (punctuations.includes(result[i])) {
-            final[final.length - 1] = final[final.length - 1].trim() + result[i]
+    const lines = text
+        .split('\n')
+        .filter((line) => line.trim().length > 0)
+        .join(' ')
+
+    const state = {
+        bracket: 0,
+        text: 0
+    }
+
+    let current = ''
+
+    const punctuations = [
+        '，',
+        '。',
+        '？',
+        '！',
+        '；',
+        '：',
+        ',',
+        '?',
+        '!',
+        ';',
+        ':',
+        '、',
+        '—',
+        '\r'
+    ]
+
+    const retainPunctuations = ['?', '!', '？', '！']
+
+    const mustPunctuations = ['。', '?', '！', '?', '！', ':', '：']
+
+    const brackets = ['【', '】', '《', '》', '(', ')', '（', '）']
+
+    for (let index = 0; index < lines.length; index++) {
+        const char = lines[index]
+        const nextChar = lines?.[index + 1]
+
+        const indexOfBrackets = brackets.indexOf(char)
+
+        if (indexOfBrackets > -1) {
+            state.bracket += indexOfBrackets % 2 === 0 ? 1 : -1
         }
-        // 否则，如果当前元素不是空格
-        else if (result[i] !== ' ') {
-            // 把当前元素加入到最终的数组中
-            final.push(result[i])
+
+        if (indexOfBrackets > -1 && state.bracket === 0 && state.text > 0) {
+            result.push(current)
+            state.text = 0
+            current = ''
+            continue
+        } else if (indexOfBrackets % 2 === 0 && state.bracket === 1) {
+            result.push(current)
+            state.text = 0
+            current = ''
+            continue
+        } else if (state.bracket > 0) {
+            current += char
+            state.text++
+            continue
+        }
+
+        if (!punctuations.includes(char)) {
+            current += char
+            continue
+        }
+
+        if (retainPunctuations.includes(char)) {
+            current += char
+        }
+
+        if (
+            retainPunctuations.indexOf(nextChar) % 2 === 0 &&
+            retainPunctuations.indexOf(char) % 2 === 1
+        ) {
+            index += 1
+        }
+
+        if (current.length < 1) {
+            continue
+        }
+
+        if (current.length > 3 || mustPunctuations.includes(char)) {
+            result.push(current.trimStart().trimEnd())
+
+            current = ''
+        } else if (!retainPunctuations.includes(char)) {
+            current += char
         }
     }
-    // 返回最终的数组
-    return final.filter((it) => !punctuations.some((char) => char === it))
+
+    if (current.length > 0) {
+        result.push(current.trimStart().trimEnd())
+    }
+
+    return result
 }
 
-async function formatMessage(messages: Message[], config: Config, model: ChatHubChatModel) {
-    const maxTokens = config.maxTokens
+function matchAt(str: string) {
+    // (旧梦旧念:3510003509:<at>)
+    const atRegex = /\(.*(:|：)(\d+)(:|：)<at>\)/g
+    return [...str.matchAll(atRegex)].map((item) => {
+        return {
+            at: item[2],
+            start: item.index,
+            end: item.index + item[0].length
+        }
+    })
+}
+
+async function formatCompletionMessages(
+    messages: BaseMessage[],
+    humanMessage: BaseMessage,
+    config: Config,
+    model: ChatHubChatModel
+) {
+    const maxTokens = config.maxTokens - 600
+    const systemMessage = messages.shift()
     let currentTokens = 0
 
-    currentTokens += await model.getNumTokens(config.defaultPrompt)
-    currentTokens += await model.getNumTokens(config.historyPrompt)
+    currentTokens += await model.getNumTokens(systemMessage.content)
+    currentTokens += await model.getNumTokens(humanMessage.content)
+
+    const result: BaseMessage[] = []
+
+    result.unshift(humanMessage)
+
+    for (let index = messages.length - 1; index >= 0; index--) {
+        const message = messages[index]
+
+        const messageTokens = await model.getNumTokens(message.content)
+
+        if (currentTokens + messageTokens > maxTokens) {
+            break
+        }
+
+        currentTokens += messageTokens
+        result.unshift(message)
+    }
+
+    logger.debug(`maxTokens: ${maxTokens}, currentTokens: ${currentTokens}`)
+
+    result.unshift(systemMessage)
+
+    return result
+}
+
+async function formatMessage(
+    messages: Message[],
+    config: Config,
+    model: ChatHubChatModel,
+    systemPrompt: string,
+    historyPrompt: string
+) {
+    const maxTokens = config.maxTokens - 300
+    let currentTokens = 0
+
+    currentTokens += await model.getNumTokens(systemPrompt)
+    currentTokens += await model.getNumTokens(historyPrompt)
 
     const calculatedMessages: string[] = []
 
     for (let i = messages.length - 1; i >= 0; i--) {
         const message = messages[i]
 
-        const jsonMessage = `[${message.name}:${message.id}:"${message.content}]"`
+        const jsonMessage = `[${message.name}:${message.id}:${JSON.stringify(
+            message.content
+        )}]"`
         const jsonMessageToken = await model.getNumTokens(jsonMessage)
 
         if (currentTokens + jsonMessageToken > maxTokens - 4) {
             break
-        } else {
-            currentTokens += jsonMessageToken
-            calculatedMessages.unshift(jsonMessage)
         }
-    }
 
-    logger.debug(`maxTokens: ${maxTokens}, currentTokens: ${currentTokens}`)
+        currentTokens += jsonMessageToken
+        calculatedMessages.unshift(jsonMessage)
+    }
 
     const lastMessage = calculatedMessages.pop()
 

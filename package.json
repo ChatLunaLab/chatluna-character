@@ -1,7 +1,7 @@
 {
     "name": "@dingyi222666/koishi-plugin-chathub-character",
     "description": "Let the large language model play a role, disguise as a group friend",
-    "version": "0.0.23",
+    "version": "0.0.24",
     "main": "lib/index.js",
     "typings": "lib/index.d.ts",
     "files": [
@@ -31,10 +31,10 @@
     },
     "homepage": "https://github.com/ChatHubLab/chathub-character#readme",
     "dependencies": {
+        "js-yaml": "^4.1.0",
         "langchain": "^0.0.146"
     },
     "devDependencies": {
-        "koishi": "^4.14.5",
         "@typescript-eslint/eslint-plugin": "^6.7.0",
         "@typescript-eslint/parser": "^6.7.0",
         "atsc": "^1.2.2",
@@ -46,11 +46,12 @@
         "eslint-plugin-import": "^2.28.1",
         "eslint-plugin-n": "^16.1.0",
         "eslint-plugin-prettier": "^5.0.0",
-        "eslint-plugin-promise": "^6.1.1"
+        "eslint-plugin-promise": "^6.1.1",
+        "koishi": "^4.14.5"
     },
     "peerDependencies": {
         "@dingyi222666/koishi-plugin-chathub": "^1.0.0-beta.10",
-        "koishi": "^4.14.5"
+        "koishi": "^4.13.6"
     },
     "engines": {
         "node": ">=18.0.0"

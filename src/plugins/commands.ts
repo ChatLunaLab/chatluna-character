@@ -24,7 +24,7 @@ export function apply(ctx: Context, config: Config) {
             groupInfo.messageCount = 0
             groupInfo.messageSendProbability = 0
             service.clear(groupId)
-            return `已清除群组${groupId}的聊天记录`
+            return `已清除群组 ${groupId} 的聊天记录`
         }
     )
 }

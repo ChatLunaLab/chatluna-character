@@ -9,6 +9,8 @@ export const groupInfos: Record<string, GroupInfo> = {}
 export function apply(ctx: Context, config: Config) {
     const maxMessages = config.messageInterval
 
+    // const selectedPreset = await preset.getPreset(config.defaultPreset)
+
     service.addFilter((session, message) => {
         const info = groupInfos[session.guildId] || {
             messageCount: 0,
@@ -19,7 +21,9 @@ export function apply(ctx: Context, config: Config) {
 
         // 保底必出
         if (
-            (messageCount > maxMessages || messageSendProbability > 1 || session.parsed.appel) &&
+            (messageCount > maxMessages ||
+                messageSendProbability > 1 ||
+                session.stripped.appel) &&
             !service.isMute(session)
         ) {
             info.messageCount = 0
@@ -30,7 +34,10 @@ export function apply(ctx: Context, config: Config) {
         }
 
         // 按照概率出
-        if (Math.random() > messageSendProbability && !service.isMute(session)) {
+        if (
+            Math.random() > messageSendProbability &&
+            !service.isMute(session)
+        ) {
             info.messageCount = 0
             info.messageSendProbability = 1
 
@@ -45,7 +52,7 @@ export function apply(ctx: Context, config: Config) {
         )
 
         messageCount++
-        messageSendProbability -= (1 / maxMessages) * 0.05
+        messageSendProbability -= (1 / maxMessages) * 0.15
 
         info.messageCount = messageCount
         info.messageSendProbability = messageSendProbability

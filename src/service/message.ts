@@ -1,5 +1,5 @@
 import { h, Session } from 'koishi'
-import { Message } from '../types'
+import { GroupTemp, Message } from '../types'
 import EventEmitter from 'events'
 import { Config } from '..'
 
@@ -11,6 +11,8 @@ export class MessageCollector {
     private _filters: MessageCollectorFilter[] = []
 
     private _groupLocks: Record<string, GroupLock> = {}
+
+    private _groupTemp: Record<string, GroupTemp> = {}
 
     constructor(private _config: Config) {}
 
@@ -41,6 +43,32 @@ export class MessageCollector {
         const lock = this._getGroupLocks(session.guildId)
 
         return lock.mute > new Date().getTime() && !session.parsed.appel
+    }
+
+    async updateTemp(session: Session, temp: GroupTemp) {
+        await this._lock(session)
+
+        const groupId = session.guildId
+
+        this._groupTemp[groupId] = temp
+
+        await this._unlock(session)
+    }
+
+    async getTemp(session: Session): Promise<GroupTemp> {
+        await this._lock(session)
+
+        const groupId = session.guildId
+
+        const temp = this._groupTemp[groupId] ?? {
+            completionMessages: []
+        }
+
+        this._groupTemp[groupId] = temp
+
+        await this._unlock(session)
+
+        return temp
     }
 
     private _getGroupLocks(groupId: string) {
@@ -96,7 +124,9 @@ export class MessageCollector {
 
         const groupId = session.guildId
         const maxMessageSize = this._config.maxMessages
-        const groupArray = this._messages[groupId] ? this._messages[groupId] : []
+        const groupArray = this._messages[groupId]
+            ? this._messages[groupId]
+            : []
 
         const content = mapElementToString(session, session.content, elements)
 
@@ -133,8 +163,13 @@ export class MessageCollector {
 
         const groupId = session.guildId
         const maxMessageSize = this._config.maxMessages
-        const groupArray = this._messages[groupId] ? this._messages[groupId] : []
-        const elements = session.elements ? session.elements : [h.text(session.content)]
+        const groupArray = this._messages[groupId]
+            ? this._messages[groupId]
+            : []
+
+        const elements = session.elements
+            ? session.elements
+            : [h.text(session.content)]
 
         const content = mapElementToString(session, session.content, elements)
 
@@ -170,7 +205,10 @@ export class MessageCollector {
 
         this._messages[groupId] = groupArray
 
-        if (this._filters.some((func) => func(session, message)) && !this.isMute(session)) {
+        if (
+            this._filters.some((func) => func(session, message)) &&
+            !this.isMute(session)
+        ) {
             this._eventEmitter.emit('collect', session, groupArray)
         }
 
@@ -203,7 +241,7 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
                 name = element.attrs.id ?? '0'
             }
 
-            filteredBuffer.push(`@${name} `)
+            filteredBuffer.push(`(${name}:${element.attrs.id}:<at>)`)
         }
     }
 
