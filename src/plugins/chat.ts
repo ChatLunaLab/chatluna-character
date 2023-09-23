@@ -215,13 +215,14 @@ function splitSentence(text: string): string[] {
         ';',
         ':',
         '、',
+        '~',
         '—',
         '\r'
     ]
 
-    const retainPunctuations = ['?', '!', '？', '！']
+    const retainPunctuations = ['?', '!', '？', '！', '~']
 
-    const mustPunctuations = ['。', '?', '！', '?', '！', ':', '：']
+    const mustPunctuations = ['。', '?', '！', '?', '！', ':', '：', '~']
 
     const brackets = ['【', '】', '《', '》', '(', ')', '（', '）']
 
@@ -236,6 +237,7 @@ function splitSentence(text: string): string[] {
         }
 
         if (indexOfBrackets > -1 && state.bracket === 0 && state.text > 0) {
+            current += char
             result.push(current)
             state.text = 0
             current = ''
@@ -243,7 +245,7 @@ function splitSentence(text: string): string[] {
         } else if (indexOfBrackets % 2 === 0 && state.bracket === 1) {
             result.push(current)
             state.text = 0
-            current = ''
+            current = char
             continue
         } else if (state.bracket > 0) {
             current += char
@@ -271,7 +273,7 @@ function splitSentence(text: string): string[] {
             continue
         }
 
-        if (current.length > 3 || mustPunctuations.includes(char)) {
+        if (current.length > 2 || mustPunctuations.includes(char)) {
             result.push(current.trimStart().trimEnd())
 
             current = ''
@@ -284,7 +286,7 @@ function splitSentence(text: string): string[] {
         result.push(current.trimStart().trimEnd())
     }
 
-    return result
+    return result.filter((item) => punctuations.indexOf(item) === -1)
 }
 
 function matchAt(str: string) {
