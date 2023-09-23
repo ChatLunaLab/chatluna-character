@@ -150,7 +150,7 @@ function parseResponse(response: string) {
 
             currentElements.push(h.at(at.at))
 
-            lastAtIndex = at.end + 1
+            lastAtIndex = at.end
         }
 
         const after = message.substring(lastAtIndex)
@@ -289,7 +289,8 @@ function splitSentence(text: string): string[] {
 
 function matchAt(str: string) {
     // (旧梦旧念:3510003509:<at>)
-    const atRegex = /\(.*(:|：)(\d+)(:|：)<at>\)/g
+    // /\(.*\-(\d+)\-<at>\)/g
+    const atRegex = /(\(|（).*\-(\d+)\-<at>(\)|）)/g
     return [...str.matchAll(atRegex)].map((item) => {
         return {
             at: item[2],
