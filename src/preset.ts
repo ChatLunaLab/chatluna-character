@@ -42,7 +42,7 @@ export class Preset {
         }
 
         this.ctx.schema.set(
-            'preset',
+            'character-preset',
             Schema.union(
                 this._presets
                     .map((preset) => preset.name)

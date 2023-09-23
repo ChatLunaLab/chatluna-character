@@ -131,7 +131,7 @@ export const Config = Schema.intersect([
     }).description('对话设置'),
 
     Schema.object({
-        defaultPreset: Schema.dynamic('preset')
+        defaultPreset: Schema.dynamic('character-preset')
             .description('使用的伪装预设')
             .default('旧梦旧念')
     })
