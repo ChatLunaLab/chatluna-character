@@ -82,6 +82,12 @@ export async function apply(ctx: Context, config: Config) {
 
         temp.completionMessages.push(humanMessage, responseMessage)
 
+        if (temp.completionMessages.length > 30) {
+            while (temp.completionMessages.length <= 30) {
+                temp.completionMessages.shift()
+            }
+        }
+
         if (response.length < 1) {
             service.mute(session, config.muteTime)
             return

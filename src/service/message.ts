@@ -138,7 +138,7 @@ export class MessageCollector {
 
         const message: Message = {
             content,
-            name: session.bot.username,
+            name: session.bot.user.name,
             id: session.bot.userId ?? session.bot.selfId ?? '0'
         }
 
@@ -190,8 +190,8 @@ export class MessageCollector {
                           session.quote.content,
                           session.quote.elements
                       ),
-                      name: session.quote.author.username,
-                      id: session.quote.author.userId
+                      name: session.quote.user.name,
+                      id: session.quote.user.id
                   }
                 : undefined
         }
@@ -236,7 +236,7 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
         } else if (element.type === 'at') {
             let name = element.attrs?.name
             if (element.attrs.id === session.bot.selfId) {
-                name = name ?? session.bot.username ?? '0'
+                name = name ?? session.bot.user.name ?? '0'
             }
             if (name == null) {
                 name = element.attrs.id ?? '0'
