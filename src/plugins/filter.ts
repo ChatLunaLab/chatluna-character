@@ -1,8 +1,5 @@
 import { Context } from 'koishi'
-import { Config, preset, service } from '..'
-import { createLogger } from '@dingyi222666/koishi-plugin-chathub/lib/utils/logger'
-
-const logger = createLogger('chathub-character')
+import { logger, Config, preset, service } from '..'
 
 export const groupInfos: Record<string, GroupInfo> = {}
 

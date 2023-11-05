@@ -4,14 +4,12 @@ import {
     ChatHubError,
     ChatHubErrorCode
 } from '@dingyi222666/koishi-plugin-chathub/lib/utils/error'
-import { createLogger } from '@dingyi222666/koishi-plugin-chathub/lib/utils/logger'
+import { logger } from '.'
 import fs from 'fs/promises'
 import { load } from 'js-yaml'
 import { PromptTemplate } from 'langchain/prompts'
 import path from 'path'
 import { PresetTemplate } from './types'
-
-const logger = createLogger()
 
 export class Preset {
     private readonly _presets: PresetTemplate[] = []

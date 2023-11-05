@@ -1,17 +1,20 @@
 /* eslint-disable max-len */
-import { Context, Schema } from 'koishi'
+import { Context, Logger, Schema } from 'koishi'
 
 import { ChatHubPlugin } from '@dingyi222666/koishi-plugin-chathub/lib/services/chat'
 import { plugins } from './plugin'
 import { MessageCollector } from './service/message'
 import { StickerService } from './service/sticker'
 import { Preset } from './preset'
+import { createLogger } from '@dingyi222666/koishi-plugin-chathub/lib/utils/logger'
 
 export let service: MessageCollector
 export let stickerService: StickerService
 export let preset: Preset
+export let logger: Logger
 
 export function apply(ctx: Context, config: Config) {
+    logger = createLogger(ctx, 'chathub-character')
     ctx.on('ready', async () => {
         service = new MessageCollector(config)
         stickerService = new StickerService(ctx, config)
@@ -137,6 +140,6 @@ export const Config = Schema.intersect([
     })
 ]) as Schema<Config>
 
-export const using = ['chathub']
+export const inject = ['chathub']
 
 export const name = '@dingyi222666/chathub-character'

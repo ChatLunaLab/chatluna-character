@@ -1,10 +1,7 @@
 import { Context, h } from 'koishi'
 import path from 'path'
 import fs, { readFile } from 'fs/promises'
-import { Config } from '..'
-import { createLogger } from '@dingyi222666/koishi-plugin-chathub/lib/utils/logger'
-
-const logger = createLogger('chathub-character')
+import { Config, logger } from '..'
 
 export class StickerService {
     private _stickers: string[]

@@ -1,12 +1,9 @@
 import { Context, Element, h, Random, sleep } from 'koishi'
-import { createLogger } from '@dingyi222666/koishi-plugin-chathub/lib/utils/logger'
-import { Config, preset, service, stickerService } from '..'
+import { logger, Config, preset, service, stickerService } from '..'
 import { Message } from '../types'
 import { parseRawModelName } from '@dingyi222666/koishi-plugin-chathub/lib/llm-core/utils/count_tokens'
 import { BaseMessage, HumanMessage, SystemMessage } from 'langchain/schema'
 import { ChatHubChatModel } from '@dingyi222666/koishi-plugin-chathub/lib/llm-core/platform/model'
-
-const logger = createLogger('chathub-character')
 
 export async function apply(ctx: Context, config: Config) {
     const [platform, modelName] = parseRawModelName(config.model)
