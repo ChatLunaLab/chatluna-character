@@ -3,7 +3,7 @@ import { Context, Schema } from 'koishi'
 import {
     ChatHubError,
     ChatHubErrorCode
-} from '@dingyi222666/koishi-plugin-chathub/lib/utils/error'
+} from 'koishi-plugin-chatluna/lib/utils/error'
 import { logger } from '.'
 import fs from 'fs/promises'
 import { load } from 'js-yaml'

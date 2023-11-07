@@ -1,12 +1,12 @@
 /* eslint-disable max-len */
 import { Context, Logger, Schema } from 'koishi'
 
-import { ChatHubPlugin } from '@dingyi222666/koishi-plugin-chathub/lib/services/chat'
+import { ChatHubPlugin } from 'koishi-plugin-chatluna/lib/services/chat'
 import { plugins } from './plugin'
 import { MessageCollector } from './service/message'
 import { StickerService } from './service/sticker'
 import { Preset } from './preset'
-import { createLogger } from '@dingyi222666/koishi-plugin-chathub/lib/utils/logger'
+import { createLogger } from 'koishi-plugin-chatluna/lib/utils/logger'
 
 export let service: MessageCollector
 export let stickerService: StickerService

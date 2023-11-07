@@ -1,7 +1,7 @@
 import { Context, Schema } from 'koishi'
 import { Config } from '..'
-import { PlatformService } from '@dingyi222666/koishi-plugin-chathub/lib/llm-core/platform/service'
-import { ModelType } from '@dingyi222666/koishi-plugin-chathub/lib/llm-core/platform/types'
+import { PlatformService } from 'koishi-plugin-chatluna/lib/llm-core/platform/service'
+import { ModelType } from 'koishi-plugin-chatluna/lib/llm-core/platform/types'
 
 export function apply(ctx: Context, config: Config) {
     ctx.on('chathub/model-added', async (service) => {

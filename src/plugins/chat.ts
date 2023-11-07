@@ -1,9 +1,9 @@
 import { Context, Element, h, Random, sleep } from 'koishi'
-import { logger, Config, preset, service, stickerService } from '..'
+import { Config, logger, preset, service, stickerService } from '..'
 import { Message } from '../types'
-import { parseRawModelName } from '@dingyi222666/koishi-plugin-chathub/lib/llm-core/utils/count_tokens'
+import { parseRawModelName } from 'koishi-plugin-chatluna/lib/llm-core/utils/count_tokens'
 import { BaseMessage, HumanMessage, SystemMessage } from 'langchain/schema'
-import { ChatHubChatModel } from '@dingyi222666/koishi-plugin-chathub/lib/llm-core/platform/model'
+import { ChatHubChatModel } from 'koishi-plugin-chatluna/lib/llm-core/platform/model'
 
 export async function apply(ctx: Context, config: Config) {
     const [platform, modelName] = parseRawModelName(config.model)
