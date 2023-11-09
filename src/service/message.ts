@@ -181,8 +181,8 @@ export class MessageCollector {
 
         const message: Message = {
             content,
-            name: session.author.username,
-            id: session.author.userId,
+            name: session.author.name,
+            id: session.author.id,
             quote: session.quote
                 ? {
                       content: mapElementToString(

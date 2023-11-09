@@ -2,7 +2,7 @@ import { Context } from 'koishi'
 import { Config } from '..'
 
 export function apply(ctx: Context, config: Config) {
-    ctx.on('chathub/before-check-sender', async (session) => {
+    ctx.on('chatluna/before-check-sender', async (session) => {
         return (
             ((session.stripped.appel && !session.isDirect) ||
                 !session.isDirect) &&

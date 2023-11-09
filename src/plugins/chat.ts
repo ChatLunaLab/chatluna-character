@@ -3,14 +3,14 @@ import { Config, logger, preset, service, stickerService } from '..'
 import { Message } from '../types'
 import { parseRawModelName } from 'koishi-plugin-chatluna/lib/llm-core/utils/count_tokens'
 import { BaseMessage, HumanMessage, SystemMessage } from 'langchain/schema'
-import { ChatHubChatModel } from 'koishi-plugin-chatluna/lib/llm-core/platform/model'
+import { ChatLunaChatModel } from 'koishi-plugin-chatluna/lib/llm-core/platform/model'
 
 export async function apply(ctx: Context, config: Config) {
     const [platform, modelName] = parseRawModelName(config.model)
-    const model = (await ctx.chathub.createChatModel(
+    const model = (await ctx.chatluna.createChatModel(
         platform,
         modelName
-    )) as ChatHubChatModel
+    )) as ChatLunaChatModel
 
     const selectedPreset = await preset.getPreset(config.defaultPreset)
 
@@ -309,7 +309,7 @@ async function formatCompletionMessages(
     messages: BaseMessage[],
     humanMessage: BaseMessage,
     config: Config,
-    model: ChatHubChatModel
+    model: ChatLunaChatModel
 ) {
     const maxTokens = config.maxTokens - 600
     const systemMessage = messages.shift()
@@ -345,7 +345,7 @@ async function formatCompletionMessages(
 async function formatMessage(
     messages: Message[],
     config: Config,
-    model: ChatHubChatModel,
+    model: ChatLunaChatModel,
     systemPrompt: string,
     historyPrompt: string
 ) {

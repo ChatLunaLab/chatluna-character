@@ -1,8 +1,8 @@
 import { Context, Schema } from 'koishi'
 
 import {
-    ChatHubError,
-    ChatHubErrorCode
+    ChatLunaError,
+    ChatLunaErrorCode
 } from 'koishi-plugin-chatluna/lib/utils/error'
 import { logger } from '.'
 import fs from 'fs/promises'
@@ -69,8 +69,8 @@ export class Preset {
         }
 
         if (throwError) {
-            throw new ChatHubError(
-                ChatHubErrorCode.PREST_NOT_FOUND,
+            throw new ChatLunaError(
+                ChatLunaErrorCode.PREST_NOT_FOUND,
                 new Error(`No preset found for keyword ${triggerKeyword}`)
             )
         }

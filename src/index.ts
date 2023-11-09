@@ -1,7 +1,7 @@
 /* eslint-disable max-len */
 import { Context, Logger, Schema } from 'koishi'
 
-import { ChatHubPlugin } from 'koishi-plugin-chatluna/lib/services/chat'
+import { ChatLunaPlugin } from 'koishi-plugin-chatluna/lib/services/chat'
 import { plugins } from './plugin'
 import { MessageCollector } from './service/message'
 import { StickerService } from './service/sticker'
@@ -44,7 +44,7 @@ export function apply(ctx: Context, config: Config) {
     })
 }
 
-export interface Config extends ChatHubPlugin.Config {
+export interface Config extends ChatLunaPlugin.Config {
     model: string
     maxMessages: number
 
@@ -140,6 +140,6 @@ export const Config = Schema.intersect([
     })
 ]) as Schema<Config>
 
-export const inject = ['chathub']
+export const inject = ['chatluna']
 
-export const name = '@dingyi222666/chathub-character'
+export const name = 'chatluna-character'
