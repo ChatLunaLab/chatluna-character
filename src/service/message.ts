@@ -1,9 +1,12 @@
-import { h, Session } from 'koishi'
+import { Context, h, Logger, Service, Session } from 'koishi'
 import { GroupTemp, Message } from '../types'
 import EventEmitter from 'events'
 import { Config } from '..'
+import { StickerService } from './sticker'
+import { Preset } from '../preset'
+import { createLogger } from 'koishi-plugin-chatluna/lib/utils/logger'
 
-export class MessageCollector {
+export class MessageCollector extends Service {
     private _messages: Record<string, Message[]> = {}
 
     private _eventEmitter = new EventEmitter()
@@ -14,7 +17,21 @@ export class MessageCollector {
 
     private _groupTemp: Record<string, GroupTemp> = {}
 
-    constructor(private _config: Config) {}
+    stickerService: StickerService
+
+    preset: Preset
+
+    logger: Logger
+
+    constructor(
+        public readonly ctx: Context,
+        public _config: Config
+    ) {
+        super(ctx, 'chatluna_character')
+        this.stickerService = new StickerService(ctx, _config)
+        this.logger = createLogger(ctx, 'chatluna-character')
+        this.preset = new Preset(ctx)
+    }
 
     addFilter(filter: MessageCollectorFilter) {
         this._filters.push(filter)
@@ -254,4 +271,10 @@ type MessageCollectorFilter = (session: Session, message: Message) => boolean
 interface GroupLock {
     lock: boolean
     mute: number
+}
+
+declare module 'koishi' {
+    export interface Context {
+        chatluna_character: MessageCollector
+    }
 }

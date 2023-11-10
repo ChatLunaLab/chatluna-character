@@ -3,7 +3,7 @@ import { Config } from '..'
 import { PlatformService } from 'koishi-plugin-chatluna/lib/llm-core/platform/service'
 import { ModelType } from 'koishi-plugin-chatluna/lib/llm-core/platform/types'
 
-export function apply(ctx: Context, config: Config) {
+export async function apply(ctx: Context, config: Config) {
     ctx.on('chatluna/model-added', async (service) => {
         ctx.schema.set('model', Schema.union(await getModelNames(service)))
     })
@@ -11,6 +11,11 @@ export function apply(ctx: Context, config: Config) {
     ctx.on('chatluna/model-removed', async (service) => {
         ctx.schema.set('model', Schema.union(await getModelNames(service)))
     })
+
+    ctx.schema.set(
+        'model',
+        Schema.union(await getModelNames(ctx.chatluna.platform))
+    )
 }
 
 async function getModelNames(service: PlatformService) {

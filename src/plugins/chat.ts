@@ -1,16 +1,27 @@
-import { Context, Element, h, Random, sleep } from 'koishi'
-import { Config, logger, preset, service, stickerService } from '..'
+import { Context, Element, h, Logger, Random, sleep } from 'koishi'
+import { Config } from '..'
 import { Message } from '../types'
 import { parseRawModelName } from 'koishi-plugin-chatluna/lib/llm-core/utils/count_tokens'
 import { BaseMessage, HumanMessage, SystemMessage } from 'langchain/schema'
 import { ChatLunaChatModel } from 'koishi-plugin-chatluna/lib/llm-core/platform/model'
 
+let logger: Logger
+
 export async function apply(ctx: Context, config: Config) {
+    const service = ctx.chatluna_character
+    const preset = service.preset
+    const stickerService = service.stickerService
+    logger = service.logger
+
     const [platform, modelName] = parseRawModelName(config.model)
+
+    await ctx.chatluna.awaitLoadPlatform(platform)
     const model = (await ctx.chatluna.createChatModel(
         platform,
         modelName
     )) as ChatLunaChatModel
+
+    logger.info('chatluna model loaded %c', config.model)
 
     const selectedPreset = await preset.getPreset(config.defaultPreset)
 

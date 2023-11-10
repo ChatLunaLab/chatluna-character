@@ -1,7 +1,7 @@
 import { Context, h } from 'koishi'
 import path from 'path'
 import fs, { readFile } from 'fs/promises'
-import { Config, logger } from '..'
+import { Config } from '..'
 
 export class StickerService {
     private _stickers: string[]
@@ -55,7 +55,9 @@ export class StickerService {
             return null
         }
 
-        logger.debug(`send sticker: ${sticker}`)
+        this._ctx.root.chatluna_character.logger.debug(
+            `send sticker: ${sticker}`
+        )
 
         return h.image(await readFile(sticker), `image/${getFileType(sticker)}`)
     }

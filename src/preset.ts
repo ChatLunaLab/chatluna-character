@@ -4,7 +4,6 @@ import {
     ChatLunaError,
     ChatLunaErrorCode
 } from 'koishi-plugin-chatluna/lib/utils/error'
-import { logger } from '.'
 import fs from 'fs/promises'
 import { load } from 'js-yaml'
 import { PromptTemplate } from 'langchain/prompts'
@@ -138,7 +137,7 @@ export class Preset {
             const fileStat = await fs.stat(filePath)
             if (fileStat.isFile()) {
                 await fs.mkdir(currentPresetDir, { recursive: true })
-                logger.debug(
+                this.ctx.chatluna_character.logger.debug(
                     `copy preset file ${filePath} to ${currentPresetDir}`
                 )
                 await fs.copyFile(filePath, path.join(currentPresetDir, file))

@@ -1,47 +1,57 @@
 /* eslint-disable max-len */
-import { Context, Logger, Schema } from 'koishi'
+import { Context, Disposable, Schema } from 'koishi'
 
 import { ChatLunaPlugin } from 'koishi-plugin-chatluna/lib/services/chat'
 import { plugins } from './plugin'
 import { MessageCollector } from './service/message'
-import { StickerService } from './service/sticker'
-import { Preset } from './preset'
-import { createLogger } from 'koishi-plugin-chatluna/lib/utils/logger'
-
-export let service: MessageCollector
-export let stickerService: StickerService
-export let preset: Preset
-export let logger: Logger
 
 export function apply(ctx: Context, config: Config) {
-    logger = createLogger(ctx, 'chathub-character')
+    const disposables: Disposable[] = []
+
     ctx.on('ready', async () => {
-        service = new MessageCollector(config)
-        stickerService = new StickerService(ctx, config)
-        preset = new Preset(ctx)
-
-        await stickerService.init()
-        await preset.loadAllPreset()
-        await plugins(ctx, config)
+        ctx.plugin(MessageCollector, config)
     })
 
-    ctx.on('message', async (session) => {
-        if (!service) {
-            return
-        }
-        if (
-            !session.isDirect &&
-            config.applyGroup.some((group) => group === session.guildId)
-        ) {
-            await service.broadcast(session)
-        }
-    })
+    ctx.plugin(
+        {
+            apply: async (ctx: Context, config: Config) => {
+                await ctx.chatluna_character.stickerService.init()
+                await ctx.chatluna_character.preset.loadAllPreset()
+                await plugins(ctx, config)
+            },
+            inject: {
+                required: inject.required.concat(
+                    'chatluna',
+                    'chatluna_character'
+                )
+            },
+            name: 'chatluna_entry_point'
+        },
+        config
+    )
 
-    ctx.on('dispose', async () => {
-        service = null
-        stickerService = null
-        preset = null
+    disposables.push(
+        ctx.on('message', async (session) => {
+            if (!ctx.chatluna_character) {
+                return
+            }
+            if (
+                !session.isDirect &&
+                config.applyGroup.some((group) => group === session.guildId)
+            ) {
+                await ctx.chatluna_character.broadcast(session)
+            }
+        })
+    )
+
+    ctx.on('dispose', () => {
+        disposables.forEach((disposable) => disposable())
     })
+}
+
+export const inject = {
+    required: ['chatluna', 'cache'],
+    optional: ['chatluna_character']
 }
 
 export interface Config extends ChatLunaPlugin.Config {
@@ -139,7 +149,5 @@ export const Config = Schema.intersect([
             .default('旧梦旧念')
     })
 ]) as Schema<Config>
-
-export const inject = ['chatluna']
 
 export const name = 'chatluna-character'

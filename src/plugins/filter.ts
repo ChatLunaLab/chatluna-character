@@ -1,10 +1,14 @@
 import { Context } from 'koishi'
-import { logger, Config, preset, service } from '..'
+import { Config } from '..'
 
 export const groupInfos: Record<string, GroupInfo> = {}
 
 export async function apply(ctx: Context, config: Config) {
     const maxMessages = config.messageInterval
+
+    const service = ctx.chatluna_character
+    const preset = service.preset
+    const logger = service.logger
 
     const selectedPreset = await preset.getPreset(config.defaultPreset)
 
