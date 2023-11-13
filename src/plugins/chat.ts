@@ -86,7 +86,7 @@ export async function apply(ctx: Context, config: Config) {
 
         logger.debug('model response: ' + responseMessage.content)
 
-        const response = parseResponse(responseMessage.content)
+        const response = parseResponse(responseMessage.content as string)
 
         temp.completionMessages.push(humanMessage, responseMessage)
 
@@ -326,8 +326,8 @@ async function formatCompletionMessages(
     const systemMessage = messages.shift()
     let currentTokens = 0
 
-    currentTokens += await model.getNumTokens(systemMessage.content)
-    currentTokens += await model.getNumTokens(humanMessage.content)
+    currentTokens += await model.getNumTokens(systemMessage.content as string)
+    currentTokens += await model.getNumTokens(humanMessage.content as string)
 
     const result: BaseMessage[] = []
 
@@ -336,7 +336,9 @@ async function formatCompletionMessages(
     for (let index = messages.length - 1; index >= 0; index--) {
         const message = messages[index]
 
-        const messageTokens = await model.getNumTokens(message.content)
+        const messageTokens = await model.getNumTokens(
+            message.content as string
+        )
 
         if (currentTokens + messageTokens > maxTokens) {
             break
