@@ -2,7 +2,11 @@ import { Context, Element, h, Logger, Random, sleep } from 'koishi'
 import { Config } from '..'
 import { Message } from '../types'
 import { parseRawModelName } from 'koishi-plugin-chatluna/lib/llm-core/utils/count_tokens'
-import { BaseMessage, HumanMessage, SystemMessage } from 'langchain/schema'
+import {
+    BaseMessage,
+    HumanMessage,
+    SystemMessage
+} from '@langchain/core/messages'
 import { ChatLunaChatModel } from 'koishi-plugin-chatluna/lib/llm-core/platform/model'
 
 let logger: Logger

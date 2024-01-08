@@ -1,76 +1,76 @@
 {
-  "name": "koishi-plugin-chatluna-character",
-  "description": "Let the large language model play a role, disguise as a group friend",
-  "version": "0.0.33",
-  "main": "lib/index.js",
-  "typings": "lib/index.d.ts",
-  "files": [
-    "lib",
-    "dist",
-    "resources"
-  ],
-  "license": "AGPL-3.0",
-  "keywords": [
-    "chatbot",
-    "koishi",
-    "plugin",
-    "service",
-    "chatgpt",
-    "chatluna",
-    "preset",
-    "market"
-  ],
-  "author": "dingyi222666 <dingyi222666@foxmail.com>",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/ChatLunaLab/chatluna-character.git",
-    "directory": "."
-  },
-  "bugs": {
-    "url": "https://github.com/ChatLunaLab/chatluna-character/issues"
-  },
-  "homepage": "https://github.com/ChatLunaLab/chatluna-character#readme",
-  "dependencies": {
-    "js-yaml": "^4.1.0",
-    "langchain": "^0.0.186"
-  },
-  "devDependencies": {
-    "@typescript-eslint/eslint-plugin": "^6.10.0",
-    "@typescript-eslint/parser": "^6.10.0",
-    "atsc": "^1.2.2",
-    "esbuild": "^0.17.19",
-    "esbuild-register": "^3.5.0",
-    "eslint": "^8.53.0",
-    "eslint-config-prettier": "^9.0.0",
-    "eslint-config-standard": "^17.1.0",
-    "eslint-plugin-import": "^2.29.0",
-    "eslint-plugin-n": "^16.3.0",
-    "eslint-plugin-prettier": "^5.0.1",
-    "eslint-plugin-promise": "^6.1.1",
-    "koishi": "^4.15.4"
-  },
-  "peerDependencies": {
-    "koishi-plugin-chatluna": "^1.0.0-beta.22",
-    "koishi": "^4.15.0"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "scripts": {
-    "build": "yakumo build",
-    "bump": "yakumo version",
-    "dep": "yakumo upgrade",
-    "pub": "yakumo publish"
-  },
-  "koishi": {
-    "description": {
-      "zh": "让大语言模型进行角色扮演，伪装成群友"
+    "name": "koishi-plugin-chatluna-character",
+    "description": "Let the large language model play a role, disguise as a group friend",
+    "version": "0.0.34",
+    "main": "lib/index.js",
+    "typings": "lib/index.d.ts",
+    "files": [
+        "lib",
+        "dist",
+        "resources"
+    ],
+    "license": "AGPL-3.0",
+    "keywords": [
+        "chatbot",
+        "koishi",
+        "plugin",
+        "service",
+        "chatgpt",
+        "chatluna",
+        "preset",
+        "market"
+    ],
+    "author": "dingyi222666 <dingyi222666@foxmail.com>",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/ChatLunaLab/chatluna-character.git",
+        "directory": "."
     },
-    "preview": true,
-    "service": {
-      "required": [
-        "chatluna"
-      ]
+    "bugs": {
+        "url": "https://github.com/ChatLunaLab/chatluna-character/issues"
+    },
+    "homepage": "https://github.com/ChatLunaLab/chatluna-character#readme",
+    "dependencies": {
+        "@langchain/core": "^0.1.10",
+        "js-yaml": "^4.1.0"
+    },
+    "devDependencies": {
+        "@typescript-eslint/eslint-plugin": "^6.17.0",
+        "@typescript-eslint/parser": "^6.17.0",
+        "atsc": "^1.2.2",
+        "esbuild": "^0.17.19",
+        "esbuild-register": "^3.5.0",
+        "eslint": "^8.56.0",
+        "eslint-config-prettier": "^9.1.0",
+        "eslint-config-standard": "^17.1.0",
+        "eslint-plugin-import": "^2.29.1",
+        "eslint-plugin-n": "^16.6.1",
+        "eslint-plugin-prettier": "^5.1.2",
+        "eslint-plugin-promise": "^6.1.1",
+        "koishi": "^4.16.3"
+    },
+    "peerDependencies": {
+        "koishi": "^4.16.0",
+        "koishi-plugin-chatluna": "^1.0.0-beta.32"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "scripts": {
+        "build": "yakumo build",
+        "bump": "yakumo version",
+        "dep": "yakumo upgrade",
+        "pub": "yakumo publish"
+    },
+    "koishi": {
+        "description": {
+            "zh": "让大语言模型进行角色扮演，伪装成群友"
+        },
+        "preview": true,
+        "service": {
+            "required": [
+                "chatluna"
+            ]
+        }
     }
-  }
 }

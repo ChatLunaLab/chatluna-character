@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { Context, h, Logger, Service, Session } from 'koishi'
 import { GroupTemp, Message } from '../types'
 import EventEmitter from 'events'
@@ -205,7 +206,8 @@ export class MessageCollector extends Service {
                       content: mapElementToString(
                           session,
                           session.quote.content,
-                          session.quote.elements
+                          // TODO: remove as
+                          session.quote.elements as unknown as h[]
                       ),
                       name: session.quote.user.name,
                       id: session.quote.user.id

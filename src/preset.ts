@@ -6,7 +6,7 @@ import {
 } from 'koishi-plugin-chatluna/lib/utils/error'
 import fs from 'fs/promises'
 import { load } from 'js-yaml'
-import { PromptTemplate } from 'langchain/prompts'
+import { PromptTemplate } from '@langchain/core/prompts'
 import path from 'path'
 import { PresetTemplate } from './types'
 

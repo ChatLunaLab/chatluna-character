@@ -1,5 +1,5 @@
-import { PromptTemplate } from 'langchain/prompts'
-import { BaseMessage } from 'langchain/schema'
+import { PromptTemplate } from '@langchain/core/prompts'
+import { BaseMessage } from '@langchain/core/messages'
 
 export interface Message {
     content: string
