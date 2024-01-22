@@ -43,7 +43,7 @@ export async function apply(ctx: Context, config: Config) {
             completionPrompt.template
         )
 
-       /*  const temp = await service.getTemp(session) */
+        /*  const temp = await service.getTemp(session) */
 
         const formattedSystemPrompt = await systemPrompt.format({
             time: new Date().toLocaleString()
@@ -138,7 +138,9 @@ function parseResponse(response: string) {
 
         logger.debug('message: ' + message)
         message = message.match(/\[.*(:|：).*(:|：)(.*)\]/)?.[3] ?? ''
-        message = message.match(/["\u201c\u201d“”](.*)["\u201c\u201d“”]/)?.[1] ?? message;
+        message =
+            message.match(/["\u201c\u201d“”](.*)["\u201c\u201d“”]/)?.[1] ??
+            message
 
         logger.debug('message: ' + message)
         if (typeof message !== 'string') {
