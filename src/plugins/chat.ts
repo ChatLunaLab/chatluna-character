@@ -20,6 +20,7 @@ export async function apply(ctx: Context, config: Config) {
     const [platform, modelName] = parseRawModelName(config.model)
 
     await ctx.chatluna.awaitLoadPlatform(platform)
+
     const model = (await ctx.chatluna.createChatModel(
         platform,
         modelName
@@ -42,7 +43,7 @@ export async function apply(ctx: Context, config: Config) {
             completionPrompt.template
         )
 
-        const temp = await service.getTemp(session)
+       /*  const temp = await service.getTemp(session) */
 
         const formattedSystemPrompt = await systemPrompt.format({
             time: new Date().toLocaleString()
@@ -62,9 +63,9 @@ export async function apply(ctx: Context, config: Config) {
 
         const completionMessages: BaseMessage[] =
             await formatCompletionMessages(
-                [new SystemMessage(formattedSystemPrompt)].concat(
+                [new SystemMessage(formattedSystemPrompt)] /* .concat(
                     temp.completionMessages
-                ),
+                ) */,
                 humanMessage,
                 config,
                 model
@@ -79,7 +80,7 @@ export async function apply(ctx: Context, config: Config) {
 
         for (let i = 0; i < 3; i++) {
             try {
-                responseMessage = await model.call(completionMessages)
+                responseMessage = await model.invoke(completionMessages)
                 break
             } catch (e) {
                 logger.error(e)
@@ -92,13 +93,13 @@ export async function apply(ctx: Context, config: Config) {
 
         const response = parseResponse(responseMessage.content as string)
 
-        temp.completionMessages.push(humanMessage, responseMessage)
+        /* temp.completionMessages.push(humanMessage, responseMessage)
 
         if (temp.completionMessages.length > 30) {
             while (temp.completionMessages.length <= 30) {
                 temp.completionMessages.shift()
             }
-        }
+        } */
 
         if (response.length < 1) {
             service.mute(session, config.muteTime)
