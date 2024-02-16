@@ -44,7 +44,7 @@ export class StickerService {
         const random = Math.random()
 
         if (random >= this._config.sendStickerProbability) {
-            return null
+            return undefined
         }
 
         // random a sticker
@@ -52,7 +52,7 @@ export class StickerService {
         const sticker = this._stickers[index]
 
         if (!sticker) {
-            return null
+            return undefined
         }
 
         this._ctx.root.chatluna_character.logger.debug(

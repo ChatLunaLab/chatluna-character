@@ -62,6 +62,7 @@ export interface Config extends ChatLunaPlugin.Config {
     checkPromptInject: boolean
     maxTokens: number
     applyGroup: string[]
+    modelOverride: { groupId: string; model: string }[]
 
     defaultPreset: string
 
@@ -92,6 +93,12 @@ export const Config = Schema.intersect([
 
     Schema.object({
         model: Schema.dynamic('model').description('使用的模型'),
+        modelOverride: Schema.array(
+            Schema.object({
+                groupId: Schema.string().required().description('群组 ID'),
+                model: Schema.dynamic('model').description('模型')
+            })
+        ).description('针对某个群的模型设置，会覆盖上面的配置'),
         maxTokens: Schema.number()
             .default(2048)
             .min(1024)
@@ -148,6 +155,6 @@ export const Config = Schema.intersect([
             .description('使用的伪装预设')
             .default('旧梦旧念')
     })
-]) as Schema<Config>
+]) as unknown as Schema<Config>
 
 export const name = 'chatluna-character'

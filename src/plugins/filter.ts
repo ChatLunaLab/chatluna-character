@@ -30,19 +30,23 @@ export async function apply(ctx: Context, config: Config) {
             if (needMute) {
                 logger.debug(`mute content: ${message.content}`)
                 service.mute(session, config.muteTime)
+                return
             }
+        }
+
+        if (service.isMute(session)) {
+            return
         }
 
         // 保底必出
         if (
-            (messageCount > maxMessages ||
-                messageSendProbability > 1 ||
-                session.stripped.appel ||
-                (config.isNickname &&
-                    selectedPreset.nick_name.some((value) =>
-                        message.content.startsWith(value)
-                    ))) &&
-            !service.isMute(session)
+            messageCount > maxMessages ||
+            messageSendProbability > 1 ||
+            session.stripped.appel ||
+            (config.isNickname &&
+                selectedPreset.nick_name.some((value) =>
+                    message.content.startsWith(value)
+                ))
         ) {
             info.messageCount = 0
             info.messageSendProbability = 1
@@ -52,10 +56,7 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         // 按照概率出
-        if (
-            Math.random() > messageSendProbability &&
-            !service.isMute(session)
-        ) {
+        if (Math.random() > messageSendProbability) {
             info.messageCount = 0
             info.messageSendProbability = 1
 

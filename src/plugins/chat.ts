@@ -17,16 +17,44 @@ export async function apply(ctx: Context, config: Config) {
     const stickerService = service.stickerService
     logger = service.logger
 
+    const modelPool: Record<string, Promise<ChatLunaChatModel>> = {}
+
     const [platform, modelName] = parseRawModelName(config.model)
 
     await ctx.chatluna.awaitLoadPlatform(platform)
 
-    const model = (await ctx.chatluna.createChatModel(
+    const globalModel = (await ctx.chatluna.createChatModel(
         platform,
         modelName
     )) as ChatLunaChatModel
 
-    logger.info('chatluna model loaded %c', config.model)
+    logger.info('global model loaded %c', config.model)
+
+    if (config.modelOverride?.length > 0) {
+        for (const override of config.modelOverride) {
+            modelPool[override.groupId] = (async () => {
+                const [platform, modelName] = parseRawModelName(override.model)
+
+                await ctx.chatluna.awaitLoadPlatform(platform)
+
+                const loadedModel = (await ctx.chatluna.createChatModel(
+                    platform,
+                    modelName
+                )) as ChatLunaChatModel
+
+                logger.info(
+                    'override model loaded %c for group %c',
+                    override.model,
+                    override.groupId
+                )
+
+                // set model pool to resolved model
+                modelPool[override.groupId] = Promise.resolve(loadedModel)
+
+                return loadedModel
+            })()
+        }
+    }
 
     const selectedPreset = await preset.getPreset(config.defaultPreset)
 
@@ -35,15 +63,19 @@ export async function apply(ctx: Context, config: Config) {
     const completionPrompt = selectedPreset.input
 
     service.collect(async (session, messages) => {
+        const groupId = session.event.guild?.id ?? session.guildId
+
+        const model = await (modelPool[groupId] ?? Promise.resolve(globalModel))
+
         const [recentMessage, lastMessage] = await formatMessage(
             messages,
             config,
             model,
-            systemPrompt.template,
-            completionPrompt.template
+            systemPrompt.template as string,
+            completionPrompt.template as string
         )
 
-        /*  const temp = await service.getTemp(session) */
+        const temp = await service.getTemp(session)
 
         const formattedSystemPrompt = await systemPrompt.format({
             time: new Date().toLocaleString()
@@ -63,9 +95,9 @@ export async function apply(ctx: Context, config: Config) {
 
         const completionMessages: BaseMessage[] =
             await formatCompletionMessages(
-                [new SystemMessage(formattedSystemPrompt)] /* .concat(
+                [new SystemMessage(formattedSystemPrompt)].concat(
                     temp.completionMessages
-                ) */,
+                ),
                 humanMessage,
                 config,
                 model
@@ -77,10 +109,16 @@ export async function apply(ctx: Context, config: Config) {
         )
 
         let responseMessage: BaseMessage
+        let response: Element[][]
 
         for (let i = 0; i < 3; i++) {
             try {
                 responseMessage = await model.invoke(completionMessages)
+
+                logger.debug('model response: ' + responseMessage.content)
+
+                response = parseResponse(responseMessage.content as string)
+
                 break
             } catch (e) {
                 logger.error(e)
@@ -89,17 +127,13 @@ export async function apply(ctx: Context, config: Config) {
             }
         }
 
-        logger.debug('model response: ' + responseMessage.content)
+        temp.completionMessages.push(humanMessage, responseMessage)
 
-        const response = parseResponse(responseMessage.content as string)
-
-        /* temp.completionMessages.push(humanMessage, responseMessage)
-
-        if (temp.completionMessages.length > 30) {
-            while (temp.completionMessages.length <= 30) {
+        if (temp.completionMessages.length > 10) {
+            while (temp.completionMessages.length <= 10) {
                 temp.completionMessages.shift()
             }
-        } */
+        }
 
         if (response.length < 1) {
             service.mute(session, config.muteTime)
@@ -120,6 +154,7 @@ export async function apply(ctx: Context, config: Config) {
         const sticker = await stickerService.randomStick()
 
         if (sticker) {
+            await sleep(random.int(100, 2000))
             session.send(sticker)
         }
 
@@ -136,13 +171,11 @@ function parseResponse(response: string) {
 
         message = [...match].pop()?.[0] ?? ''
 
-        logger.debug('message: ' + message)
         message = message.match(/\[.*(:|：).*(:|：)(.*)\]/)?.[3] ?? ''
         message =
             message.match(/["\u201c\u201d“”](.*)["\u201c\u201d“”]/)?.[1] ??
             message
 
-        logger.debug('message: ' + message)
         if (typeof message !== 'string') {
             logger.error('Failed to parse response: ' + response)
             return []
@@ -160,7 +193,6 @@ function parseResponse(response: string) {
 
     const atMatch = matchAt(message)
 
-    logger.debug('atMatch: ' + JSON.stringify(atMatch))
     if (atMatch.length > 0) {
         let lastAtIndex = 0
         for (const at of atMatch) {
