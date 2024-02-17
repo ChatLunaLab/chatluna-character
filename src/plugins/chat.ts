@@ -111,7 +111,9 @@ export async function apply(ctx: Context, config: Config) {
         let responseMessage: BaseMessage
         let response: Element[][]
 
-        for (let i = 0; i < 3; i++) {
+        let isError = false
+
+        for (let i = 0; i < 2; i++) {
             try {
                 responseMessage = await model.invoke(completionMessages)
 
@@ -122,9 +124,21 @@ export async function apply(ctx: Context, config: Config) {
                 break
             } catch (e) {
                 logger.error(e)
-                await sleep(2000)
+                await sleep(5000)
+                if (i === 1) {
+                    isError = true
+                }
                 continue
             }
+        }
+
+        if (isError) {
+            return
+        }
+
+        if (response.length < 1) {
+            service.mute(session, config.muteTime)
+            return
         }
 
         temp.completionMessages.push(humanMessage, responseMessage)
@@ -133,11 +147,6 @@ export async function apply(ctx: Context, config: Config) {
             while (temp.completionMessages.length <= 10) {
                 temp.completionMessages.shift()
             }
-        }
-
-        if (response.length < 1) {
-            service.mute(session, config.muteTime)
-            return
         }
 
         const random = new Random()
@@ -154,7 +163,7 @@ export async function apply(ctx: Context, config: Config) {
         const sticker = await stickerService.randomStick()
 
         if (sticker) {
-            await sleep(random.int(100, 2000))
+            await sleep(random.int(500, 2000))
             session.send(sticker)
         }
 
@@ -167,23 +176,35 @@ export async function apply(ctx: Context, config: Config) {
 function parseResponse(response: string) {
     let message: string
     try {
-        const match = response.matchAll(/\[.*?\]/g)
+        // match json object
 
-        message = [...match].pop()?.[0] ?? ''
+        // best match <message>content</message>
 
-        message = message.match(/\[.*(:|：).*(:|：)(.*)\]/)?.[3] ?? ''
-        message =
-            message.match(/["\u201c\u201d“”](.*)["\u201c\u201d“”]/)?.[1] ??
-            message
+        message = response.match(/<message>\s*(.*?)\s*<\/message>/)?.[1]
+
+        if (message == null) {
+            logger.debug('failed to parse response: ' + response)
+            // try find the first "{" and the last "}", sub it and as a json
+            // good luck.
+            message = response.substring(
+                response.indexOf('{'),
+                response.lastIndexOf('}') + 1
+            )
+        }
+
+        message = (
+            JSON.parse(message) as {
+                name: string
+                content: string
+            }
+        ).content
 
         if (typeof message !== 'string') {
-            logger.error('Failed to parse response: ' + response)
-            return []
+            throw new Error('Failed to parse response: ' + response)
         }
     } catch (e) {
         logger.error(e)
-        logger.error('Failed to parse response: ' + response)
-        return []
+        throw new Error('Failed to parse response: ' + response)
     }
 
     const resultElements: Element[][] = []
@@ -231,7 +252,7 @@ function parseResponse(response: string) {
         }
     }
 
-    if (resultElements[0]?.[0]?.type === 'at') {
+    if (resultElements[0]?.[0]?.type === 'at' && resultElements.length > 1) {
         resultElements[1].unshift(h.text(' '))
         resultElements[1].unshift(resultElements[0][0])
 
@@ -413,9 +434,9 @@ async function formatMessage(
     for (let i = messages.length - 1; i >= 0; i--) {
         const message = messages[i]
 
-        const jsonMessage = `[${message.name}:${message.id}:${JSON.stringify(
+        const jsonMessage = `{"name":"${message.name}","id":"${message.id}","content":${JSON.stringify(
             message.content
-        )}]"`
+        )}"}`
         const jsonMessageToken = await model.getNumTokens(jsonMessage)
 
         if (currentTokens + jsonMessageToken > maxTokens - 4) {
