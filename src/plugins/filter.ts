@@ -22,7 +22,11 @@ export async function apply(ctx: Context, config: Config) {
 
         // 在计算之前先检查是否需要禁言。
 
-        if (config.isForceMute && selectedPreset.mute_keyword?.length > 0) {
+        if (
+            config.isForceMute &&
+            session.stripped.appel &&
+            selectedPreset.mute_keyword?.length > 0
+        ) {
             const needMute = selectedPreset.mute_keyword.some((value) =>
                 message.content.includes(value)
             )
