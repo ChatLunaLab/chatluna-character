@@ -17,6 +17,19 @@ export interface ModelResponse {
     reply: string
 }
 
+export interface GuildConfig {
+    preset: string
+    messageInterval: number
+    maxTokens: number
+    isNickname: boolean
+    isForceMute: boolean
+    sendStickerProbability: number
+
+    coolDownTime: number
+    typingTime: number
+    muteTime: number
+}
+
 export interface PresetTemplate {
     name: string
     nick_name: string[]

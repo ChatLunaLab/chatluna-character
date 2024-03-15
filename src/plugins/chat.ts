@@ -1,13 +1,13 @@
-import { Context, Element, h, Logger, Random, sleep } from 'koishi'
-import { Config } from '..'
-import { Message } from '../types'
-import { parseRawModelName } from 'koishi-plugin-chatluna/lib/llm-core/utils/count_tokens'
 import {
     BaseMessage,
     HumanMessage,
     SystemMessage
 } from '@langchain/core/messages'
+import { Context, Element, h, Logger, Random, sleep } from 'koishi'
 import { ChatLunaChatModel } from 'koishi-plugin-chatluna/lib/llm-core/platform/model'
+import { parseRawModelName } from 'koishi-plugin-chatluna/lib/llm-core/utils/count_tokens'
+import { Config } from '..'
+import { Message, PresetTemplate } from '../types'
 
 let logger: Logger
 
@@ -56,28 +56,42 @@ export async function apply(ctx: Context, config: Config) {
         }
     }
 
-    const selectedPreset = await preset.getPreset(config.defaultPreset)
-
-    const systemPrompt = selectedPreset.system
-
-    const completionPrompt = selectedPreset.input
+    const globalPreset = await preset.getPreset(config.defaultPreset)
+    const presetPool: Record<string, PresetTemplate> = {}
 
     service.collect(async (session, messages) => {
-        const groupId = session.event.guild?.id ?? session.guildId
+        const guildId = session.event.guild?.id ?? session.guildId
 
-        const model = await (modelPool[groupId] ?? Promise.resolve(globalModel))
+        const model = await (modelPool[guildId] ?? Promise.resolve(globalModel))
+
+        const currentGuildConfig = config.configs[guildId]
+        let copyOfConfig = Object.assign({}, config)
+        let currentPreset = globalPreset
+
+        if (currentGuildConfig != null) {
+            copyOfConfig = Object.assign({}, copyOfConfig, currentGuildConfig)
+            currentPreset =
+                presetPool[guildId] ??
+                (() => {
+                    const template = preset.getPresetForCache(
+                        currentGuildConfig.preset
+                    )
+                    presetPool[guildId] = template
+                    return template
+                })()
+        }
 
         const [recentMessage, lastMessage] = await formatMessage(
             messages,
-            config,
+            copyOfConfig,
             model,
-            systemPrompt.template as string,
-            completionPrompt.template as string
+            currentPreset.system.template as string,
+            currentPreset.system.template as string
         )
 
         const temp = await service.getTemp(session)
 
-        const formattedSystemPrompt = await systemPrompt.format({
+        const formattedSystemPrompt = await currentPreset.system.format({
             time: new Date().toLocaleString()
         })
 
@@ -86,7 +100,7 @@ export async function apply(ctx: Context, config: Config) {
         logger.debug('messages_last: ' + JSON.stringify(lastMessage))
 
         const humanMessage = new HumanMessage(
-            await completionPrompt.format({
+            await currentPreset.input.format({
                 history_new: recentMessage,
                 history_last: lastMessage,
                 time: new Date().toLocaleString()
@@ -99,7 +113,7 @@ export async function apply(ctx: Context, config: Config) {
                     temp.completionMessages
                 ),
                 humanMessage,
-                config,
+                copyOfConfig,
                 model
             )
 
@@ -137,7 +151,7 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         if (response.length < 1) {
-            service.mute(session, config.muteTime)
+            service.mute(session, copyOfConfig.muteTime)
             return
         }
 
@@ -155,7 +169,7 @@ export async function apply(ctx: Context, config: Config) {
             const text = elements
                 .map((element) => element.attrs.content ?? '')
                 .join('')
-            const maxTime = text.length * config.typingTime + 100
+            const maxTime = text.length * copyOfConfig.typingTime + 100
             await sleep(random.int(maxTime / 2, maxTime))
             session.send(elements)
         }
@@ -167,7 +181,7 @@ export async function apply(ctx: Context, config: Config) {
             session.send(sticker)
         }
 
-        service.mute(session, config.coolDownTime * 1000)
+        service.mute(session, copyOfConfig.coolDownTime * 1000)
 
         service.broadcastOnBot(session, response.flat())
     })

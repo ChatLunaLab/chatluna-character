@@ -1,12 +1,12 @@
+import { PromptTemplate } from '@langchain/core/prompts'
+import fs from 'fs/promises'
+import { load } from 'js-yaml'
 import { Context, Schema } from 'koishi'
 
 import {
     ChatLunaError,
     ChatLunaErrorCode
 } from 'koishi-plugin-chatluna/lib/utils/error'
-import fs from 'fs/promises'
-import { load } from 'js-yaml'
-import { PromptTemplate } from '@langchain/core/prompts'
 import path from 'path'
 import { PresetTemplate } from './types'
 
@@ -59,6 +59,13 @@ export class Preset {
             await this.loadAllPreset()
         }
 
+        return this.getPresetForCache(triggerKeyword, throwError)
+    }
+
+    getPresetForCache(
+        triggerKeyword: string,
+        throwError: boolean = true
+    ): PresetTemplate {
         const preset = this._presets.find(
             (preset) => preset.name === triggerKeyword
         )

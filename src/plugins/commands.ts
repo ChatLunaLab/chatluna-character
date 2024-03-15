@@ -14,7 +14,7 @@ export function apply(ctx: Context, config: Config) {
         }
         const groupId = group ?? session.guildId
         if (!groupId) {
-            return '请检查你是否提供了群组id'
+            return '请检查你是否提供了群组 id'
         }
 
         const groupInfo = groupInfos[groupId]

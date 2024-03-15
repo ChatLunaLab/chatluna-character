@@ -1,6 +1,6 @@
 import { Context } from 'koishi'
 import { Config } from '..'
-import { GroupInfo } from '../types'
+import { GroupInfo, PresetTemplate } from '../types'
 
 export const groupInfos: Record<string, GroupInfo> = {}
 
@@ -11,13 +11,30 @@ export async function apply(ctx: Context, config: Config) {
     const preset = service.preset
     const logger = service.logger
 
-    const selectedPreset = await preset.getPreset(config.defaultPreset)
+    const globalPreset = await preset.getPreset(config.defaultPreset)
+    const presetPool: Record<string, PresetTemplate> = {}
 
     service.addFilter((session, message) => {
         const guildId = session.guildId
         const info = groupInfos[guildId] || {
             messageCount: 0,
             messageSendProbability: 1
+        }
+        const currentGuildConfig = config.configs[guildId]
+        let copyOfConfig = Object.assign({}, config)
+        let currentPreset = globalPreset
+
+        if (currentGuildConfig != null) {
+            copyOfConfig = Object.assign({}, copyOfConfig, currentGuildConfig)
+            currentPreset =
+                presetPool[guildId] ??
+                (() => {
+                    const template = preset.getPresetForCache(
+                        currentGuildConfig.preset
+                    )
+                    presetPool[guildId] = template
+                    return template
+                })()
         }
 
         let { messageCount, messageSendProbability } = info
@@ -30,9 +47,9 @@ export async function apply(ctx: Context, config: Config) {
 
         // 检查是否在名单里面
         if (
-            (config.disableChatLuna &&
-                config.whiteListDisableChatLuna.includes(guildId)) ||
-            !config.disableChatLuna
+            (copyOfConfig.disableChatLuna &&
+                copyOfConfig.whiteListDisableChatLuna.includes(guildId)) ||
+            !copyOfConfig.disableChatLuna
         ) {
             // check to last five message is send for bot
 
@@ -64,11 +81,11 @@ export async function apply(ctx: Context, config: Config) {
 
         // 在计算之前先检查是否需要禁言。
         if (
-            config.isForceMute &&
+            copyOfConfig.isForceMute &&
             session.stripped.appel &&
-            selectedPreset.mute_keyword?.length > 0
+            currentPreset.mute_keyword?.length > 0
         ) {
-            const needMute = selectedPreset.mute_keyword.some((value) =>
+            const needMute = currentPreset.mute_keyword.some((value) =>
                 message.content.includes(value)
             )
 
@@ -89,7 +106,7 @@ export async function apply(ctx: Context, config: Config) {
             messageSendProbability > 1 ||
             session.stripped.appel ||
             (config.isNickname &&
-                selectedPreset.nick_name.some((value) =>
+                currentPreset.nick_name.some((value) =>
                     message.content.startsWith(value)
                 ))
         ) {
