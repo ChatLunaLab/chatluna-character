@@ -31,15 +31,24 @@ export function apply(ctx: Context, config: Config) {
     )
 
     disposables.push(
-        ctx.on('message', async (session) => {
+        ctx.middleware(async (session, next) => {
             if (!ctx.chatluna_character) {
-                return
+                return next()
             }
-            if (
-                !session.isDirect &&
-                config.applyGroup.some((group) => group === session.guildId)
-            ) {
-                await ctx.chatluna_character.broadcast(session)
+
+            // 不接收自己的消息
+            if (ctx.bots[session.uid]) {
+                return next()
+            }
+
+            const guildId = session.guildId
+
+            if (!config.applyGroup.includes(guildId)) {
+                return next()
+            }
+
+            if (!(await ctx.chatluna_character.broadcast(session))) {
+                return next()
             }
         })
     )
@@ -74,7 +83,8 @@ export interface Config extends ChatLunaPlugin.Config {
     typingTime: number
     muteTime: number
 
-    disableChatHub: boolean
+    disableChatLuna: boolean
+    whiteListDisableChatLuna: string[]
 }
 
 export const Config = Schema.intersect([
@@ -85,10 +95,13 @@ export const Config = Schema.intersect([
             .default(10)
             .min(7)
             .role('slider')
-            .max(40),
-        disableChatHub: Schema.boolean()
+            .max(100),
+        disableChatLuna: Schema.boolean()
             .default(true)
-            .description('在使用此插件时，是否禁用 chathub 的功能')
+            .description('在使用此插件的群聊里，是否禁用 ChatLuna 主功能'),
+        whiteListDisableChatLuna: Schema.array(Schema.string()).description(
+            '在使用此插件时，不禁用 ChatLuna 主功能的群聊列表'
+        )
     }).description('基础配置'),
 
     Schema.object({
@@ -102,7 +115,7 @@ export const Config = Schema.intersect([
         maxTokens: Schema.number()
             .default(2048)
             .min(1024)
-            .max(8072)
+            .max(16000)
             .description('使用聊天的最大 token 数')
     }).description('模型配置'),
 
@@ -119,7 +132,7 @@ export const Config = Schema.intersect([
             .default(14)
             .min(0)
             .role('slider')
-            .max(30)
+            .max(50)
             .description('随机发送消息的间隔'),
 
         coolDownTime: Schema.number()
@@ -132,7 +145,7 @@ export const Config = Schema.intersect([
             .default(440)
             .min(100)
             .role('slider')
-            .max(1000)
+            .max(1500)
             .description('模拟打字时的间隔（毫秒）'),
 
         muteTime: Schema.number()

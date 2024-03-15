@@ -1,5 +1,5 @@
-import { PromptTemplate } from '@langchain/core/prompts'
 import { BaseMessage } from '@langchain/core/messages'
+import { PromptTemplate } from '@langchain/core/prompts'
 
 export interface Message {
     content: string
@@ -24,4 +24,9 @@ export interface PresetTemplate {
     system: PromptTemplate
     mute_keyword?: string[]
     path?: string
+}
+
+export interface GroupInfo {
+    messageCount: number
+    messageSendProbability: number
 }

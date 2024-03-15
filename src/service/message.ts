@@ -1,11 +1,11 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { Context, h, Logger, Service, Session } from 'koishi'
-import { GroupTemp, Message } from '../types'
 import EventEmitter from 'events'
-import { Config } from '..'
-import { StickerService } from './sticker'
-import { Preset } from '../preset'
+import { Context, h, Logger, Service, Session } from 'koishi'
 import { createLogger } from 'koishi-plugin-chatluna/lib/utils/logger'
+import { Config } from '..'
+import { Preset } from '../preset'
+import { GroupTemp, Message } from '../types'
+import { StickerService } from './sticker'
 
 export class MessageCollector extends Service {
     private _messages: Record<string, Message[]> = {}
@@ -230,9 +230,14 @@ export class MessageCollector extends Service {
             !this.isMute(session)
         ) {
             this._eventEmitter.emit('collect', session, groupArray)
+            await this._unlock(session)
+            return true
+        } else {
+            await this._unlock(session)
+            // 禁言时还是不响应好点。。。。
+            // 命令是不会受到影响的
+            return this.isMute(session)
         }
-
-        await this._unlock(session)
     }
 }
 
