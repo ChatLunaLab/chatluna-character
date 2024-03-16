@@ -115,7 +115,7 @@ export const Config = Schema.intersect([
             })
         ).description('针对某个群的模型设置，会覆盖上面的配置'),
         maxTokens: Schema.number()
-            .default(2048)
+            .default(4000)
             .min(1024)
             .max(16000)
             .description('使用聊天的最大 token 数')

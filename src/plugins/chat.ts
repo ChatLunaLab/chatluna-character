@@ -66,6 +66,7 @@ export async function apply(ctx: Context, config: Config) {
 
         const currentGuildConfig = config.configs[guildId]
         let copyOfConfig = Object.assign({}, config)
+        console.log(copyOfConfig)
         let currentPreset = globalPreset
 
         if (currentGuildConfig != null) {
@@ -462,6 +463,12 @@ async function formatMessage(
     }
 
     const lastMessage = calculatedMessages.pop()
+
+    if (lastMessage === undefined) {
+        throw new Error(
+            'lastMessage is undefined, please set the max token to be bigger'
+        )
+    }
 
     return [calculatedMessages, lastMessage]
 }
