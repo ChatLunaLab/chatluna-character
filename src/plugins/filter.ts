@@ -47,9 +47,8 @@ export async function apply(ctx: Context, config: Config) {
 
         // 检查是否在名单里面
         if (
-            (copyOfConfig.disableChatLuna &&
-                copyOfConfig.whiteListDisableChatLuna.includes(guildId)) ||
-            !copyOfConfig.disableChatLuna
+            copyOfConfig.disableChatLuna &&
+            copyOfConfig.whiteListDisableChatLuna.includes(guildId)
         ) {
             // check to last five message is send for bot
 
@@ -57,11 +56,11 @@ export async function apply(ctx: Context, config: Config) {
 
             const guildMessages = ctx.chatluna_character.getMessages(guildId)
 
-            if (guildMessages == null || guildMessages.length === 0) {
-                return false
-            }
-
             let maxRecentMessage = 0
+
+            if (guildMessages == null || guildMessages.length === 0) {
+                maxRecentMessage = 6
+            }
 
             while (maxRecentMessage < 5) {
                 const currentMessage =
