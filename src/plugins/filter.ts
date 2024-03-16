@@ -123,7 +123,8 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         messageCount++
-        messageSendProbability -= (1 / maxMessages) * 0.145
+        messageSendProbability -=
+            (1 / maxMessages) * copyOfConfig.messageProbability
 
         info.messageCount = messageCount
         info.messageSendProbability = messageSendProbability

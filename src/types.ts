@@ -27,6 +27,7 @@ export interface GuildConfig {
 
     coolDownTime: number
     typingTime: number
+    messageProbability: number
     muteTime: number
 }
 

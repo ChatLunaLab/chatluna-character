@@ -69,6 +69,7 @@ export interface Config extends ChatLunaPlugin.Config {
     maxMessages: number
 
     messageInterval: number
+    messageProbability: number
 
     maxTokens: number
     applyGroup: string[]
@@ -95,7 +96,7 @@ export const Config = Schema.intersect([
         maxMessages: Schema.number()
             .description('存储在内存里的最大消息数量')
             .default(10)
-            .min(7)
+            .min(3)
             .role('slider')
             .max(100),
         disableChatLuna: Schema.boolean()
@@ -134,8 +135,15 @@ export const Config = Schema.intersect([
             .default(14)
             .min(0)
             .role('slider')
-            .max(50)
+            .max(100)
             .description('随机发送消息的间隔'),
+        messageProbability: Schema.number()
+            .default(0.1)
+            .min(0)
+            .max(4)
+            .role('slider')
+            .step(0.00001)
+            .description('发送消息的叠加概率（线性增长）'),
 
         coolDownTime: Schema.number()
             .default(10)
@@ -172,9 +180,9 @@ export const Config = Schema.intersect([
         configs: Schema.dict(
             Schema.object({
                 maxTokens: Schema.number()
-                    .default(2048)
+                    .default(4000)
                     .min(1024)
-                    .max(16000)
+                    .max(20000)
                     .description('使用聊天的最大 token 数'),
 
                 isNickname: Schema.boolean()
@@ -186,23 +194,30 @@ export const Config = Schema.intersect([
                     )
                     .default(true),
                 messageInterval: Schema.number()
-                    .default(14)
+                    .default(10)
                     .min(0)
                     .role('slider')
                     .max(50)
                     .description('随机发送消息的间隔'),
+                messageProbability: Schema.number()
+                    .default(0.1)
+                    .min(0)
+                    .max(1)
+                    .role('slider')
+                    .step(0.00001)
+                    .description('发送消息的叠加概率（线性增长）'),
 
                 coolDownTime: Schema.number()
                     .default(10)
                     .min(1)
-                    .max(60 * 24)
+                    .max(60 * 24 * 24)
                     .description('冷却发言时间（秒）'),
 
                 typingTime: Schema.number()
                     .default(440)
                     .min(100)
                     .role('slider')
-                    .max(1500)
+                    .max(1700)
                     .description('模拟打字时的间隔（毫秒）'),
 
                 muteTime: Schema.number()
@@ -212,7 +227,7 @@ export const Config = Schema.intersect([
                     .description('闭嘴时的禁言时间（毫秒）'),
 
                 sendStickerProbability: Schema.number()
-                    .default(0.6)
+                    .default(0.2)
                     .min(0)
                     .max(1)
                     .role('slider')
