@@ -24,7 +24,8 @@ export function apply(ctx: Context, config: Config) {
                 required: inject.required.concat(
                     'chatluna',
                     'chatluna_character'
-                )
+                ),
+                optional: inject.optional.concat('vits')
             },
             name: 'chatluna_entry_point'
         },
@@ -61,7 +62,7 @@ export function apply(ctx: Context, config: Config) {
 
 export const inject = {
     required: ['chatluna', 'cache'],
-    optional: ['chatluna_character']
+    optional: ['chatluna_character', 'vits']
 }
 
 export interface Config extends ChatLunaPlugin.Config {
