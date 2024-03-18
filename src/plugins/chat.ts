@@ -177,10 +177,17 @@ export async function apply(ctx: Context, config: Config) {
             const maxTime = text.length * copyOfConfig.typingTime + 100
             await sleep(random.int(maxTime / 2, maxTime))
 
-            if (type === 'voice')
-                session.send(await ctx.vits.say({ input: text }))
-            else
-                session.send(elements)
+            if (type !== 'voice') {
+                await session.send(elements)
+                continue
+            }
+
+            try {
+                    await session.send(await ctx.vits.say({ input: text }))
+            } catch (e) {
+                logger.error(e)
+                await session.send(elements)
+            }
         }
 
         const sticker = await stickerService.randomStick()
@@ -197,9 +204,20 @@ export async function apply(ctx: Context, config: Config) {
 }
 
 function extractMessage(response: string): { name: string, type: string, content: string } | null {
-    const match = response.match(/<message>(.*?)<\/message>/)
+    let match = response.match(/<message>\s*(.*?)\s*<\/message>/)?.[1]
+
+    if (match == null) {
+        logger.debug('failed to parse response: ' + response)
+        // try find the first "{" and the last "}", sub it and as a json
+        // good luck.
+        match = response.substring(
+            response.indexOf('{'),
+            response.lastIndexOf('}') + 1
+        )
+    }
+
     if (match) {
-        const message = JSON.parse(match[1])
+        const message = JSON.parse(match)
         return {
             name: message.name,
             type: message.type,
