@@ -8,6 +8,7 @@ import { ChatLunaChatModel } from 'koishi-plugin-chatluna/lib/llm-core/platform/
 import { parseRawModelName } from 'koishi-plugin-chatluna/lib/llm-core/utils/count_tokens'
 import { Config } from '..'
 import { Message, PresetTemplate } from '../types'
+import { } from '@initencounter/vits'
 
 let logger: Logger
 
@@ -125,6 +126,7 @@ export async function apply(ctx: Context, config: Config) {
 
         let responseMessage: BaseMessage
         let response: Element[][]
+        let type: string
 
         let isError = false
 
@@ -135,6 +137,8 @@ export async function apply(ctx: Context, config: Config) {
                 logger.debug('model response: ' + responseMessage.content)
 
                 response = parseResponse(responseMessage.content as string)
+
+                type = extractMessage(responseMessage.content as string).type
 
                 break
             } catch (e) {
@@ -172,7 +176,11 @@ export async function apply(ctx: Context, config: Config) {
                 .join('')
             const maxTime = text.length * copyOfConfig.typingTime + 100
             await sleep(random.int(maxTime / 2, maxTime))
-            session.send(elements)
+
+            if (type === 'voice')
+                session.send(await ctx.vits.say({ input: text }))
+            else
+                session.send(elements)
         }
 
         const sticker = await stickerService.randomStick()
@@ -186,6 +194,20 @@ export async function apply(ctx: Context, config: Config) {
 
         service.broadcastOnBot(session, response.flat())
     })
+}
+
+function extractMessage(response: string): { name: string, type: string, content: string } | null {
+    const match = response.match(/<message>(.*?)<\/message>/)
+    if (match) {
+        const message = JSON.parse(match[1])
+        return {
+            name: message.name,
+            type: message.type,
+            content: message.content
+        }
+    } else {
+        return null
+    }
 }
 
 function parseResponse(response: string) {
