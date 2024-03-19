@@ -8,6 +8,8 @@ import { ChatLunaChatModel } from 'koishi-plugin-chatluna/lib/llm-core/platform/
 import { parseRawModelName } from 'koishi-plugin-chatluna/lib/llm-core/utils/count_tokens'
 import { Config } from '..'
 import { Message, PresetTemplate } from '../types'
+import type { } from '@initencounter/vits'
+import { parse } from 'node:path/posix'
 
 let logger: Logger
 
@@ -125,6 +127,7 @@ export async function apply(ctx: Context, config: Config) {
 
         let responseMessage: BaseMessage
         let response: Element[][]
+        let type: string
 
         let isError = false
 
@@ -134,7 +137,11 @@ export async function apply(ctx: Context, config: Config) {
 
                 logger.debug('model response: ' + responseMessage.content)
 
-                response = parseResponse(responseMessage.content as string)
+                let parseResult = parseResponse(responseMessage.content as string)
+
+                response = parseResult.resultElements
+
+                type = parseResult.type
 
                 break
             } catch (e) {
@@ -165,14 +172,44 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         const random = new Random()
+        let voiceText: string = ''
 
-        for (const elements of response) {
+        for (let elements of response) {
+            if (!config.isAt)
+                elements = elements.filter(element => element.type !== 'at')
+
             const text = elements
                 .map((element) => element.attrs.content ?? '')
                 .join('')
-            const maxTime = text.length * copyOfConfig.typingTime + 100
-            await sleep(random.int(maxTime / 2, maxTime))
-            session.send(elements)
+
+            if (type !== 'voice') {
+                const maxTime = text.length * copyOfConfig.typingTime + 100
+                await sleep(random.int(maxTime / 2, maxTime))
+                await session.send(elements)
+                continue
+            }
+
+            if (isEmoticonStatement(text)) continue
+
+            if (!config.splitVoice) {
+                voiceText += text
+                continue
+            }
+
+            try {
+                logger.debug('voice: ' + text)
+                await session.send(await ctx.vits.say({ input: text }))
+            } catch (e) {
+                logger.error(e)
+                const maxTime = text.length * copyOfConfig.typingTime + 100
+                await sleep(random.int(maxTime / 2, maxTime))
+                await session.send(elements)
+            }
+        }
+
+        if (!config.splitVoice && type === 'voice') {
+            logger.debug('voice: ' + voiceText)
+            await session.send(await ctx.vits.say({ input: voiceText }))
         }
 
         const sticker = await stickerService.randomStick()
@@ -188,8 +225,13 @@ export async function apply(ctx: Context, config: Config) {
     })
 }
 
+function isEmoticonStatement(text: string): boolean {
+    const regex = /^[\p{P}\p{S}\p{Z}\p{M}\p{N}\p{L}\s]*[\p{So}][\p{P}\p{S}\p{Z}\p{M}\p{N}\p{L}\s]*$/u
+    return regex.test(text)
+}
 function parseResponse(response: string) {
     let message: string
+    let type: string
     try {
         // match json object
 
@@ -207,12 +249,14 @@ function parseResponse(response: string) {
             )
         }
 
-        message = (
-            JSON.parse(message) as {
-                name: string
-                content: string
-            }
-        ).content
+        let tempJson = JSON.parse(message) as {
+            name: string
+            type: string
+            content: string
+        }
+
+        message = tempJson.content
+        type = tempJson.type
 
         if (typeof message !== 'string') {
             throw new Error('Failed to parse response: ' + response)
@@ -274,7 +318,10 @@ function parseResponse(response: string) {
         resultElements.shift()
     }
 
-    return resultElements
+    return {
+        resultElements,
+        type
+    }
 }
 
 function splitSentence(text: string): string[] {
