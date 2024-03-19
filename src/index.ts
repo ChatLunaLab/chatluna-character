@@ -91,6 +91,7 @@ export interface Config extends ChatLunaPlugin.Config {
     whiteListDisableChatLuna: string[]
 
     splitVoice: boolean
+    isAt: boolean
 }
 
 export const Config = Schema.intersect([
@@ -133,6 +134,9 @@ export const Config = Schema.intersect([
             .description(
                 '是否启用强制禁言（当聊天涉及到关键词时则会禁言，关键词需要在预设文件里配置）'
             )
+            .default(true),
+        isAt: Schema.boolean()
+            .description('是否启用@')
             .default(true),
         splitVoice: Schema.boolean()
             .description('是否分段发送语言')
