@@ -25,7 +25,7 @@ export function apply(ctx: Context, config: Config) {
                     'chatluna',
                     'chatluna_character'
                 ),
-                optional: inject.optional.concat('vits')
+                optional: inject.optional['vits']
             },
             name: 'chatluna_entry_point'
         },
@@ -89,6 +89,8 @@ export interface Config extends ChatLunaPlugin.Config {
 
     disableChatLuna: boolean
     whiteListDisableChatLuna: string[]
+
+    splitVoice: boolean
 }
 
 export const Config = Schema.intersect([
@@ -132,6 +134,9 @@ export const Config = Schema.intersect([
                 '是否启用强制禁言（当聊天涉及到关键词时则会禁言，关键词需要在预设文件里配置）'
             )
             .default(true),
+        splitVoice: Schema.boolean()
+            .description('是否分段发送语言')
+            .default(false),
         messageInterval: Schema.number()
             .default(14)
             .min(0)
