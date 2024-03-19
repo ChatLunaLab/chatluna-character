@@ -1,4 +1,6 @@
-// eslint-disable-next-line
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+import {} from '@initencounter/vits'
 import {
     BaseMessage,
     HumanMessage,
@@ -181,7 +183,10 @@ export async function apply(ctx: Context, config: Config) {
                 continue
             }
 
-            if (config.splitVoice !== true) {
+            if (
+                config.splitVoice !== true &&
+                parsedResponse.messageType === 'voice'
+            ) {
                 maxTime =
                     parsedResponse.rawMessage.length * copyOfConfig.typingTime +
                     100
@@ -197,12 +202,14 @@ export async function apply(ctx: Context, config: Config) {
                         await session.send(elements)
                         break
                     case 'voice':
-                        await sleep(random.int(maxTime / 4, maxTime / 2))
                         await session.send(
                             await ctx.vits.say({
                                 input: text
                             })
                         )
+                        break
+                    default:
+                        await session.send(elements)
                         break
                 }
             } catch (e) {
