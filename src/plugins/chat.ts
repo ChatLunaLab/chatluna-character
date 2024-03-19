@@ -8,7 +8,7 @@ import { ChatLunaChatModel } from 'koishi-plugin-chatluna/lib/llm-core/platform/
 import { parseRawModelName } from 'koishi-plugin-chatluna/lib/llm-core/utils/count_tokens'
 import { Config } from '..'
 import { Message, PresetTemplate } from '../types'
-import { } from '@initencounter/vits'
+import type { } from '@initencounter/vits'
 
 let logger: Logger
 
@@ -136,9 +136,9 @@ export async function apply(ctx: Context, config: Config) {
 
                 logger.debug('model response: ' + responseMessage.content)
 
-                response = parseResponse(responseMessage.content as string)
+                response = parseResponse(responseMessage.content as string).resultElements
 
-                type = extractMessage(responseMessage.content as string).type
+                type = parseResponse(responseMessage.content as string).type
 
                 break
             } catch (e) {
@@ -169,25 +169,41 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         const random = new Random()
+        let voiceText: string = ''
 
         for (const elements of response) {
             const text = elements
                 .map((element) => element.attrs.content ?? '')
                 .join('')
-            const maxTime = text.length * copyOfConfig.typingTime + 100
-            await sleep(random.int(maxTime / 2, maxTime))
 
             if (type !== 'voice') {
+                const maxTime = text.length * copyOfConfig.typingTime + 100
+                await sleep(random.int(maxTime / 2, maxTime))
                 await session.send(elements)
                 continue
             }
 
+            if (isEmoticonStatement(text)) continue
+
+            if (!config.splitVoice) {
+                voiceText += text
+                continue
+            }
+
             try {
-                    await session.send(await ctx.vits.say({ input: text }))
+                logger.debug('voice: ' + text)
+                await session.send(await ctx.vits.say({ input: text }))
             } catch (e) {
                 logger.error(e)
+                const maxTime = text.length * copyOfConfig.typingTime + 100
+                await sleep(random.int(maxTime / 2, maxTime))
                 await session.send(elements)
             }
+        }
+
+        if (!config.splitVoice) {
+            logger.debug('voice: ' + voiceText)
+            await session.send(await ctx.vits.say({ input: voiceText }))
         }
 
         const sticker = await stickerService.randomStick()
@@ -203,33 +219,13 @@ export async function apply(ctx: Context, config: Config) {
     })
 }
 
-function extractMessage(response: string): { name: string, type: string, content: string } | null {
-    let match = response.match(/<message>\s*(.*?)\s*<\/message>/)?.[1]
-
-    if (match == null) {
-        logger.debug('failed to parse response: ' + response)
-        // try find the first "{" and the last "}", sub it and as a json
-        // good luck.
-        match = response.substring(
-            response.indexOf('{'),
-            response.lastIndexOf('}') + 1
-        )
-    }
-
-    if (match) {
-        const message = JSON.parse(match)
-        return {
-            name: message.name,
-            type: message.type,
-            content: message.content
-        }
-    } else {
-        return null
-    }
+function isEmoticonStatement(text: string): boolean {
+    const regex = /^[\p{P}\p{S}\p{Z}\p{M}\p{N}\p{L}\s]*[\p{So}][\p{P}\p{S}\p{Z}\p{M}\p{N}\p{L}\s]*$/u
+    return regex.test(text)
 }
-
 function parseResponse(response: string) {
     let message: string
+    let type: string
     try {
         // match json object
 
@@ -247,12 +243,14 @@ function parseResponse(response: string) {
             )
         }
 
-        message = (
-            JSON.parse(message) as {
-                name: string
-                content: string
-            }
-        ).content
+        let tempJson = JSON.parse(message) as {
+            name: string
+            type: string
+            content: string
+        }
+
+        message = tempJson.content
+        type = tempJson.type
 
         if (typeof message !== 'string') {
             throw new Error('Failed to parse response: ' + response)
@@ -314,7 +312,10 @@ function parseResponse(response: string) {
         resultElements.shift()
     }
 
-    return resultElements
+    return {
+        resultElements,
+        type
+    }
 }
 
 function splitSentence(text: string): string[] {
