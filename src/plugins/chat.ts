@@ -9,6 +9,7 @@ import { parseRawModelName } from 'koishi-plugin-chatluna/lib/llm-core/utils/cou
 import { Config } from '..'
 import { Message, PresetTemplate } from '../types'
 import type { } from '@initencounter/vits'
+import { parse } from 'node:path/posix'
 
 let logger: Logger
 
@@ -136,9 +137,11 @@ export async function apply(ctx: Context, config: Config) {
 
                 logger.debug('model response: ' + responseMessage.content)
 
-                response = parseResponse(responseMessage.content as string).resultElements
+                let parseResult = parseResponse(responseMessage.content as string)
 
-                type = parseResponse(responseMessage.content as string).type
+                response = parseResult.resultElements
+
+                type = parseResult.type
 
                 break
             } catch (e) {
