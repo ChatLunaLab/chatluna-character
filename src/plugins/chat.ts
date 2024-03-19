@@ -9,6 +9,7 @@ import { parseRawModelName } from 'koishi-plugin-chatluna/lib/llm-core/utils/cou
 import { Config } from '..'
 import { Message, PresetTemplate } from '../types'
 import type { } from '@initencounter/vits'
+import { log } from 'console'
 
 let logger: Logger
 
@@ -171,7 +172,10 @@ export async function apply(ctx: Context, config: Config) {
         const random = new Random()
         let voiceText: string = ''
 
-        for (const elements of response) {
+        for (let elements of response) {
+            if (!config.isAt)
+                elements = elements.filter(element => element.type !== 'at')
+
             const text = elements
                 .map((element) => element.attrs.content ?? '')
                 .join('')
@@ -201,7 +205,7 @@ export async function apply(ctx: Context, config: Config) {
             }
         }
 
-        if (!config.splitVoice) {
+        if (!config.splitVoice && type === 'voice') {
             logger.debug('voice: ' + voiceText)
             await session.send(await ctx.vits.say({ input: voiceText }))
         }
