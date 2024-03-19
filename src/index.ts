@@ -21,10 +21,7 @@ export function apply(ctx: Context, config: Config) {
                 await plugins(ctx, config)
             },
             inject: {
-                required: inject.required.concat(
-                    'chatluna',
-                    'chatluna_character'
-                ),
+                required: inject.required.concat('chatluna_character'),
                 optional: inject.optional
             },
             name: 'chatluna_entry_point'
@@ -136,7 +133,7 @@ export const Config = Schema.intersect([
             )
             .default(true),
         isAt: Schema.boolean()
-            .description('是否启用@')
+            .description('是否允许 bot 艾特他人')
             .default(true),
         splitVoice: Schema.boolean()
             .description('是否分段发送语言')
@@ -194,6 +191,11 @@ export const Config = Schema.intersect([
                     .min(1024)
                     .max(20000)
                     .description('使用聊天的最大 token 数'),
+
+                isAt: Schema.boolean().description('是否启用@').default(true),
+                splitVoice: Schema.boolean()
+                    .description('是否分段发送语言')
+                    .default(false),
 
                 isNickname: Schema.boolean()
                     .description('允许 bot 配置中的昵称引发回复')

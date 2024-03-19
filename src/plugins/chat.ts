@@ -1,3 +1,4 @@
+// eslint-disable-next-line
 import {
     BaseMessage,
     HumanMessage,
@@ -8,10 +9,6 @@ import { ChatLunaChatModel } from 'koishi-plugin-chatluna/lib/llm-core/platform/
 import { parseRawModelName } from 'koishi-plugin-chatluna/lib/llm-core/utils/count_tokens'
 import { Config } from '..'
 import { Message, PresetTemplate } from '../types'
-import type { } from '@initencounter/vits'
-import { parse } from 'node:path/posix'
-
-let logger: Logger
 
 export async function apply(ctx: Context, config: Config) {
     const service = ctx.chatluna_character
@@ -126,31 +123,28 @@ export async function apply(ctx: Context, config: Config) {
         )
 
         let responseMessage: BaseMessage
-        let response: Element[][]
-        let type: string
+        let parsedResponse: ReturnType<typeof parseResponse>
 
         let isError = false
 
-        for (let i = 0; i < 2; i++) {
+        for (let i = 0; i < 3; i++) {
             try {
                 responseMessage = await model.invoke(completionMessages)
 
                 logger.debug('model response: ' + responseMessage.content)
 
-                let parseResult = parseResponse(responseMessage.content as string)
-
-                response = parseResult.resultElements
-
-                type = parseResult.type
+                parsedResponse = parseResponse(
+                    responseMessage.content as string,
+                    copyOfConfig.isAt
+                )
 
                 break
             } catch (e) {
                 logger.error(e)
-                await sleep(5000)
-                if (i === 1) {
+                await sleep(2000)
+                if (i === 2) {
                     isError = true
                 }
-                continue
             }
         }
 
@@ -158,107 +152,116 @@ export async function apply(ctx: Context, config: Config) {
             return
         }
 
-        if (response.length < 1) {
+        if (parsedResponse.elements.length < 1) {
             service.mute(session, copyOfConfig.muteTime)
             return
         }
 
         temp.completionMessages.push(humanMessage, responseMessage)
 
-        if (temp.completionMessages.length > 10) {
-            while (temp.completionMessages.length <= 10) {
+        if (temp.completionMessages.length > 6) {
+            while (temp.completionMessages.length <= 3) {
                 temp.completionMessages.shift()
             }
         }
 
         const random = new Random()
-        let voiceText: string = ''
 
-        for (let elements of response) {
-            if (!config.isAt)
-                elements = elements.filter(element => element.type !== 'at')
-
+        for (const elements of parsedResponse.elements) {
             const text = elements
                 .map((element) => element.attrs.content ?? '')
                 .join('')
 
-            if (type !== 'voice') {
-                const maxTime = text.length * copyOfConfig.typingTime + 100
-                await sleep(random.int(maxTime / 2, maxTime))
-                await session.send(elements)
+            let maxTime = text.length * copyOfConfig.typingTime + 100
+
+            if (
+                parsedResponse.messageType === 'voice' &&
+                isEmoticonStatement(text)
+            ) {
                 continue
             }
 
-            if (isEmoticonStatement(text)) continue
-
-            if (!config.splitVoice) {
-                voiceText += text
-                continue
+            if (config.splitVoice !== true) {
+                maxTime =
+                    parsedResponse.rawMessage.length * copyOfConfig.typingTime +
+                    100
+                await sleep(random.int(maxTime / 4, maxTime / 2))
+                await session.send(await ctx.vits.say({ input: text }))
+                break
             }
 
             try {
-                logger.debug('voice: ' + text)
-                await session.send(await ctx.vits.say({ input: text }))
+                await sleep(random.int(maxTime / 2, maxTime))
+                switch (parsedResponse.messageType) {
+                    case 'text':
+                        await session.send(elements)
+                        break
+                    case 'voice':
+                        await sleep(random.int(maxTime / 4, maxTime / 2))
+                        await session.send(
+                            await ctx.vits.say({
+                                input: text
+                            })
+                        )
+                        break
+                }
             } catch (e) {
                 logger.error(e)
-                const maxTime = text.length * copyOfConfig.typingTime + 100
-                await sleep(random.int(maxTime / 2, maxTime))
+                // fallback to text
                 await session.send(elements)
             }
-        }
-
-        if (!config.splitVoice && type === 'voice') {
-            logger.debug('voice: ' + voiceText)
-            await session.send(await ctx.vits.say({ input: voiceText }))
         }
 
         const sticker = await stickerService.randomStick()
 
         if (sticker) {
             await sleep(random.int(500, 2000))
-            session.send(sticker)
+            await session.send(sticker)
         }
 
         service.mute(session, copyOfConfig.coolDownTime * 1000)
 
-        service.broadcastOnBot(session, response.flat())
+        await service.broadcastOnBot(session, parsedResponse.elements.flat())
     })
 }
 
 function isEmoticonStatement(text: string): boolean {
-    const regex = /^[\p{P}\p{S}\p{Z}\p{M}\p{N}\p{L}\s]*[\p{So}][\p{P}\p{S}\p{Z}\p{M}\p{N}\p{L}\s]*$/u
+    const regex =
+        /^[\p{P}\p{S}\p{Z}\p{M}\p{N}\p{L}\s]*\p{So}[\p{P}\p{S}\p{Z}\p{M}\p{N}\p{L}\s]*$/u
     return regex.test(text)
 }
-function parseResponse(response: string) {
-    let message: string
-    let type: string
+
+function parseResponse(response: string, useAt: boolean = true) {
+    let rawMessage: string
+    let parsedMessage = ''
+    let messageType = 'text'
     try {
         // match json object
 
         // best match <message>content</message>
 
-        message = response.match(/<message>\s*(.*?)\s*<\/message>/)?.[1]
+        rawMessage = response.match(/<message>\s*(.*?)\s*<\/message>/)?.[1]
 
-        if (message == null) {
+        if (rawMessage == null) {
             logger.debug('failed to parse response: ' + response)
-            // try find the first "{" and the last "}", sub it and as a json
+            // try to find the first "{" and the last "}", sub it and as a json
             // good luck.
-            message = response.substring(
+            rawMessage = response.substring(
                 response.indexOf('{'),
                 response.lastIndexOf('}') + 1
             )
         }
 
-        let tempJson = JSON.parse(message) as {
+        const tempJson = JSON.parse(rawMessage) as {
             name: string
             type: string
             content: string
         }
 
-        message = tempJson.content
-        type = tempJson.type
+        rawMessage = tempJson.content
+        messageType = tempJson.type
 
-        if (typeof message !== 'string') {
+        if (typeof rawMessage !== 'string') {
             throw new Error('Failed to parse response: ' + response)
         }
     } catch (e) {
@@ -271,29 +274,34 @@ function parseResponse(response: string) {
     const currentElements: Element[] = []
     // match [at:name:id] -> id
 
-    const atMatch = matchAt(message)
+    const atMatch = matchAt(rawMessage)
 
     if (atMatch.length > 0) {
         let lastAtIndex = 0
         for (const at of atMatch) {
-            const before = message.substring(lastAtIndex, at.start)
+            const before = rawMessage.substring(lastAtIndex, at.start)
 
             if (before.length > 0) {
+                parsedMessage += before
                 currentElements.push(h.text(before))
             }
 
-            currentElements.push(h.at(at.at))
+            if (useAt) {
+                currentElements.push(h.at(at.at))
+            }
 
             lastAtIndex = at.end
         }
 
-        const after = message.substring(lastAtIndex)
+        const after = rawMessage.substring(lastAtIndex)
 
         if (after.length > 0) {
+            parsedMessage += after
             currentElements.push(h.text(after))
         }
     } else {
-        currentElements.push(h.text(message))
+        parsedMessage = rawMessage
+        currentElements.push(h.text(rawMessage))
     }
 
     for (let currentElement of currentElements) {
@@ -319,8 +327,9 @@ function parseResponse(response: string) {
     }
 
     return {
-        resultElements,
-        type
+        elements: resultElements,
+        rawMessage: parsedMessage,
+        messageType
     }
 }
 
@@ -359,7 +368,7 @@ function splitSentence(text: string): string[] {
 
     const retainPunctuations = ['?', '!', '？', '！', '~']
 
-    const mustPunctuations = ['。', '?', '！', '?', '！', ':', '：', '~']
+    const mustPunctuations = ['。', '?', '！', '?', '！', ':', '：']
 
     const brackets = ['【', '】', '《', '》', '(', ')', '（', '）']
 
@@ -429,7 +438,7 @@ function splitSentence(text: string): string[] {
 function matchAt(str: string) {
     // (旧梦旧念:3510003509:<at>)
     // /\(.*\-(\d+)\-<at>\)/g
-    const atRegex = /(\(|（).*\-(\d+)\-<at>(\)|）)/g
+    const atRegex = /([(（]).*-(\d+)-<at>([)）])/g
     return [...str.matchAll(atRegex)].map((item) => {
         return {
             at: item[2],
@@ -498,7 +507,7 @@ async function formatMessage(
 
         const jsonMessage = `{"name":"${message.name}","id":"${message.id}","content":${JSON.stringify(
             message.content
-        )}"}`
+        )}","type":"text"}`
         const jsonMessageToken = await model.getNumTokens(jsonMessage)
 
         if (currentTokens + jsonMessageToken > maxTokens - 4) {
@@ -519,3 +528,5 @@ async function formatMessage(
 
     return [calculatedMessages, lastMessage]
 }
+
+let logger: Logger

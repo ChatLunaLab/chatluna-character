@@ -12,11 +12,6 @@ export interface GroupTemp {
     completionMessages: BaseMessage[]
 }
 
-export interface ModelResponse {
-    think: string
-    reply: string
-}
-
 export interface GuildConfig {
     preset: string
     messageInterval: number
@@ -26,6 +21,8 @@ export interface GuildConfig {
     sendStickerProbability: number
 
     coolDownTime: number
+    splitVoice: boolean
+    isAt: boolean
     typingTime: number
     messageProbability: number
     muteTime: number
