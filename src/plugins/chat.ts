@@ -68,7 +68,7 @@ export async function apply(ctx: Context, config: Config) {
 
         const currentGuildConfig = config.configs[guildId]
         let copyOfConfig = Object.assign({}, config)
-        console.log(copyOfConfig)
+
         let currentPreset = globalPreset
 
         if (currentGuildConfig != null) {
