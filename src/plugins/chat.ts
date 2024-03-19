@@ -9,7 +9,6 @@ import { parseRawModelName } from 'koishi-plugin-chatluna/lib/llm-core/utils/cou
 import { Config } from '..'
 import { Message, PresetTemplate } from '../types'
 import type { } from '@initencounter/vits'
-import { log } from 'console'
 
 let logger: Logger
 
