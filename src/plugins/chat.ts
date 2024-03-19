@@ -191,7 +191,7 @@ export async function apply(ctx: Context, config: Config) {
                     parsedResponse.rawMessage.length * copyOfConfig.typingTime +
                     100
                 await sleep(random.int(maxTime / 4, maxTime / 2))
-                await session.send(await ctx.vits.say({ input: text }))
+                await session.send(await ctx.vits.say({ input: parsedResponse.rawMessage }))
                 break
             }
 
