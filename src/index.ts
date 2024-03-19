@@ -25,7 +25,7 @@ export function apply(ctx: Context, config: Config) {
                     'chatluna',
                     'chatluna_character'
                 ),
-                optional: inject.optional['vits']
+                optional: inject.optional
             },
             name: 'chatluna_entry_point'
         },
