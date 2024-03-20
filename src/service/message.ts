@@ -132,6 +132,9 @@ export class MessageCollector extends Service {
         } else {
             this._messages = {}
         }
+        this._groupTemp[groupId] = {
+            completionMessages: []
+        }
     }
 
     async broadcastOnBot(session: Session, elements: h[]) {
