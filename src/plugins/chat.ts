@@ -161,8 +161,8 @@ export async function apply(ctx: Context, config: Config) {
 
         temp.completionMessages.push(humanMessage, responseMessage)
 
-        if (temp.completionMessages.length > 6) {
-            while (temp.completionMessages.length <= 3) {
+        if (temp.completionMessages.length > 8) {
+            while (temp.completionMessages.length <= 4) {
                 temp.completionMessages.shift()
             }
         }
@@ -191,7 +191,9 @@ export async function apply(ctx: Context, config: Config) {
                     parsedResponse.rawMessage.length * copyOfConfig.typingTime +
                     100
                 await sleep(random.int(maxTime / 4, maxTime / 2))
-                await session.send(await ctx.vits.say({ input: parsedResponse.rawMessage }))
+                await session.send(
+                    await ctx.vits.say({ input: parsedResponse.rawMessage })
+                )
                 break
             }
 
@@ -509,12 +511,14 @@ async function formatMessage(
 
     const calculatedMessages: string[] = []
 
+    const random = new Random()
     for (let i = messages.length - 1; i >= 0; i--) {
         const message = messages[i]
 
+        const voiceProbability = random.int(1, 10) > 5 ? 'voice' : 'text'
         const jsonMessage = `{"name":"${message.name}","id":"${message.id}","content":${JSON.stringify(
             message.content
-        )}","type":"text"}`
+        )}","type":"${voiceProbability}"}`
         const jsonMessageToken = await model.getNumTokens(jsonMessage)
 
         if (currentTokens + jsonMessageToken > maxTokens - 4) {
