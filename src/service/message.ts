@@ -255,7 +255,7 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
         if (element.type === 'text') {
             const content = element.attrs.content as string
 
-            if (content.trimEnd().length > 0) {
+            if (content?.trimEnd()?.length > 0) {
                 filteredBuffer.push(content)
             }
         } else if (element.type === 'at') {
