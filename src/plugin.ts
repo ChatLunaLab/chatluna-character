@@ -6,14 +6,14 @@ import path from 'path'
 export async function plugins(ctx: Context, config: Config) {
     const list = await fs.readdir(path.join(__dirname, 'plugins'))
 
-    for (const file of list) {
+    for (let file of list) {
         if (file.endsWith('.d.ts')) {
-            continue
+            file = file.slice(0, -5)
         }
 
         const command: {
             apply: (ctx: Context, config: Config) => PromiseLike<void> | void
-        } = await require(`./plugins/${file}`)
+        } = await import(`./plugins/${file}.ts`)
 
         if (command.apply) {
             await command.apply(ctx, config)

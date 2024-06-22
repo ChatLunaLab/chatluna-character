@@ -6,7 +6,7 @@ import { Context, Schema } from 'koishi'
 import {
     ChatLunaError,
     ChatLunaErrorCode
-} from 'koishi-plugin-chatluna/lib/utils/error'
+} from 'koishi-plugin-chatluna/utils/error'
 import path from 'path'
 import { PresetTemplate } from './types'
 

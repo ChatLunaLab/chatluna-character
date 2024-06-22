@@ -1,14 +1,23 @@
 {
     "name": "koishi-plugin-chatluna-character",
     "description": "Let the large language model play a role, disguise as a group friend",
-    "version": "0.0.46",
-    "main": "lib/index.js",
+    "version": "0.0.47",
+    "main": "lib/index.cjs",
+    "module": "lib/index.mjs",
     "typings": "lib/index.d.ts",
     "files": [
         "lib",
         "dist",
         "resources"
     ],
+    "exports": {
+        ".": {
+            "import": "./lib/index.mjs",
+            "require": "./lib/index.cjs",
+            "types": "./lib/index.d.ts"
+        },
+        "./package.json": "./package.json"
+    },
     "license": "AGPL-3.0",
     "keywords": [
         "chatbot",
@@ -48,10 +57,10 @@
         "eslint-plugin-n": "^16.6.2",
         "eslint-plugin-prettier": "^5.1.3",
         "eslint-plugin-promise": "^6.2.0",
-        "koishi": "^4.17.7"
+        "koishi": "^4.17.9"
     },
     "peerDependencies": {
-        "koishi": "^4.17.0",
+        "koishi": "^4.17.9",
         "koishi-plugin-chatluna": "^1.0.0-beta.44"
     },
     "engines": {

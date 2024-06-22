@@ -1,7 +1,7 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import EventEmitter from 'events'
 import { Context, h, Logger, Service, Session } from 'koishi'
-import { createLogger } from 'koishi-plugin-chatluna/lib/utils/logger'
+import { createLogger } from 'koishi-plugin-chatluna/utils/logger'
 import { Config } from '..'
 import { Preset } from '../preset'
 import { GroupTemp, Message } from '../types'
@@ -22,7 +22,7 @@ export class MessageCollector extends Service {
 
     preset: Preset
 
-    logger: Logger
+    declare logger: Logger
 
     constructor(
         public readonly ctx: Context,

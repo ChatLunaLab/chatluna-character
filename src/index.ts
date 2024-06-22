@@ -1,7 +1,7 @@
 /* eslint-disable max-len */
 import { Context, Disposable, Schema } from 'koishi'
 
-import { ChatLunaPlugin } from 'koishi-plugin-chatluna/lib/services/chat'
+import { ChatLunaPlugin } from 'koishi-plugin-chatluna/services/chat'
 import { plugins } from './plugin'
 import { MessageCollector } from './service/message'
 import { GuildConfig } from './types'
@@ -20,11 +20,12 @@ export function apply(ctx: Context, config: Config) {
                 await ctx.chatluna_character.preset.loadAllPreset()
                 await plugins(ctx, config)
             },
-            inject: {
-                required: inject.required.concat('chatluna_character'),
-                optional: inject.optional
-            },
-            name: 'chatluna_entry_point'
+            inject: Object.assign({}, inject, {
+                chatluna_character: {
+                    required: true
+                }
+            }),
+            name: 'chatluna_character_entry_point'
         },
         config
     )
@@ -58,8 +59,18 @@ export function apply(ctx: Context, config: Config) {
 }
 
 export const inject = {
-    required: ['chatluna', 'cache'],
-    optional: ['chatluna_character', 'vits']
+    chatluna: {
+        required: true
+    },
+    cache: {
+        required: true
+    },
+    chatluna_character: {
+        required: false
+    },
+    vits: {
+        required: false
+    }
 }
 
 export interface Config extends ChatLunaPlugin.Config {

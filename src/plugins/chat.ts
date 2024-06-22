@@ -7,8 +7,8 @@ import {
     SystemMessage
 } from '@langchain/core/messages'
 import { Context, Element, h, Logger, Random, sleep } from 'koishi'
-import { ChatLunaChatModel } from 'koishi-plugin-chatluna/lib/llm-core/platform/model'
-import { parseRawModelName } from 'koishi-plugin-chatluna/lib/llm-core/utils/count_tokens'
+import { ChatLunaChatModel } from 'koishi-plugin-chatluna/llm-core/platform/model'
+import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
 import { Config } from '..'
 import { Message, PresetTemplate } from '../types'
 
