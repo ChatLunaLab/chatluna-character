@@ -9,6 +9,7 @@ import {
 } from 'koishi-plugin-chatluna/utils/error'
 import path from 'path'
 import { PresetTemplate } from './types'
+import { fileURLToPath } from 'url'
 
 export class Preset {
     private readonly _presets: PresetTemplate[] = []
@@ -135,7 +136,10 @@ export class Preset {
     private async _copyDefaultPresets() {
         const currentPresetDir = path.join(this.resolvePresetDir())
 
-        const defaultPresetDir = path.join(__dirname, '../resources/presets')
+        const dirname =
+            __dirname?.length > 0 ? __dirname : fileURLToPath(import.meta.url)
+
+        const defaultPresetDir = path.join(dirname, '../resources/presets')
 
         const files = await fs.readdir(defaultPresetDir)
 

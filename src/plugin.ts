@@ -1,22 +1,20 @@
 import { Context } from 'koishi'
-import fs from 'fs/promises'
 import { Config } from '.'
-import path from 'path'
+// import start
+import { apply as chat } from './plugins/chat'
+import { apply as commands } from './plugins/commands'
+import { apply as config } from './plugins/config'
+import { apply as filter } from './plugins/filter'
+import { apply as interception } from './plugins/interception' // import end
 
-export async function plugins(ctx: Context, config: Config) {
-    const list = await fs.readdir(path.join(__dirname, 'plugins'))
+export async function plugins(ctx: Context, parent: Config) {
+    type Command = (ctx: Context, config: Config) => PromiseLike<void> | void
 
-    for (let file of list) {
-        if (file.endsWith('.d.ts')) {
-            file = file.slice(0, -5)
-        }
+    const middlewares: Command[] =
+        // middleware start
+        [chat, commands, config, filter, interception] // middleware end
 
-        const command: {
-            apply: (ctx: Context, config: Config) => PromiseLike<void> | void
-        } = await import(`./plugins/${file}.ts`)
-
-        if (command.apply) {
-            await command.apply(ctx, config)
-        }
+    for (const middleware of middlewares) {
+        await middleware(ctx, parent)
     }
 }

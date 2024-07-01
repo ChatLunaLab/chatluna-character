@@ -202,7 +202,7 @@ export class MessageCollector extends Service {
 
         const message: Message = {
             content,
-            name: session.author.name,
+            name: session.author.nick ?? session.author.name,
             id: session.author.id,
             quote: session.quote
                 ? {

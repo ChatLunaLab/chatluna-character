@@ -10,6 +10,7 @@ export interface Message {
 
 export interface GroupTemp {
     completionMessages: BaseMessage[]
+    status?: string
 }
 
 export interface GuildConfig {
@@ -30,6 +31,7 @@ export interface GuildConfig {
 
 export interface PresetTemplate {
     name: string
+    status?: string
     nick_name: string[]
     input: PromptTemplate
     system: PromptTemplate

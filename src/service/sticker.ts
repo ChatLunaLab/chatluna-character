@@ -2,6 +2,7 @@ import { Context, h } from 'koishi'
 import path from 'path'
 import fs, { readFile } from 'fs/promises'
 import { Config } from '..'
+import { fileURLToPath } from 'url'
 
 export class StickerService {
     private _stickers: string[]
@@ -24,8 +25,12 @@ export class StickerService {
         } catch (error) {
             // copy the resource dir to the target dir
             await fs.mkdir(sickerDir, { recursive: true })
+            const dirname =
+                __dirname?.length > 0
+                    ? __dirname
+                    : fileURLToPath(import.meta.url)
             await fs.cp(
-                path.resolve(__dirname, '../../resources/sticker'),
+                path.resolve(dirname, '../resources/sticker'),
                 sickerDir,
                 {
                     recursive: true

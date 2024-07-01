@@ -20,7 +20,7 @@ export function apply(ctx: Context, config: Config) {
                 await ctx.chatluna_character.preset.loadAllPreset()
                 await plugins(ctx, config)
             },
-            inject: Object.assign({}, inject, {
+            inject: Object.assign({}, inject2, {
                 chatluna_character: {
                     required: true
                 }
@@ -59,6 +59,11 @@ export function apply(ctx: Context, config: Config) {
 }
 
 export const inject = {
+    required: ['chatluna', 'cache'],
+    optional: ['chatluna_character', 'vits']
+}
+
+export const inject2 = {
     chatluna: {
         required: true
     },

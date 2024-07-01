@@ -105,7 +105,8 @@ export async function apply(ctx: Context, config: Config) {
             await currentPreset.input.format({
                 history_new: recentMessage,
                 history_last: lastMessage,
-                time: new Date().toLocaleString()
+                time: new Date().toLocaleString(),
+                status: temp.status ?? currentPreset.status ?? ''
             })
         )
 
@@ -125,6 +126,7 @@ export async function apply(ctx: Context, config: Config) {
         )
 
         let responseMessage: BaseMessage
+
         let parsedResponse: ReturnType<typeof parseResponse>
 
         let isError = false
@@ -161,11 +163,11 @@ export async function apply(ctx: Context, config: Config) {
 
         temp.completionMessages.push(humanMessage, responseMessage)
 
-        if (temp.completionMessages.length > 8) {
-            while (temp.completionMessages.length <= 4) {
-                temp.completionMessages.shift()
-            }
+        if (temp.completionMessages.length > 2) {
+            temp.completionMessages.length = 0
         }
+
+        temp.status = parsedResponse.status
 
         const random = new Random()
 
@@ -191,9 +193,15 @@ export async function apply(ctx: Context, config: Config) {
                     parsedResponse.rawMessage.length * copyOfConfig.typingTime +
                     100
                 await sleep(random.int(maxTime / 4, maxTime / 2))
-                await session.send(
-                    await ctx.vits.say({ input: parsedResponse.rawMessage })
-                )
+                try {
+                    await session.send(
+                        await ctx.vits.say({ input: parsedResponse.rawMessage })
+                    )
+                } catch (e) {
+                    logger.error(e)
+                    // fallback to text
+                    await session.send(elements)
+                }
                 break
             }
 
@@ -244,12 +252,15 @@ function parseResponse(response: string, useAt: boolean = true) {
     let rawMessage: string
     let parsedMessage = ''
     let messageType = 'text'
+    let status = ''
     try {
         // match json object
 
         // best match <message>content</message>
 
         rawMessage = response.match(/<message>\s*(.*?)\s*<\/message>/)?.[1]
+
+        status = response.match(/<status>(.*?)<\/status>/)?.[1]
 
         if (rawMessage == null) {
             logger.debug('failed to parse response: ' + response)
@@ -338,6 +349,7 @@ function parseResponse(response: string, useAt: boolean = true) {
     return {
         elements: resultElements,
         rawMessage: parsedMessage,
+        status,
         messageType
     }
 }
