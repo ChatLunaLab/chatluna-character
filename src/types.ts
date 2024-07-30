@@ -5,6 +5,7 @@ export interface Message {
     content: string
     name: string
     id: string
+    timestamp?: number
     quote?: Message
 }
 

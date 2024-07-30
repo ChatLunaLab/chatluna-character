@@ -204,6 +204,7 @@ export class MessageCollector extends Service {
             content,
             name: session.author.nick ?? session.author.name,
             id: session.author.id,
+            timestamp: session.event.timestamp,
             quote: session.quote
                 ? {
                       content: mapElementToString(
@@ -223,6 +224,15 @@ export class MessageCollector extends Service {
         if (groupArray.length > maxMessageSize) {
             while (groupArray.length > maxMessageSize) {
                 groupArray.shift()
+            }
+        }
+
+        for (const message of groupArray) {
+            if (
+                message.timestamp != null &&
+                message.timestamp < Date.now() - 1000 * 60 * 60
+            ) {
+                groupArray.splice(groupArray.indexOf(message), 1)
             }
         }
 
