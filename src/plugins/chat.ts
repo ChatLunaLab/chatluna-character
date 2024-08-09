@@ -129,12 +129,19 @@ export async function apply(ctx: Context, config: Config) {
 
         let parsedResponse: ReturnType<typeof parseResponse>
 
-        let isError = false
+        let retryCount = 0
+        while (retryCount < 3) {
+            retryCount++
 
-        for (let i = 0; i < 3; i++) {
             try {
-                responseMessage = await model.invoke(completionMessages)
+                responseMessage = await model.call(completionMessages)
+            } catch (e) {
+                logger.error('model requests failed', e)
+                retryCount = 3
+                break
+            }
 
+            try {
                 logger.debug('model response: ' + responseMessage.content)
 
                 parsedResponse = parseResponse(
@@ -144,15 +151,11 @@ export async function apply(ctx: Context, config: Config) {
 
                 break
             } catch (e) {
-                logger.error(e)
-                await sleep(2000)
-                if (i === 2) {
-                    isError = true
-                }
+                await sleep(3000)
             }
         }
 
-        if (isError) {
+        if (retryCount >= 3) {
             return
         }
 
