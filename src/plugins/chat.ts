@@ -259,6 +259,13 @@ function isEmoticonStatement(text: string): boolean {
     return regex.test(text)
 }
 
+function isOnlyPunctuation(text: string): boolean {
+    // 匹配中英文标点符号
+    const regex =
+        /^[.,;!?…·—–—()【】「」『』《》<>《》{}【】〔〕“”‘’'"\[\]@#￥%\^&\*\-+=|\\~`]+$/
+    return regex.test(text)
+}
+
 function parseResponse(response: string, useAt: boolean = true) {
     let rawMessage: string
     let parsedMessage = ''
@@ -370,6 +377,9 @@ function parseResponse(response: string, useAt: boolean = true) {
 }
 
 function splitSentence(text: string): string[] {
+    if (isOnlyPunctuation(text)) {
+        return [text]
+    }
     const result: string[] = []
 
     const lines = text
