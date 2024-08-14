@@ -106,6 +106,7 @@ export async function apply(ctx: Context, config: Config) {
                 history_new: recentMessage,
                 history_last: lastMessage,
                 time: new Date().toLocaleString(),
+                stickers: JSON.stringify(stickerService.getAllStickTypes()),
                 status: temp.status ?? currentPreset.status ?? ''
             })
         )
@@ -134,7 +135,7 @@ export async function apply(ctx: Context, config: Config) {
             retryCount++
 
             try {
-                responseMessage = await model.call(completionMessages)
+                responseMessage = await model.invoke(completionMessages)
             } catch (e) {
                 logger.error('model requests failed', e)
                 retryCount = 3
@@ -178,6 +179,10 @@ export async function apply(ctx: Context, config: Config) {
             const text = elements
                 .map((element) => element.attrs.content ?? '')
                 .join('')
+
+            if (elements.length < 1) {
+                continue
+            }
 
             let maxTime = text.length * copyOfConfig.typingTime + 100
 
@@ -232,9 +237,12 @@ export async function apply(ctx: Context, config: Config) {
             }
         }
 
-        const sticker = await stickerService.randomStick()
+        const randomNumber = Math.random()
 
-        if (sticker) {
+        if (randomNumber < config.sendStickerProbability) {
+            const sticker = await stickerService.randomStickByType(
+                parsedResponse.sticker
+            )
             await sleep(random.int(500, 2000))
             await session.send(sticker)
         }
@@ -256,6 +264,7 @@ function parseResponse(response: string, useAt: boolean = true) {
     let parsedMessage = ''
     let messageType = 'text'
     let status = ''
+    let sticker: string | null = null
     try {
         // match json object
 
@@ -278,11 +287,13 @@ function parseResponse(response: string, useAt: boolean = true) {
         const tempJson = JSON.parse(rawMessage) as {
             name: string
             type: string
+            sticker: string
             content: string
         }
 
         rawMessage = tempJson.content
         messageType = tempJson.type
+        sticker = tempJson.sticker
 
         if (typeof rawMessage !== 'string') {
             throw new Error('Failed to parse response: ' + response)
@@ -353,6 +364,7 @@ function parseResponse(response: string, useAt: boolean = true) {
         elements: resultElements,
         rawMessage: parsedMessage,
         status,
+        sticker,
         messageType
     }
 }
@@ -530,7 +542,7 @@ async function formatMessage(
     for (let i = messages.length - 1; i >= 0; i--) {
         const message = messages[i]
 
-        const voiceProbability = random.int(1, 10) > 5 ? 'voice' : 'text'
+        const voiceProbability = random.int(1, 10) > 8 ? 'voice' : 'text'
         const jsonMessage = `{"name":"${message.name}","id":"${message.id}","content":${JSON.stringify(
             message.content
         )}","type":"${voiceProbability}"}`

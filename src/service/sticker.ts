@@ -5,7 +5,7 @@ import { Config } from '..'
 import { fileURLToPath } from 'url'
 
 export class StickerService {
-    private _stickers: string[]
+    private _stickers: Record<string, string[]> = {}
 
     constructor(
         private _ctx: Context,
@@ -40,21 +40,53 @@ export class StickerService {
 
         // read the dir
 
-        const files = await fs.readdir(sickerDir)
+        const dirs = await fs.readdir(sickerDir)
 
-        this._stickers = files.map((file) => path.resolve(sickerDir, file))
+        for (const dirName of dirs) {
+            const dir = path.resolve(sickerDir, dirName)
+
+            const stats = await fs.stat(dir)
+
+            if (stats.isDirectory()) {
+                const stickers = await fs.readdir(dir)
+                this._stickers[dirName] = stickers.map((sticker) =>
+                    path.resolve(dir, sticker)
+                )
+            }
+        }
     }
 
-    async randomStick(): Promise<h> {
-        const random = Math.random()
+    getAllStickTypes() {
+        return Object.keys(this._stickers)
+    }
 
-        if (random >= this._config.sendStickerProbability) {
-            return undefined
+    async randomStickByType(type: string) {
+        const allStickers = this._stickers[type]
+
+        if (!allStickers) {
+            return this.randomStick()
         }
 
         // random a sticker
-        const index = Math.floor(Math.random() * this._stickers.length)
-        const sticker = this._stickers[index]
+        const index = Math.floor(Math.random() * allStickers.length)
+        const sticker = allStickers[index]
+
+        if (!sticker) {
+            return undefined
+        }
+
+        this._ctx.root.chatluna_character.logger.debug(
+            `send sticker: ${sticker}`
+        )
+
+        return h.image(await readFile(sticker), `image/${getFileType(sticker)}`)
+    }
+
+    async randomStick(): Promise<h> {
+        const allStickers = Object.values(this._stickers).flat()
+        // random a sticker
+        const index = Math.floor(Math.random() * allStickers.length)
+        const sticker = allStickers[index]
 
         if (!sticker) {
             return undefined
