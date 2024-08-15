@@ -166,6 +166,7 @@ export function loadPreset(text: string): PresetTemplate {
         nick_name: rawPreset.nick_name,
         input: PromptTemplate.fromTemplate(rawPreset.input),
         system: PromptTemplate.fromTemplate(rawPreset.system),
-        mute_keyword: rawPreset.mute_keyword ?? []
+        mute_keyword: rawPreset.mute_keyword ?? [],
+        status: rawPreset?.status
     }
 }

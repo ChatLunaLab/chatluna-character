@@ -93,6 +93,7 @@ export async function apply(ctx: Context, config: Config) {
 
         const temp = await service.getTemp(session)
 
+        logger.debug(temp.status, JSON.stringify(currentPreset))
         const formattedSystemPrompt = await currentPreset.system.format({
             time: new Date().toLocaleString(),
             status: temp.status ?? currentPreset.status ?? '',
