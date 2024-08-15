@@ -202,7 +202,12 @@ export class MessageCollector extends Service {
 
         const message: Message = {
             content,
-            name: session.author.nick ?? session.author.name,
+            name: getNotEmptyString(
+                session.author?.nick,
+                session.author?.name,
+                session.event.user?.name,
+                session.username
+            ),
             id: session.author.id,
             timestamp: session.event.timestamp,
             quote: session.quote
@@ -273,7 +278,7 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
             if (element.attrs.id === session.bot.selfId) {
                 name = name ?? session.bot.user.name ?? '0'
             }
-            if (name == null) {
+            if (name == null || name.length < 1) {
                 name = element.attrs.id ?? '0'
             }
 
@@ -294,5 +299,13 @@ interface GroupLock {
 declare module 'koishi' {
     export interface Context {
         chatluna_character: MessageCollector
+    }
+}
+
+export function getNotEmptyString(...texts: (string | undefined)[]): string {
+    for (const text of texts) {
+        if (text && text?.length > 0) {
+            return text
+        }
     }
 }

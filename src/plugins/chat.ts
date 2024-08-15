@@ -94,7 +94,9 @@ export async function apply(ctx: Context, config: Config) {
         const temp = await service.getTemp(session)
 
         const formattedSystemPrompt = await currentPreset.system.format({
-            time: new Date().toLocaleString()
+            time: new Date().toLocaleString(),
+            status: temp.status ?? currentPreset.status ?? '',
+            stickers: JSON.stringify(stickerService.getAllStickTypes())
         })
 
         logger.debug('messages_new: ' + JSON.stringify(recentMessage))
@@ -262,7 +264,7 @@ function isEmoticonStatement(text: string): boolean {
 function isOnlyPunctuation(text: string): boolean {
     // 匹配中英文标点符号
     const regex =
-        /^[.,;!?…·—–—()【】「」『』《》<>《》{}【】〔〕“”‘’'"\[\]@#￥%\^&\*\-+=|\\~`]+$/
+        /^[.,;!?…·—–—()【】「」『』《》<>《》{}【】〔〕“”‘’'"\[\]@#￥%\^&\*\-+=|\\~？。`]+$/
     return regex.test(text)
 }
 
