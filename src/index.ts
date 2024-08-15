@@ -263,7 +263,7 @@ export const Config = Schema.intersect([
                     .description('发送表情的概率'),
                 preset: Schema.dynamic('character-preset')
                     .description('使用的伪装预设')
-                    .default('旧梦旧念')
+                    .default('煕')
             })
         )
             .role('table')
