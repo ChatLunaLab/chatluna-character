@@ -93,7 +93,6 @@ export async function apply(ctx: Context, config: Config) {
 
         const temp = await service.getTemp(session)
 
-        logger.debug(temp.status, JSON.stringify(currentPreset))
         const formattedSystemPrompt = await currentPreset.system.format({
             time: new Date().toLocaleString(),
             status: temp.status ?? currentPreset.status ?? '',
@@ -163,6 +162,8 @@ export async function apply(ctx: Context, config: Config) {
             return
         }
 
+        temp.status = parsedResponse.status
+
         if (parsedResponse.elements.length < 1) {
             service.mute(session, copyOfConfig.muteTime)
             return
@@ -170,11 +171,9 @@ export async function apply(ctx: Context, config: Config) {
 
         temp.completionMessages.push(humanMessage, responseMessage)
 
-        if (temp.completionMessages.length > 2) {
+        if (temp.completionMessages.length > 5) {
             temp.completionMessages.length = 0
         }
-
-        temp.status = parsedResponse.status
 
         const random = new Random()
 
@@ -280,9 +279,9 @@ function parseResponse(response: string, useAt: boolean = true) {
 
         // best match <message>content</message>
 
-        rawMessage = response.match(/<message>\s*(.*?)\s*<\/message>/)?.[1]
+        rawMessage = response.match(/<message>\s*(.*?)\s*<\/message>/s)?.[1]
 
-        status = response.match(/<status>(.*?)<\/status>/)?.[1]
+        status = response.match(/<status>(.*?)<\/status>/s)?.[1]
 
         if (rawMessage == null) {
             logger.debug('failed to parse response: ' + response)
