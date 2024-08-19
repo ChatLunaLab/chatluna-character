@@ -41,7 +41,7 @@
   },
   "homepage": "https://github.com/ChatLunaLab/chatluna-character#readme",
   "dependencies": {
-    "@langchain/core": "^0.1.63",
+    "@langchain/core": "^0.2.27",
     "js-yaml": "^4.1.0"
   },
   "devDependencies": {
