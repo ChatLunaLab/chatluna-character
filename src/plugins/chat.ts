@@ -14,6 +14,7 @@ import { Message, PresetTemplate } from '../types'
 
 export async function apply(ctx: Context, config: Config) {
     const service = ctx.chatluna_character
+
     const preset = service.preset
     const stickerService = service.stickerService
     logger = service.logger
@@ -57,8 +58,15 @@ export async function apply(ctx: Context, config: Config) {
         }
     }
 
-    const globalPreset = await preset.getPreset(config.defaultPreset)
-    const presetPool: Record<string, PresetTemplate> = {}
+    let globalPreset = await preset.getPreset(config.defaultPreset)
+
+    let presetPool: Record<string, PresetTemplate> = {}
+
+    ctx.on('chatluna_character/preset_updated', async () => {
+        globalPreset = await preset.getPreset(config.defaultPreset)
+
+        presetPool = {}
+    })
 
     service.collect(async (session, messages) => {
         const guildId = session.event.guild?.id ?? session.guildId
@@ -74,13 +82,13 @@ export async function apply(ctx: Context, config: Config) {
             copyOfConfig = Object.assign({}, copyOfConfig, currentGuildConfig)
             currentPreset =
                 presetPool[guildId] ??
-                (() => {
-                    const template = preset.getPresetForCache(
+                (await (async () => {
+                    const template = await preset.getPreset(
                         currentGuildConfig.preset
                     )
                     presetPool[guildId] = template
                     return template
-                })()
+                })())
         }
 
         const [recentMessage, lastMessage] = await formatMessage(
@@ -212,7 +220,7 @@ export async function apply(ctx: Context, config: Config) {
                     // fallback to text
                     await session.send(elements)
                 }
-                break
+                continue
             }
 
             try {

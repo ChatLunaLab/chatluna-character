@@ -135,7 +135,7 @@ export const Config = Schema.intersect([
         maxTokens: Schema.number()
             .default(4000)
             .min(1024)
-            .max(16000)
+            .max(24000)
             .description('使用聊天的最大 token 数')
     }).description('模型配置'),
 

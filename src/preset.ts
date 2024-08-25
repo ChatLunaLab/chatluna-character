@@ -51,6 +51,8 @@ export class Preset {
                     .map((name) => Schema.const(name))
             )
         )
+
+        this.ctx.emit('chatluna_character/preset_updated')
     }
 
     async getPreset(
@@ -213,5 +215,11 @@ export function loadPreset(text: string): PresetTemplate {
         system: PromptTemplate.fromTemplate(rawPreset.system),
         mute_keyword: rawPreset.mute_keyword ?? [],
         status: rawPreset?.status
+    }
+}
+
+declare module 'koishi' {
+    interface Events {
+        'chatluna_character/preset_updated': () => void
     }
 }
