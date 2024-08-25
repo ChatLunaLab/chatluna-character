@@ -22,3 +22,5 @@
   name: yakumo/version
 - id: ksec0h
   name: yakumo/publish
+- id: xdeuso
+  name: yakumo/run
