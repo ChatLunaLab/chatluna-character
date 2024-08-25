@@ -17,7 +17,7 @@ export function apply(ctx: Context, config: Config) {
         {
             apply: async (ctx: Context, config: Config) => {
                 await ctx.chatluna_character.stickerService.init()
-                await ctx.chatluna_character.preset.loadAllPreset()
+                await ctx.chatluna_character.preset.init()
                 await plugins(ctx, config)
             },
             inject: Object.assign({}, inject2, {

@@ -10,9 +10,12 @@ import {
 import path from 'path'
 import { PresetTemplate } from './types'
 import { fileURLToPath } from 'url'
+import { watch } from 'fs'
 
 export class Preset {
     private readonly _presets: PresetTemplate[] = []
+
+    private _aborter: AbortController | null = null
 
     constructor(private readonly ctx: Context) {}
 
@@ -61,6 +64,48 @@ export class Preset {
         }
 
         return this.getPresetForCache(triggerKeyword, throwError)
+    }
+
+    watchPreset() {
+        let fsWait: NodeJS.Timeout | boolean = false
+
+        if (this._aborter != null) {
+            this._aborter.abort()
+        }
+
+        this._aborter = new AbortController()
+
+        watch(
+            this.resolvePresetDir(),
+            {
+                signal: this._aborter.signal
+            },
+            async (event, filename) => {
+                if (filename) {
+                    if (fsWait) return
+                    fsWait = setTimeout(() => {
+                        fsWait = false
+                    }, 100)
+
+                    await this.loadAllPreset()
+                    this.ctx.chatluna_character.logger.debug(
+                        `trigger full reload preset ${filename}`
+                    )
+
+                    return
+                }
+
+                await this.loadAllPreset()
+                this.ctx.chatluna_character.logger.debug(
+                    `trigger full reload preset`
+                )
+            }
+        )
+    }
+
+    async init() {
+        await this.loadAllPreset()
+        this.watchPreset()
     }
 
     getPresetForCache(
