@@ -17,7 +17,11 @@ export class Preset {
 
     private _aborter: AbortController | null = null
 
-    constructor(private readonly ctx: Context) {}
+    constructor(private readonly ctx: Context) {
+        ctx.on('dispose', () => {
+            this._aborter?.abort()
+        })
+    }
 
     async loadAllPreset() {
         await this._checkPresetDir()

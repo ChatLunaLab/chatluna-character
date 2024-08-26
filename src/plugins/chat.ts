@@ -63,7 +63,8 @@ export async function apply(ctx: Context, config: Config) {
     let presetPool: Record<string, PresetTemplate> = {}
 
     ctx.on('chatluna_character/preset_updated', async () => {
-        globalPreset = await preset.getPreset(config.defaultPreset)
+        // updated
+        globalPreset = preset.getPresetForCache(config.defaultPreset)
 
         presetPool = {}
     })
@@ -83,7 +84,7 @@ export async function apply(ctx: Context, config: Config) {
             currentPreset =
                 presetPool[guildId] ??
                 (await (async () => {
-                    const template = await preset.getPreset(
+                    const template = preset.getPresetForCache(
                         currentGuildConfig.preset
                     )
                     presetPool[guildId] = template
