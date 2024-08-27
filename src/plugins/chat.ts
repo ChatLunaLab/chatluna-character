@@ -58,7 +58,7 @@ export async function apply(ctx: Context, config: Config) {
         }
     }
 
-    let globalPreset = await preset.getPreset(config.defaultPreset)
+    let globalPreset = preset.getPresetForCache(config.defaultPreset)
 
     let presetPool: Record<string, PresetTemplate> = {}
 
