@@ -95,7 +95,7 @@ export class Preset {
 
                     await this.loadAllPreset()
                     this.ctx.chatluna_character.logger.debug(
-                        `trigger full reload preset ${filename}`
+                        `trigger full reload preset by ${filename}`
                     )
 
                     return
