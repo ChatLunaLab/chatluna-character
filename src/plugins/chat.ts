@@ -62,7 +62,7 @@ export async function apply(ctx: Context, config: Config) {
 
     let presetPool: Record<string, PresetTemplate> = {}
 
-    ctx.on('chatluna_character/preset_updated', async () => {
+    ctx.on('chatluna_character/preset_updated', () => {
         // updated
         globalPreset = preset.getPresetForCache(config.defaultPreset)
 
