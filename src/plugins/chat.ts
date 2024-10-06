@@ -11,6 +11,8 @@ import { ChatLunaChatModel } from 'koishi-plugin-chatluna/llm-core/platform/mode
 import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
 import { Config } from '..'
 import { Message, PresetTemplate } from '../types'
+import sax from 'sax'
+import { transform } from 'koishi-plugin-markdown'
 
 export async function apply(ctx: Context, config: Config) {
     const service = ctx.chatluna_character
@@ -284,25 +286,21 @@ function parseResponse(response: string, useAt: boolean = true) {
     let status = ''
     let sticker: string | null = null
     try {
-        // match json object
+        // match xml object
 
-        // best match <message>content</message>
+        // best match <message_part>content</message_part>
 
-        rawMessage = response.match(/<message>\s*(.*?)\s*<\/message>/s)?.[1]
+        rawMessage = response.match(
+            /<message_part>\s*(.*?)\s*<\/message_part>/s
+        )?.[1]
 
         status = response.match(/<status>(.*?)<\/status>/s)?.[1]
 
         if (rawMessage == null) {
-            logger.debug('failed to parse response: ' + response)
-            // try to find the first "{" and the last "}", sub it and as a json
-            // good luck.
-            rawMessage = response.substring(
-                response.indexOf('{'),
-                response.lastIndexOf('}') + 1
-            )
+            throw new Error('Failed to parse response: ' + response)
         }
 
-        const tempJson = JSON.parse(rawMessage) as {
+        const tempJson = parseXmlToObject(rawMessage) as {
             name: string
             type: string
             sticker: string
@@ -324,7 +322,7 @@ function parseResponse(response: string, useAt: boolean = true) {
     const resultElements: Element[][] = []
 
     const currentElements: Element[] = []
-    // match [at:name:id] -> id
+    // match <at name='name'>id</at>
 
     const atMatch = matchAt(rawMessage)
 
@@ -335,7 +333,7 @@ function parseResponse(response: string, useAt: boolean = true) {
 
             if (before.length > 0) {
                 parsedMessage += before
-                currentElements.push(h.text(before))
+                currentElements.push(...transform(before))
             }
 
             if (useAt) {
@@ -349,27 +347,40 @@ function parseResponse(response: string, useAt: boolean = true) {
 
         if (after.length > 0) {
             parsedMessage += after
-            currentElements.push(h.text(after))
+            currentElements.push(...transform(after))
         }
     } else {
         parsedMessage = rawMessage
-        currentElements.push(h.text(rawMessage))
+        currentElements.push(...transform(rawMessage))
     }
 
-    for (let currentElement of currentElements) {
-        if (currentElement.type === 'text') {
-            const text = currentElement.attrs.content as string
+    const forEachElement = (elements: Element[]) => {
+        for (let element of elements) {
+            if (element.type === 'text') {
+                const text = element.attrs.content as string
 
-            const matchArray = splitSentence(text).filter((x) => x.length > 0)
+                const matchArray = splitSentence(text).filter(
+                    (x) => x.length > 0
+                )
 
-            for (const match of matchArray) {
-                currentElement = h.text(match)
-                resultElements.push([currentElement])
+                for (const match of matchArray) {
+                    element = h.text(match)
+                    resultElements.push([element])
+                }
+            } else if (
+                element.type === 'em' ||
+                element.type === 'strong' ||
+                element.type === 'del' ||
+                element.type === 'p'
+            ) {
+                forEachElement(element.children)
+            } else {
+                resultElements.push([element])
             }
-        } else {
-            resultElements.push([currentElement])
         }
     }
+
+    forEachElement(currentElements)
 
     if (resultElements[0]?.[0]?.type === 'at' && resultElements.length > 1) {
         resultElements[1].unshift(h.text(' '))
@@ -385,6 +396,30 @@ function parseResponse(response: string, useAt: boolean = true) {
         sticker,
         messageType
     }
+}
+
+function parseXmlToObject(xml: string) {
+    // use sax to parse xml
+    const parser = sax.parser(false, {
+        // 小写
+        lowercase: true
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result: Record<string, any> = {}
+
+    parser.ontext = function (text: string) {
+        result['content'] = text
+    }
+
+    parser.onattribute = function (attr: { name: string; value: string }) {
+        result[attr.name] = attr.value
+    }
+
+    parser.write(xml).close()
+
+    result['content'] = result['content'] ?? ''
+
+    return result
 }
 
 function splitSentence(text: string): string[] {
@@ -493,12 +528,13 @@ function splitSentence(text: string): string[] {
 }
 
 function matchAt(str: string) {
-    // (旧梦旧念:3510003509:<at>)
-    // /\(.*\-(\d+)\-<at>\)/g
-    const atRegex = /([(（]).*-(\d+)-<at>([)）])/g
+    // <at name='name'>id</at>
+    // <at(.*?)>id</at>
+    // get id, if the name is empty
+    const atRegex = /<at[^>]*>(.*?)<\/at>/g
     return [...str.matchAll(atRegex)].map((item) => {
         return {
-            at: item[2],
+            at: item[1],
             start: item.index,
             end: item.index + item[0].length
         }
@@ -564,17 +600,17 @@ async function formatMessage(
         const message = messages[i]
 
         const voiceProbability = random.int(1, 10) > 8 ? 'voice' : 'text'
-        const jsonMessage = `{"name":"${message.name}","id":"${message.id}","content":${JSON.stringify(
-            message.content
-        )}","type":"${voiceProbability}"}`
-        const jsonMessageToken = await model.getNumTokens(jsonMessage)
 
-        if (currentTokens + jsonMessageToken > maxTokens - 4) {
+        const xmlMessage = `<message type='${voiceProbability}' name='${message.name}' id='${message.id}'>${message.content}</message>`
+
+        const xmlMessageToken = await model.getNumTokens(xmlMessage)
+
+        if (currentTokens + xmlMessageToken > maxTokens - 4) {
             break
         }
 
-        currentTokens += jsonMessageToken
-        calculatedMessages.unshift(jsonMessage)
+        currentTokens += xmlMessageToken
+        calculatedMessages.unshift(xmlMessage)
     }
 
     const lastMessage = calculatedMessages.pop()

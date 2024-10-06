@@ -282,7 +282,7 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
                 name = element.attrs.id ?? '0'
             }
 
-            filteredBuffer.push(`(${name}-${element.attrs.id}-<at>)`)
+            filteredBuffer.push(`<at name='${name}'>${element.attrs.id}</at>`)
         }
     }
 
