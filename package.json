@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-chatluna-character",
   "description": "Let the large language model play a role, disguise as a group friend",
-  "version": "0.0.68",
+  "version": "0.0.69",
   "type": "module",
   "main": "lib/index.cjs",
   "module": "lib/index.mjs",
@@ -47,7 +47,6 @@
   },
   "devDependencies": {
     "@initencounter/vits": "^0.0.3",
-    "@types/sax": "^1",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^8.6.0",
     "atsc": "^1.2.2",
