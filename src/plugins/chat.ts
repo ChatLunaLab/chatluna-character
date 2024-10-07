@@ -11,7 +11,6 @@ import { ChatLunaChatModel } from 'koishi-plugin-chatluna/llm-core/platform/mode
 import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
 import { Config } from '..'
 import { Message, PresetTemplate } from '../types'
-import sax from 'sax'
 import { transform } from 'koishi-plugin-markdown'
 
 export async function apply(ctx: Context, config: Config) {
@@ -193,6 +192,8 @@ export async function apply(ctx: Context, config: Config) {
                 .map((element) => element.attrs.content ?? '')
                 .join('')
 
+            const emoticonStatement = isEmoticonStatement(text, elements)
+
             if (elements.length < 1) {
                 continue
             }
@@ -201,7 +202,7 @@ export async function apply(ctx: Context, config: Config) {
 
             if (
                 parsedResponse.messageType === 'voice' &&
-                isEmoticonStatement(text)
+                emoticonStatement !== 'text'
             ) {
                 continue
             }
@@ -227,7 +228,12 @@ export async function apply(ctx: Context, config: Config) {
             }
 
             try {
-                await sleep(random.int(maxTime / 2, maxTime))
+                if (emoticonStatement !== 'emo') {
+                    await sleep(random.int(maxTime / 2, maxTime))
+                } else {
+                    await sleep(random.int(maxTime / 8, maxTime / 2))
+                }
+
                 switch (parsedResponse.messageType) {
                     case 'text':
                         await session.send(elements)
@@ -266,10 +272,17 @@ export async function apply(ctx: Context, config: Config) {
     })
 }
 
-function isEmoticonStatement(text: string): boolean {
+function isEmoticonStatement(
+    text: string,
+    elements: Element[]
+): 'emoji' | 'text' | 'emo' {
+    if (elements.length === 1 && elements[0].attrs['emo']) {
+        return 'emo'
+    }
+
     const regex =
         /^[\p{P}\p{S}\p{Z}\p{M}\p{N}\p{L}\s]*\p{So}[\p{P}\p{S}\p{Z}\p{M}\p{N}\p{L}\s]*$/u
-    return regex.test(text)
+    return regex.test(text) ? 'emoji' : 'text'
 }
 
 function isOnlyPunctuation(text: string): boolean {
@@ -355,17 +368,31 @@ function parseResponse(response: string, useAt: boolean = true) {
     }
 
     const forEachElement = (elements: Element[]) => {
-        for (let element of elements) {
+        for (let i = 0; i < elements.length; i++) {
+            const element = elements[i]
             if (element.type === 'text') {
                 const text = element.attrs.content as string
+
+                if (text.endsWith('<emo>')) {
+                    const nextElement = elements[i + 1]
+                    const endElement = elements[i + 2]
+                    const endElementText = endElement.attrs.content as string
+
+                    if (endElementText.endsWith('</emo>')) {
+                        nextElement.attrs['emo'] = true
+                        resultElements.push([nextElement])
+                        i += 2
+                        continue
+                    }
+                }
 
                 const matchArray = splitSentence(text).filter(
                     (x) => x.length > 0
                 )
 
                 for (const match of matchArray) {
-                    element = h.text(match)
-                    resultElements.push([element])
+                    const newElement = h.text(match)
+                    resultElements.push([newElement])
                 }
             } else if (
                 element.type === 'em' ||
@@ -399,33 +426,43 @@ function parseResponse(response: string, useAt: boolean = true) {
 }
 
 function parseXmlToObject(xml: string) {
-    // use sax to parse xml
-    const parser = sax.parser(false, {
-        // 小写
-        lowercase: true
-    })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result: Record<string, any> = {}
+    /* <message name='煕' id='0' type='text' sticker='喜欢'><emo>(づ｡◕‿‿◕｡)づ</emo> <emo>(ಡωಡ)hiahiahia</emo></message> */
 
-    parser.ontext = function (text: string) {
-        result['content'] = text
+    const messageRegex = /<message\s+(.*?)>(.*?)<\/message>/s
+    const match = xml.match(messageRegex)
+
+    if (!match) {
+        throw new Error('Failed to parse response: ' + xml)
     }
 
-    parser.onattribute = function (attr: { name: string; value: string }) {
-        result[attr.name] = attr.value
+    const [, attributes, content] = match
+
+    const getAttr = (name: string): string => {
+        const attrRegex = new RegExp(`${name}=['"]?([^'"]+)['"]?`)
+        const attrMatch = attributes.match(attrRegex)
+        if (!attrMatch) {
+            throw new Error(`Failed to parse ${name} attribute: ${xml}`)
+        }
+        return attrMatch[1]
     }
 
-    parser.write(xml).close()
+    const name = getAttr('name')
+    const id = getAttr('id')
+    const type = getAttr('type') || 'text'
+    const sticker = getAttr('sticker')
 
-    result['content'] = result['content'] ?? ''
+    if (!content) {
+        throw new Error('Failed to parse content: ' + xml)
+    }
 
-    return result
+    return { name, id, type, sticker, content }
 }
 
 function splitSentence(text: string): string[] {
     if (isOnlyPunctuation(text)) {
         return [text]
     }
+
     const result: string[] = []
 
     const lines = text
@@ -512,7 +549,7 @@ function splitSentence(text: string): string[] {
         }
 
         if (current.length > 2 || mustPunctuations.includes(char)) {
-            result.push(current.trimStart().trimEnd())
+            result.push(current)
 
             current = ''
         } else if (!retainPunctuations.includes(char)) {
@@ -521,7 +558,7 @@ function splitSentence(text: string): string[] {
     }
 
     if (current.length > 0) {
-        result.push(current.trimStart().trimEnd())
+        result.push(current)
     }
 
     return result.filter((item) => punctuations.indexOf(item) === -1)
