@@ -452,7 +452,7 @@ function parseXmlToObject(xml: string) {
     const type = getAttr('type') || 'text'
     const sticker = getAttr('sticker')
 
-    if (!content) {
+    if (!content || content.length === 0) {
         throw new Error('Failed to parse content: ' + xml)
     }
 
