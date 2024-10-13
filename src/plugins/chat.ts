@@ -427,6 +427,7 @@ function parseResponse(response: string, useAt: boolean = true) {
 
 function parseXmlToObject(xml: string) {
     /* <message name='煕' id='0' type='text' sticker='喜欢'><emo>(づ｡◕‿‿◕｡)づ</emo> <emo>(ಡωಡ)hiahiahia</emo></message> */
+    /* <message name='煕' id='0' type='text' sticker='喜欢'></message> */
 
     const messageRegex = /<message\s+(.*?)>(.*?)<\/message>/s
     const match = xml.match(messageRegex)
@@ -452,7 +453,7 @@ function parseXmlToObject(xml: string) {
     const type = getAttr('type') || 'text'
     const sticker = getAttr('sticker')
 
-    if (!content || content.length === 0) {
+    if (content === undefined) {
         throw new Error('Failed to parse content: ' + xml)
     }
 
