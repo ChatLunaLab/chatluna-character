@@ -441,7 +441,8 @@ function parseXmlToObject(xml: string) {
         const attrRegex = new RegExp(`${name}=['"]?([^'"]+)['"]?`)
         const attrMatch = attributes.match(attrRegex)
         if (!attrMatch) {
-            throw new Error(`Failed to parse ${name} attribute: ${xml}`)
+            logger.warn(`Failed to parse ${name} attribute: ${xml}`)
+            return ''
         }
         return attrMatch[1]
     }

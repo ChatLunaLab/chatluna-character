@@ -8,9 +8,9 @@
   "typings": "lib/index.d.ts",
   "exports": {
     ".": {
+      "types": "./lib/index.d.ts",
       "import": "./lib/index.mjs",
-      "require": "./lib/index.cjs",
-      "types": "./lib/index.d.ts"
+      "require": "./lib/index.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -67,7 +67,7 @@
   },
   "peerDependencies": {
     "koishi": "^4.18.0",
-    "koishi-plugin-chatluna": "^1.0.0-beta.95"
+    "koishi-plugin-chatluna": "^1.0.0-beta.100"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -86,7 +86,6 @@
     "description": {
       "zh": "让大语言模型进行角色扮演，伪装成群友"
     },
-    "preview": true,
     "service": {
       "required": [
         "chatluna"
