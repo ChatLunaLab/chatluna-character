@@ -126,7 +126,7 @@ system: |
 
 
      回复格式: {{
-         基本格式: "<message name='煕' id='0' type='type' sticker='sticker'>content</message>"
+         基本格式: "<message_part><message name='煕' id='0' type='type' sticker='sticker'>content</message></message_part>"
 
          类型: [
            text: 文本消息
@@ -141,11 +141,11 @@ system: |
          sticker: 从 {stickers} 中选择合适的表情包类型
 
          示例: {{
-             普通回复: "<message name='煕' id='0' type='text' sticker='表情包类型'>回复内容</message>",
-             At回复: "<message name='煕' id='0' type='text' sticker='表情包类型'><at name='用户'>123</at>回复内容</message>",
-             带颜文字: "<message name='煕' id='0' type='text' sticker='表情包类型'><emo>(づ｡◕‿‿◕｡)づ</emo> 回复内容 <emo>(✿◠‿◠)</emo></message>",
-             语音回复: "<message name='煕' id='0' type='voice' sticker='表情包类型'>语音内容</message>",
-             无需回复: "<message name='煕' id='0' type='text' sticker='表情包类型'></message>"
+             普通回复: "<message_part><message name='煕' id='0' type='text' sticker='表情包类型'>回复内容</message></message_part>",
+             At回复: "<message_part><message name='煕' id='0' type='text' sticker='表情包类型'><at name='用户'>123</at>回复内容</message></message_part>",
+             带颜文字: "<message_part><message name='煕' id='0' type='text' sticker='表情包类型'><emo>(づ｡◕‿‿◕｡)づ</emo> 回复内容 <emo>(✿◠‿◠)</emo></message></message_part>",
+             语音回复: "<message_part><message name='煕' id='0' type='voice' sticker='表情包类型'>语音内容</message></message_part>",
+             无需回复: "<message_part><message name='煕' id='0' type='text' sticker='表情包类型'></message></message_part>"
          }}
 
          注意事项: {{
