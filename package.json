@@ -1,98 +1,112 @@
 {
-  "name": "koishi-plugin-chatluna-character",
-  "description": "Let the large language model play a role, disguise as a group friend",
-  "version": "0.0.71",
-  "type": "module",
-  "main": "lib/index.cjs",
-  "module": "lib/index.mjs",
-  "typings": "lib/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./lib/index.d.ts",
-      "import": "./lib/index.mjs",
-      "require": "./lib/index.cjs"
+    "name": "koishi-plugin-chatluna-character",
+    "description": "Let the large language model play a role, disguise as a group friend",
+    "version": "0.0.71",
+    "type": "module",
+    "main": "lib/index.cjs",
+    "module": "lib/index.mjs",
+    "typings": "lib/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./lib/index.d.ts",
+            "import": "./lib/index.mjs",
+            "require": "./lib/index.cjs"
+        },
+        "./package.json": "./package.json"
     },
-    "./package.json": "./package.json"
-  },
-  "files": [
-    "lib",
-    "dist",
-    "resources"
-  ],
-  "license": "AGPL-3.0",
-  "keywords": [
-    "chatbot",
-    "koishi",
-    "plugin",
-    "service",
-    "chatgpt",
-    "chatluna",
-    "preset",
-    "market"
-  ],
-  "author": "dingyi222666 <dingyi222666@foxmail.com>",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/ChatLunaLab/chatluna-character.git",
-    "directory": "."
-  },
-  "bugs": {
-    "url": "https://github.com/ChatLunaLab/chatluna-character/issues"
-  },
-  "homepage": "https://github.com/ChatLunaLab/chatluna-character#readme",
-  "dependencies": {
-    "@langchain/core": "^0.3.3",
-    "js-yaml": "^4.1.0",
-    "koishi-plugin-markdown": "^1.1.1"
-  },
-  "devDependencies": {
-    "@initencounter/vits": "^0.0.3",
-    "@typescript-eslint/eslint-plugin": "^7.18.0",
-    "@typescript-eslint/parser": "^8.6.0",
-    "atsc": "^1.2.2",
-    "esbuild": "^0.23.1",
-    "esbuild-register": "^3.6.0",
-    "eslint": "^8.57.1",
-    "eslint-config-prettier": "^9.1.0",
-    "eslint-config-standard": "^17.1.0",
-    "eslint-plugin-import": "^2.30.0",
-    "eslint-plugin-n": "^16.6.2",
-    "eslint-plugin-prettier": "^5.2.1",
-    "eslint-plugin-promise": "^7.1.0",
-    "koishi": "^4.18.0",
-    "yakumo": "^1.0.0-beta.18",
-    "yakumo-esbuild": "^1.0.0-beta.6",
-    "yakumo-mocha": "^1.0.0-beta.2",
-    "yakumo-tsc": "^1.0.0-beta.4"
-  },
-  "peerDependencies": {
-    "koishi": "^4.18.0",
-    "koishi-plugin-chatluna": "^1.0.0-beta.100"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "scripts": {
-    "process-dynamic-import": "node ./processDynamicImport.js",
-    "fast-build": "yarn yakumo build",
-    "build": "yarn process-dynamic-import && yarn fast-build",
-    "bump": "yarn yakumo version",
-    "dep": "yarn yakumo upgrade",
-    "pub": "yarn yakumo publish",
-    "lint": "yarn eslint src --ext=ts",
-    "lint-fix": "yarn eslint src --ext=ts --fix"
-  },
-  "koishi": {
-    "description": {
-      "zh": "让大语言模型进行角色扮演，伪装成群友"
+    "files": [
+        "lib",
+        "dist",
+        "resources"
+    ],
+    "license": "AGPL-3.0",
+    "keywords": [
+        "chatbot",
+        "koishi",
+        "plugin",
+        "service",
+        "chatgpt",
+        "chatluna",
+        "preset",
+        "market"
+    ],
+    "author": "dingyi222666 <dingyi222666@foxmail.com>",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/ChatLunaLab/chatluna-character.git",
+        "directory": "."
     },
-    "service": {
-      "required": [
-        "chatluna"
-      ],
-      "optional": [
-        "vits"
-      ]
+    "bugs": {
+        "url": "https://github.com/ChatLunaLab/chatluna-character/issues"
+    },
+    "homepage": "https://github.com/ChatLunaLab/chatluna-character#readme",
+    "dependencies": {
+        "@langchain/core": "^0.3.11",
+        "js-yaml": "^4.1.0",
+        "koishi-plugin-markdown": "^1.1.1"
+    },
+    "devDependencies": {
+        "@initencounter/vits": "^0.0.3",
+        "@typescript-eslint/eslint-plugin": "^7.18.1-alpha.3",
+        "@typescript-eslint/parser": "^8.8.2-alpha.12",
+        "atsc": "^1.2.2",
+        "esbuild": "^0.23.1",
+        "esbuild-register": "^3.6.0",
+        "eslint": "^8.57.1",
+        "eslint-config-prettier": "^9.1.0",
+        "eslint-config-standard": "^17.1.0",
+        "eslint-plugin-import": "^2.31.0",
+        "eslint-plugin-n": "^16.6.2",
+        "eslint-plugin-prettier": "^5.2.1",
+        "eslint-plugin-promise": "^7.1.0",
+        "koishi": "^4.18.0",
+        "yakumo": "^1.0.0-beta.18",
+        "yakumo-esbuild": "^1.0.0-beta.7",
+        "yakumo-mocha": "^1.0.0-beta.2",
+        "yakumo-tsc": "^1.0.0-beta.5"
+    },
+    "peerDependencies": {
+        "koishi": "^4.18.0",
+        "koishi-plugin-chatluna": "^1.0.0-beta.100"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "scripts": {
+        "process-dynamic-import": "node ./processDynamicImport.js",
+        "fast-build": "yarn yakumo build",
+        "build": "yarn process-dynamic-import && yarn fast-build",
+        "bump": "yarn yakumo version",
+        "dep": "yarn yakumo upgrade",
+        "pub": "yarn yakumo publish",
+        "lint": "yarn eslint src --ext=ts",
+        "lint-fix": "yarn eslint src --ext=ts --fix"
+    },
+    "resolutions": {
+        "@langchain/core": "0.3.11",
+        "js-tiktoken": "npm:@dingyi222666/js-tiktoken@^1.0.15"
+    },
+    "overrides": {
+        "@langchain/core": "0.3.11",
+        "js-tiktoken": "npm:@dingyi222666/js-tiktoken@^1.0.15"
+    },
+    "pnpm": {
+        "overrides": {
+            "@langchain/core": "0.3.11",
+            "js-tiktoken": "npm:@dingyi222666/js-tiktoken@^1.0.15"
+        }
+    },
+    "koishi": {
+        "description": {
+            "zh": "让大语言模型进行角色扮演，伪装成群友"
+        },
+        "service": {
+            "required": [
+                "chatluna"
+            ],
+            "optional": [
+                "vits"
+            ]
+        }
     }
-  }
 }
