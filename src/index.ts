@@ -59,15 +59,12 @@ export function apply(ctx: Context, config: Config) {
 }
 
 export const inject = {
-    required: ['chatluna', 'cache'],
+    required: ['chatluna'],
     optional: ['chatluna_character', 'vits']
 }
 
 export const inject2 = {
     chatluna: {
-        required: true
-    },
-    cache: {
         required: true
     },
     chatluna_character: {
