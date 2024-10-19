@@ -215,8 +215,9 @@ export class MessageCollector extends Service {
                       content: mapElementToString(
                           session,
                           session.quote.content,
-                          // TODO: remove as
-                          session.quote.elements as unknown as h[]
+                          session.quote.elements ?? [
+                              h.text(session.quote.content)
+                          ]
                       ),
                       name: session.quote.user.name,
                       id: session.quote.user.id
