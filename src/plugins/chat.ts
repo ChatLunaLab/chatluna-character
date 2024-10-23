@@ -309,6 +309,12 @@ function parseResponse(response: string, useAt: boolean = true) {
 
         status = response.match(/<status>(.*?)<\/status>/s)?.[1]
 
+        // match the full <message(.*)>(.*?)</message>
+
+        if (rawMessage == null) {
+            rawMessage = response.match(/<message[\s\S]*?<\/message>/)?.[0]
+        }
+
         if (rawMessage == null) {
             throw new Error('Failed to parse response: ' + response)
         }
