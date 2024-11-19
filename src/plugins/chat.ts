@@ -210,7 +210,7 @@ export async function apply(ctx: Context, config: Config) {
 
             if (elements.length === 1 && elements[0].attrs['code'] === true) {
                 // 代码块快速发送
-                maxTime = 10
+                maxTime = maxTime * 0.1
             }
 
             if (
@@ -241,10 +241,10 @@ export async function apply(ctx: Context, config: Config) {
             }
 
             try {
-                if (emoticonStatement !== 'emo') {
+                if (emoticonStatement !== 'span') {
                     await sleep(random.int(maxTime / 2, maxTime))
                 } else {
-                    await sleep(random.int(maxTime / 8, maxTime / 2))
+                    await sleep(random.int(maxTime / 12, maxTime / 4))
                 }
 
                 switch (parsedResponse.messageType) {

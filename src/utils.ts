@@ -9,9 +9,9 @@ import he from 'he'
 export function isEmoticonStatement(
     text: string,
     elements: Element[]
-): 'emoji' | 'text' | 'emo' {
-    if (elements.length === 1 && elements[0].attrs['emo']) {
-        return 'emo'
+): 'emoji' | 'text' | 'span' {
+    if (elements.length === 1 && elements[0].attrs['span']) {
+        return 'span'
     }
 
     const regex =
@@ -26,129 +26,49 @@ export function isOnlyPunctuation(text: string): boolean {
     return regex.test(text)
 }
 
-export function parseResponse(response: string, useAt: boolean = true) {
-    let rawMessage: string
-    let parsedMessage = ''
-    let messageType = 'text'
-    let status = ''
-    let sticker: string | null = null
-    try {
-        // match xml object
+function parseMessageContent(response: string) {
+    let rawMessage = response.match(
+        /<message_part>\s*(.*?)\s*<\/message_part>/s
+    )?.[1]
+    const status = response.match(/<status>(.*?)<\/status>/s)?.[1]
 
-        // best match <message_part>content</message_part>
+    if (rawMessage == null) {
+        rawMessage = response.match(/<message[\s\S]*?<\/message>/)?.[0]
+    }
 
-        rawMessage = response.match(
-            /<message_part>\s*(.*?)\s*<\/message_part>/s
-        )?.[1]
-
-        status = response.match(/<status>(.*?)<\/status>/s)?.[1]
-
-        // match the full <message(.*)>(.*?)</message>
-
-        if (rawMessage == null) {
-            rawMessage = response.match(/<message[\s\S]*?<\/message>/)?.[0]
-        }
-
-        if (rawMessage == null) {
-            throw new Error('Failed to parse response: ' + response)
-        }
-
-        const tempJson = parseXmlToObject(rawMessage) as {
-            name: string
-            type: string
-            sticker: string
-            content: string
-        }
-
-        rawMessage = tempJson.content
-        messageType = tempJson.type
-        sticker = tempJson.sticker
-
-        if (typeof rawMessage !== 'string') {
-            throw new Error('Failed to parse response: ' + response)
-        }
-    } catch (e) {
-        logger.error(e)
+    if (rawMessage == null) {
         throw new Error('Failed to parse response: ' + response)
     }
 
-    const resultElements: Element[][] = []
-
-    const currentElements: Element[] = []
-    // match <at name='name'>id</at>
-
-    const atMatch = matchAt(rawMessage)
-
-    if (atMatch.length > 0) {
-        let lastAtIndex = 0
-        for (const at of atMatch) {
-            const before = rawMessage.substring(lastAtIndex, at.start)
-
-            if (before.length > 0) {
-                parsedMessage += before
-                currentElements.push(...transform(before))
-            }
-
-            if (useAt) {
-                currentElements.push(h.at(at.at))
-            }
-
-            lastAtIndex = at.end
-        }
-
-        const after = rawMessage.substring(lastAtIndex)
-
-        if (after.length > 0) {
-            parsedMessage += after
-            currentElements.push(...transform(after))
-        }
-    } else {
-        parsedMessage = rawMessage
-        currentElements.push(...transform(rawMessage))
+    const tempJson = parseXmlToObject(rawMessage)
+    return {
+        rawMessage: tempJson.content,
+        messageType: tempJson.type,
+        status,
+        sticker: tempJson.sticker
     }
+}
+
+function processElements(elements: Element[]) {
+    const resultElements: Element[][] = []
 
     const forEachElement = (elements: Element[]) => {
         for (let i = 0; i < elements.length; i++) {
             const element = elements[i]
             if (element.type === 'text') {
-                const text = element.attrs.content as string
-
-                if (text.endsWith('<emo>')) {
-                    const nextElement = elements[i + 1]
-                    const endElement = elements[i + 2]
-                    const endElementText = endElement.attrs.content as string
-
-                    if (endElementText.endsWith('</emo>')) {
-                        nextElement.attrs['emo'] = true
-                        resultElements.push([nextElement])
-                        i += 2
-                        continue
-                    }
-                }
-
-                console.log(element)
-                // 代码块直接添加
-                if (element.attrs['code']) {
-
+                if (element.attrs['code'] || element.attrs['span']) {
                     resultElements.push([element])
                     continue
                 }
 
-                // 解码 marked 转义的文本
-                const matchArray = splitSentence(he.decode(text)).filter(
-                    (x) => x.length > 0
-                )
+                const matchArray = splitSentence(
+                    he.decode(element.attrs.content as string)
+                ).filter((x) => x.length > 0)
 
                 for (const match of matchArray) {
-                    const newElement = h.text(match)
-                    resultElements.push([newElement])
+                    resultElements.push([h.text(match)])
                 }
-            } else if (
-                element.type === 'em' ||
-                element.type === 'strong' ||
-                element.type === 'del' ||
-                element.type === 'p'
-            ) {
+            } else if (['em', 'strong', 'del', 'p'].includes(element.type)) {
                 forEachElement(element.children)
             } else {
                 resultElements.push([element])
@@ -156,21 +76,107 @@ export function parseResponse(response: string, useAt: boolean = true) {
         }
     }
 
-    forEachElement(currentElements)
+    forEachElement(elements)
+    return resultElements
+}
 
-    if (resultElements[0]?.[0]?.type === 'at' && resultElements.length > 1) {
-        resultElements[1].unshift(h.text(' '))
-        resultElements[1].unshift(resultElements[0][0])
+interface TextMatch {
+    type: 'at' | 'pre'
+    content: string
+    start: number
+    end: number
+}
 
-        resultElements.shift()
+function processTextMatches(rawMessage: string, useAt: boolean = true) {
+    const currentElements: Element[] = []
+    let parsedMessage = ''
+
+    // 获取所有匹配并排序
+    const matches: TextMatch[] = [
+        ...matchAt(rawMessage).map((m) => ({
+            type: 'at' as const,
+            content: m.at,
+            start: m.start,
+            end: m.end
+        })),
+        ...matchPre(rawMessage).map((m) => ({
+            type: 'pre' as const,
+            content: m.pre,
+            start: m.start,
+            end: m.end
+        }))
+    ].sort((a, b) => a.start - b.start)
+
+    if (matches.length === 0) {
+        parsedMessage = rawMessage
+        currentElements.push(...transform(rawMessage))
+        return { currentElements, parsedMessage }
     }
 
-    return {
-        elements: resultElements,
-        rawMessage: parsedMessage,
-        status,
-        sticker,
-        messageType
+    let lastIndex = 0
+    for (const match of matches) {
+        const before = rawMessage.substring(lastIndex, match.start)
+
+        if (before.length > 0) {
+            parsedMessage += before
+            currentElements.push(...transform(before))
+        }
+
+        if (match.type === 'at') {
+            if (useAt) {
+                currentElements.push(h.at(match.content))
+            }
+        } else {
+            // pre
+            parsedMessage += match.content
+            currentElements.push(
+                h('text', { span: true, content: match.content })
+            )
+        }
+
+        lastIndex = match.end
+    }
+
+    const after = rawMessage.substring(lastIndex)
+    if (after.length > 0) {
+        parsedMessage += after
+        currentElements.push(...transform(after))
+    }
+
+    return { currentElements, parsedMessage }
+}
+
+export function parseResponse(response: string, useAt: boolean = true) {
+    try {
+        const { rawMessage, messageType, status, sticker } =
+            parseMessageContent(response)
+
+        const { currentElements, parsedMessage } = processTextMatches(
+            rawMessage,
+            useAt
+        )
+        const resultElements = processElements(currentElements)
+
+        // Handle special case for leading @mentions
+        if (
+            resultElements[0]?.[0]?.type === 'at' &&
+            resultElements.length > 1
+        ) {
+            resultElements[1].unshift(h.text(' '))
+            resultElements[1].unshift(resultElements[0][0])
+            resultElements.shift()
+        }
+
+        return {
+            elements: resultElements,
+            rawMessage: parsedMessage,
+            status,
+            sticker,
+            messageType
+        }
+    } catch (e) {
+        logger.error(e)
+        throw new Error('Failed to parse response: ' + response)
     }
 }
 
@@ -288,6 +294,18 @@ export function matchAt(str: string) {
     return [...str.matchAll(atRegex)].map((item) => {
         return {
             at: item[1],
+            start: item.index,
+            end: item.index + item[0].length
+        }
+    })
+}
+
+export function matchPre(str: string) {
+    const preRegex = /<pre[^>]*>(.*?)<\/pre>/g
+    // <pre>emo</pre>
+    return [...str.matchAll(preRegex)].map((item) => {
+        return {
+            pre: item[1],
             start: item.index,
             end: item.index + item[0].length
         }
@@ -412,7 +430,7 @@ export function parseXmlToObject(xml: string) {
     return { name, id, type, sticker, content }
 }
 
-const tagRegExp = /^<(\/?)([^!\s>/]+)([^>]*?)\s*(\/?)>$/
+const tagRegExp = /<(\/?)([^!\s>/]+)([^>]*?)\s*(\/?)>/
 
 function renderToken(token: Token): h {
     if (token.type === 'code') {
