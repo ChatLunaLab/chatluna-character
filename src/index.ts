@@ -12,7 +12,6 @@ export function apply(ctx: Context, config: Config) {
     ctx.on('ready', async () => {
         ctx.plugin(MessageCollector, config)
     })
-
     ctx.plugin(
         {
             apply: async (ctx: Context, config: Config) => {

@@ -87,7 +87,7 @@ interface TextMatch {
     end: number
 }
 
-function processTextMatches(rawMessage: string, useAt: boolean = true) {
+export function processTextMatches(rawMessage: string, useAt: boolean = true) {
     const currentElements: Element[] = []
     let parsedMessage = ''
 
@@ -290,7 +290,7 @@ export function matchAt(str: string) {
     // <at name='name'>id</at>
     // <at(.*?)>id</at>
     // get id, if the name is empty
-    const atRegex = /<at[^>]*>(.*?)<\/at>/g
+    const atRegex = /<at[^>]*>(.*?)<\/at>/
     return [...str.matchAll(atRegex)].map((item) => {
         return {
             at: item[1],
@@ -301,7 +301,7 @@ export function matchAt(str: string) {
 }
 
 export function matchPre(str: string) {
-    const preRegex = /<pre[^>]*>(.*?)<\/pre>/g
+    const preRegex = /<pre>(.*?)<\/pre>/gs
     // <pre>emo</pre>
     return [...str.matchAll(preRegex)].map((item) => {
         return {
