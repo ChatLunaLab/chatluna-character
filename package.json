@@ -43,7 +43,8 @@
   "dependencies": {
     "@langchain/core": "^0.3.11",
     "js-yaml": "^4.1.0",
-    "koishi-plugin-markdown": "^1.1.1"
+    "marked": "^15.0.0",
+    "he": "^1.2.0"
   },
   "devDependencies": {
     "@initencounter/vits": "^0.0.3",
