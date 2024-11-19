@@ -149,7 +149,7 @@ export const Config = Schema.intersect([
             .description('是否允许 bot 艾特他人')
             .default(true),
         splitVoice: Schema.boolean()
-            .description('是否分段发送语言')
+            .description('是否分段发送语音')
             .default(false),
         messageInterval: Schema.number()
             .default(14)
