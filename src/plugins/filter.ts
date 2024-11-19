@@ -78,10 +78,22 @@ export async function apply(ctx: Context, config: Config) {
             }
         }
 
+        let isAt = session.stripped.appel
+
+        for (const element of session.elements) {
+            if (
+                element.type === 'at' &&
+                element.attrs.id === session.bot.selfId
+            ) {
+                isAt = true
+                break
+            }
+        }
+
         // 在计算之前先检查是否需要禁言。
         if (
             copyOfConfig.isForceMute &&
-            session.stripped.appel &&
+            isAt &&
             currentPreset.mute_keyword?.length > 0
         ) {
             const needMute = currentPreset.mute_keyword.some((value) =>
