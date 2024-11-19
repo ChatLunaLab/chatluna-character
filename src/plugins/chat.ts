@@ -208,6 +208,11 @@ export async function apply(ctx: Context, config: Config) {
 
             let maxTime = text.length * copyOfConfig.typingTime + 100
 
+            if (elements.length === 1 && elements[0].attrs['code'] === true) {
+                // 代码块快速发送
+                maxTime = 10
+            }
+
             if (
                 parsedResponse.messageType === 'voice' &&
                 emoticonStatement !== 'text'

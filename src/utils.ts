@@ -3,7 +3,8 @@ import { Config } from '.'
 import { Message } from './types'
 import { BaseMessage } from '@langchain/core/messages'
 import { h, Element, Logger, Random } from 'koishi'
-import { transform } from 'koishi-plugin-markdown'
+import { marked, Token } from 'marked'
+import he from 'he'
 
 export function isEmoticonStatement(
     text: string,
@@ -125,7 +126,16 @@ export function parseResponse(response: string, useAt: boolean = true) {
                     }
                 }
 
-                const matchArray = splitSentence(text).filter(
+                console.log(element)
+                // 代码块直接添加
+                if (element.attrs['code']) {
+
+                    resultElements.push([element])
+                    continue
+                }
+
+                // 解码 marked 转义的文本
+                const matchArray = splitSentence(he.decode(text)).filter(
                     (x) => x.length > 0
                 )
 
@@ -400,6 +410,60 @@ export function parseXmlToObject(xml: string) {
     }
 
     return { name, id, type, sticker, content }
+}
+
+const tagRegExp = /^<(\/?)([^!\s>/]+)([^>]*?)\s*(\/?)>$/
+
+function renderToken(token: Token): h {
+    if (token.type === 'code') {
+        return h('text', { code: true, content: token.text + '\n' })
+    } else if (token.type === 'paragraph') {
+        return h('p', render(token.tokens))
+    } else if (token.type === 'image') {
+        return h.image(token.href)
+    } else if (token.type === 'blockquote') {
+        return h('text', { content: token.text + '\n' })
+    } else if (token.type === 'text') {
+        return h('text', { content: token.text })
+    } else if (token.type === 'em') {
+        return h('em', render(token.tokens))
+    } else if (token.type === 'strong') {
+        return h('strong', render(token.tokens))
+    } else if (token.type === 'del') {
+        return h('del', render(token.tokens))
+    } else if (token.type === 'link') {
+        return h('a', { href: token.href }, render(token.tokens))
+    } else if (token.type === 'html') {
+        const cap = tagRegExp.exec(token.text)
+        if (!cap) {
+            return h('text', { content: token.text })
+        }
+        if (cap[2] === 'img') {
+            if (cap[1]) return
+            const src = cap[3].match(/src="([^"]+)"/)
+            if (src) return h.image(src[1])
+        }
+    }
+
+    return h('text', { content: token.raw })
+}
+
+function render(tokens: Token[]): h[] {
+    return tokens.map(renderToken).filter(Boolean)
+}
+
+export function transform(source: string): h[]
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function transform(source: TemplateStringsArray, ...args: any[]): h[]
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function transform(source: any, ...args: any[]) {
+    if (!source) return []
+    if (Array.isArray(source)) {
+        source =
+            args.map((arg, index) => source[index] + arg).join('') +
+            source[args.length]
+    }
+    return render(marked.lexer(source))
 }
 
 let logger: Logger
