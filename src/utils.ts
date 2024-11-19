@@ -290,7 +290,7 @@ export function matchAt(str: string) {
     // <at name='name'>id</at>
     // <at(.*?)>id</at>
     // get id, if the name is empty
-    const atRegex = /<at[^>]*>(.*?)<\/at>/
+    const atRegex = /<at[^>]*>(.*?)<\/at>/gs
     return [...str.matchAll(atRegex)].map((item) => {
         return {
             at: item[1],
