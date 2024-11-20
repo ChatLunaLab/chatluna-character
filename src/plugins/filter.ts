@@ -83,7 +83,7 @@ export async function apply(ctx: Context, config: Config) {
         for (const element of session.elements) {
             if (
                 element.type === 'at' &&
-                element.attrs.id === session.bot.selfId
+                element.attrs.id === session.bot.userId
             ) {
                 isAt = true
                 break
