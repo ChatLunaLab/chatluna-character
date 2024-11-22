@@ -2,7 +2,7 @@ import { ChatLunaChatModel } from 'koishi-plugin-chatluna/llm-core/platform/mode
 import { Config } from '.'
 import { Message } from './types'
 import { BaseMessage } from '@langchain/core/messages'
-import { h, Element, Logger, Random } from 'koishi'
+import { Element, h, Logger } from 'koishi'
 import { marked, Token } from 'marked'
 import he from 'he'
 
@@ -327,13 +327,10 @@ export async function formatMessage(
 
     const calculatedMessages: string[] = []
 
-    const random = new Random()
     for (let i = messages.length - 1; i >= 0; i--) {
         const message = messages[i]
 
-        const voiceProbability = random.int(1, 10) > 8 ? 'voice' : 'text'
-
-        const xmlMessage = `<message type='${voiceProbability}' name='${message.name}' id='${message.id}'>${message.content}</message>`
+        const xmlMessage = `<message type='text' name='${message.name}' id='${message.id}'>${message.content}</message>`
 
         const xmlMessageToken = await model.getNumTokens(xmlMessage)
 
