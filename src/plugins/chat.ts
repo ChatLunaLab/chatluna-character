@@ -197,17 +197,11 @@ async function handleVoiceMessage(
     session: Session,
     ctx: Context,
     text: string,
-    elements: h[],
-    config: boolean
+    elements: h[]
 ): Promise<boolean> {
     try {
-        if (config) {
-            await session.send(await ctx.vits.say({ input: text }))
-            return true
-        } else {
-            await session.send(elements)
-            return false
-        }
+        await session.send(await ctx.vits.say({ input: text }))
+        return true
     } catch (e) {
         logger.error(e)
         await session.send(elements)
@@ -224,15 +218,16 @@ async function handleMessageSending(
     ctx: Context,
     maxTime: number,
     emoticonStatement: string,
-    voiceSay: boolean
+    breakSay: boolean
 ): Promise<boolean> {
-    if (voiceSay && emoticonStatement !== 'text') {
-        return voiceSay
+    const isVoice = parsedResponse.messageType === 'voice'
+    if (isVoice && emoticonStatement !== 'text') {
+        return false
     }
 
     const random = new Random()
 
-    if (config.splitVoice !== true && voiceSay) {
+    if (config.splitVoice !== true && isVoice && !breakSay) {
         const fullMaxTime =
             parsedResponse.rawMessage.length * config.typingTime + 100
         await sleep(random.int(fullMaxTime / 4, fullMaxTime / 2))
@@ -240,8 +235,7 @@ async function handleMessageSending(
             session,
             ctx,
             parsedResponse.rawMessage,
-            elements,
-            voiceSay
+            elements
         )
     }
 
@@ -268,7 +262,7 @@ async function handleMessageSending(
         await session.send(elements)
     }
 
-    return voiceSay
+    return false
 }
 
 async function handleStickerSending(
@@ -296,7 +290,7 @@ async function handleModelResponse(
     stickerService: StickerService,
     parsedResponse: ReturnType<typeof parseResponse>
 ): Promise<void> {
-    let voiceSay = parsedResponse.messageType === 'voice'
+    let breakSay = false
 
     for (const elements of parsedResponse.elements) {
         const text = elements
@@ -309,7 +303,7 @@ async function handleModelResponse(
 
         const maxTime = calculateMessageDelay(text, elements, config.typingTime)
 
-        voiceSay = await handleMessageSending(
+        breakSay = await handleMessageSending(
             session,
             elements,
             text,
@@ -318,8 +312,12 @@ async function handleModelResponse(
             ctx,
             maxTime,
             emoticonStatement,
-            voiceSay
+            breakSay
         )
+
+        if (breakSay) {
+            break
+        }
     }
 
     await handleStickerSending(session, config, parsedResponse, stickerService)
