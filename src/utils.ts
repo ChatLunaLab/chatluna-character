@@ -312,6 +312,22 @@ export function matchPre(str: string) {
     })
 }
 
+function formatMessageString(message: Message) {
+    let xmlMessage = `<message type='text' name='${message.name}' id='${message.id}'`
+
+    if (message.timestamp) {
+        xmlMessage += ` timestamp='${message.timestamp}'`
+    }
+
+    if (message.quote) {
+        xmlMessage += ` quote='${formatMessageString(message.quote)}'`
+    }
+
+    xmlMessage += `>${message.content}</message>`
+
+    return xmlMessage
+}
+
 export async function formatMessage(
     messages: Message[],
     config: Config,
@@ -328,9 +344,7 @@ export async function formatMessage(
     const calculatedMessages: string[] = []
 
     for (let i = messages.length - 1; i >= 0; i--) {
-        const message = messages[i]
-
-        const xmlMessage = `<message type='text' name='${message.name}' id='${message.id}'>${message.content}</message>`
+        const xmlMessage = formatMessageString(messages[i])
 
         const xmlMessageToken = await model.getNumTokens(xmlMessage)
 
