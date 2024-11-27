@@ -283,9 +283,7 @@ async function handleStickerSending(
 
 async function handleModelResponse(
     session: Session,
-    responseMessage: BaseMessage,
     config: Config,
-    temp: GroupTemp,
     ctx: Context,
     stickerService: StickerService,
     parsedResponse: ReturnType<typeof parseResponse>
@@ -401,9 +399,7 @@ export async function apply(ctx: Context, config: Config) {
 
         await handleModelResponse(
             session,
-            responseMessage,
             copyOfConfig,
-            temp,
             ctx,
             stickerService,
             parsedResponse
