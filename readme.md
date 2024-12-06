@@ -21,4 +21,4 @@ _让大语言模型进行角色扮演，伪装成群友_
 
 ## 使用
 
-待续
+[伪装文档](https://chatluna.chat/ecosystem/other/character.html)
