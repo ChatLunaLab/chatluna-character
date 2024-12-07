@@ -10,26 +10,22 @@ export function apply(ctx: Context, config: Config) {
 
         let appel = session.stripped.appel
 
-        if (!appel) {
-            return false
-        }
-
-        // 从消息元素中检测是否有被艾特当前用户
-
         const botId = session.bot.userId
 
-        appel = session.elements.some(
-            (element) =>
-                element.type === 'at' && element.attrs?.['id'] === botId
-        )
-
         if (!appel) {
-            return false
+            // 从消息元素中检测是否有被艾特当前用户
+
+            appel = session.elements.some(
+                (element) =>
+                    element.type === 'at' && element.attrs?.['id'] === botId
+            )
         }
 
-        // 检测回复的消息是否为 bot 本身
-
-        appel = session.quote?.user?.id === botId
+        if (!appel) {
+            // 检测回复的消息是否为 bot 本身
+            const botId = session.bot.userId
+            appel = session.quote?.user?.id === botId
+        }
 
         if (!appel) {
             return false

@@ -79,11 +79,10 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         let appel = session.stripped.appel
+        const botId = session.bot.userId
 
         if (!appel) {
             // 从消息元素中检测是否有被艾特当前用户
-
-            const botId = session.bot.userId
 
             appel = session.elements.some(
                 (element) =>
@@ -93,7 +92,7 @@ export async function apply(ctx: Context, config: Config) {
 
         if (!appel) {
             // 检测引用的消息是否为 bot 本身
-            const botId = session.bot.userId
+
             appel = session.quote?.user?.id === botId
         }
 
