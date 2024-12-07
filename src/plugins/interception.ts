@@ -23,7 +23,7 @@ export function apply(ctx: Context, config: Config) {
                 element.type === 'at' && element.attrs?.['id'] === botId
         )
 
-        if (appel) {
+        if (!appel) {
             return false
         }
 
@@ -31,7 +31,7 @@ export function apply(ctx: Context, config: Config) {
 
         appel = session.quote?.user?.id === botId
 
-        if (appel) {
+        if (!appel) {
             return false
         }
 
