@@ -78,22 +78,29 @@ export async function apply(ctx: Context, config: Config) {
             }
         }
 
-        let isAt = session.stripped.appel
+        let appel = session.stripped.appel
 
-        for (const element of session.elements) {
-            if (
-                element.type === 'at' &&
-                element.attrs.id === session.bot.userId
-            ) {
-                isAt = true
-                break
-            }
+        if (!appel) {
+            // 从消息元素中检测是否有被艾特当前用户
+
+            const botId = session.bot.userId
+
+            appel = session.elements.some(
+                (element) =>
+                    element.type === 'at' && element.attrs?.['id'] === botId
+            )
+        }
+
+        if (!appel) {
+            // 检测引用的消息是否为 bot 本身
+            const botId = session.bot.userId
+            appel = session.quote?.user?.id === botId
         }
 
         // 在计算之前先检查是否需要禁言。
         if (
             copyOfConfig.isForceMute &&
-            isAt &&
+            appel &&
             currentPreset.mute_keyword?.length > 0
         ) {
             const needMute = currentPreset.mute_keyword.some((value) =>

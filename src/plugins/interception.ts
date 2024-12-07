@@ -4,11 +4,34 @@ import { Config } from '..'
 export function apply(ctx: Context, config: Config) {
     ctx.on('chatluna/before-check-sender', async (session) => {
         const guildId = session.guildId
-        if (
-            !config.applyGroup.includes(guildId) ||
-            session.isDirect ||
-            !session.stripped.appel
-        ) {
+        if (!config.applyGroup.includes(guildId) || session.isDirect) {
+            return false
+        }
+
+        let appel = session.stripped.appel
+
+        if (!appel) {
+            return false
+        }
+
+        // 从消息元素中检测是否有被艾特当前用户
+
+        const botId = session.bot.userId
+
+        appel = session.elements.some(
+            (element) =>
+                element.type === 'at' && element.attrs?.['id'] === botId
+        )
+
+        if (appel) {
+            return false
+        }
+
+        // 检测回复的消息是否为 bot 本身
+
+        appel = session.quote?.user?.id === botId
+
+        if (appel) {
             return false
         }
 
