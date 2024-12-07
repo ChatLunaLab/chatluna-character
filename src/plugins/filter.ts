@@ -117,7 +117,7 @@ export async function apply(ctx: Context, config: Config) {
         if (
             (messageCount > maxMessages ||
                 messageSendProbability > 1 ||
-                session.stripped.appel ||
+                appel ||
                 (config.isNickname &&
                     currentPreset.nick_name.some((value) =>
                         message.content.startsWith(value)
