@@ -219,8 +219,8 @@ export class MessageCollector extends Service {
                               h.text(session.quote.content)
                           ]
                       ),
-                      name: session.quote.user.name,
-                      id: session.quote.user.id
+                      name: session.quote?.user?.name,
+                      id: session.quote?.user?.id
                   }
                 : undefined
         }
