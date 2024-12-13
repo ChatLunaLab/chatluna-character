@@ -83,7 +83,6 @@ export async function apply(ctx: Context, config: Config) {
 
         if (!appel) {
             // 从消息元素中检测是否有被艾特当前用户
-
             appel = session.elements.some(
                 (element) =>
                     element.type === 'at' && element.attrs?.['id'] === botId
@@ -92,7 +91,6 @@ export async function apply(ctx: Context, config: Config) {
 
         if (!appel) {
             // 检测引用的消息是否为 bot 本身
-
             appel = session.quote?.user?.id === botId
         }
 

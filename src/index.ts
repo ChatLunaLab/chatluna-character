@@ -89,6 +89,9 @@ export interface Config extends ChatLunaPlugin.Config {
 
     defaultPreset: string
     isNickname: boolean
+    search: boolean
+    searchSummayType: string
+    searchPrompt: string
     isForceMute: boolean
     sendStickerProbability: number
 
@@ -131,8 +134,36 @@ export const Config = Schema.intersect([
         maxTokens: Schema.number()
             .default(5000)
             .min(1024)
-            .max(32000)
-            .description('使用聊天的最大 token 数')
+            .max(42000)
+            .description('使用聊天的最大 token 数'),
+        search: Schema.boolean()
+            .description('是否启用联网搜索功能')
+            .default(false),
+        searchSummayType: Schema.union([
+            Schema.const('speed').description('性能模式'),
+            Schema.const('balanced').description('平衡模式'),
+            Schema.const('quality').description('质量模式')
+        ])
+            .description('搜索结果的摘要模式')
+            .default('speed'),
+        searchPrompt: Schema.string().description('搜索提示词').role('textarea')
+            .default(`Rephrase the follow-up question as a standalone, search-engine-friendly question based on the given conversation context.
+
+Rules:
+- CRITICAL: Use the exact same language as the input. Do not translate or change the language under any circumstances.
+- Make the question self-contained and clear
+- Optimize for search engine queries
+- Do not add any explanations or additional content
+- By default, do not search unless the chat history indicates a need for additional information or if the question is complex enough to warrant a search.
+- If the question doesn't require an internet search (e.g., personal opinions, simple calculations, or information already provided in the chat history), output [skip] instead of rephrasing.
+- If the user needs a detailed explanation, generate a new question that will provide comprehensive information on the topic.
+
+IMPORTANT: Your rephrased question or [skip] MUST be in the same language as the original input. This is crucial for maintaining context and accuracy.
+
+Chat History:
+{chat_history}
+Follow-up Input: {question}
+Standalone Question or [skip]:`)
     }).description('模型配置'),
 
     Schema.object({
@@ -230,7 +261,9 @@ export const Config = Schema.intersect([
                     .role('slider')
                     .step(0.00001)
                     .description('发送消息的叠加概率（线性增长）'),
-
+                search: Schema.boolean()
+                    .description('是否启用联网搜索功能')
+                    .default(false),
                 coolDownTime: Schema.number()
                     .default(10)
                     .min(1)

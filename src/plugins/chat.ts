@@ -12,14 +12,19 @@ import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_t
 import { Config } from '..'
 import { GroupTemp, Message, PresetTemplate } from '../types'
 import {
+    createEmbeddingsModel,
     formatCompletionMessages,
     formatMessage,
+    formatSearchResult,
+    getSearchKeyword,
     isEmoticonStatement,
     parseResponse,
     setLogger
 } from '../utils'
 import { Preset } from '../preset'
 import { StickerService } from '../service/sticker'
+import { StructuredTool } from '@langchain/core/tools'
+import { getMessageContent } from 'koishi-plugin-chatluna/utils/string'
 
 let logger: Logger
 
@@ -86,6 +91,43 @@ async function getModelForGuild(
     return await (modelPool[guildId] ?? Promise.resolve(globalModel))
 }
 
+async function getSearchTool(
+    ctx: Context,
+    config: Config,
+    guildId: string,
+    model: ChatLunaChatModel,
+    toolsPool: Record<string, StructuredTool>
+): Promise<StructuredTool | undefined> {
+    let isSearchEnabled = config.search
+
+    if (config.configs[guildId]) {
+        isSearchEnabled = config.configs[guildId]['search'] || isSearchEnabled
+    }
+
+    if (!isSearchEnabled) {
+        return undefined
+    }
+
+    if (toolsPool[guildId]) {
+        return toolsPool[guildId]
+    }
+
+    const embeddings = await createEmbeddingsModel(ctx)
+
+    const chatlunaTool = ctx.chatluna.platform.getTool('web-search')
+
+    const tool = await chatlunaTool.createTool({
+        model,
+        embeddings,
+        summaryType: config.searchSummayType
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+
+    toolsPool[guildId] = tool
+
+    return tool
+}
+
 async function getConfigAndPresetForGuild(
     guildId: string,
     config: Config,
@@ -116,10 +158,12 @@ async function getConfigAndPresetForGuild(
 async function prepareMessages(
     messages: Message[],
     config: Config,
+    session: Session,
     model: ChatLunaChatModel,
     currentPreset: PresetTemplate,
     temp: GroupTemp,
-    stickerService: StickerService
+    stickerService: StickerService,
+    searchTool?: StructuredTool
 ): Promise<BaseMessage[]> {
     const [recentMessage, lastMessage] = await formatMessage(
         messages,
@@ -147,6 +191,55 @@ async function prepareMessages(
             status: temp.status ?? currentPreset.status ?? ''
         })
     )
+
+    // replace {?search xxxx {search} xxx} to xxxx {search} xxx
+    // {?search 如果你需要用到这些知识，请使用这些知识 {search} 记住！} -> 如果你需要用到这些知识，请使用这些知识 {xxxx} 记住！
+    let baseHumanContent = getMessageContent(humanMessage.content)
+
+    const searchPattern = /{\?search\s*(.+){search}\s*(.+)}/gms
+    const searchMatch = searchPattern.exec(baseHumanContent)
+
+    if (searchMatch && searchMatch.length > 0) {
+        let searchResult = ''
+        if (searchTool) {
+            let keyword = await getSearchKeyword(
+                config,
+                session,
+                messages,
+                model
+            )
+
+            // 过滤空格，空行
+            keyword = keyword.replace(/\s+/g, ' ').trim()
+
+            if (keyword !== '[skip]') {
+                const rawSearchResult = await searchTool
+                    .invoke(keyword)
+                    .then((it) => it as string)
+
+                searchResult = formatSearchResult(rawSearchResult)
+
+                // logger.debug('searchResult: ' + searchResult)
+            }
+        }
+
+        const matchedContent = searchMatch[0] // 获取完整匹配
+        const leftContent = searchMatch[1] // 获取第一个捕获组
+        const rightContent = searchMatch[2] // 获取第二个捕获组
+
+        if (searchResult.length > 0) {
+            baseHumanContent = baseHumanContent.replace(
+                matchedContent,
+                `{${leftContent} ${searchResult} ${rightContent}}`
+            )
+        } else {
+            baseHumanContent = baseHumanContent.replace(matchedContent, '')
+        }
+
+        humanMessage.content = baseHumanContent
+
+        // logger.debug('humanMessage: ' + humanMessage.content)
+    }
 
     return formatCompletionMessages(
         [new SystemMessage(formattedSystemPrompt)].concat(
@@ -340,6 +433,8 @@ export async function apply(ctx: Context, config: Config) {
     let globalPreset = preset.getPresetForCache(config.defaultPreset)
     let presetPool: Record<string, PresetTemplate> = {}
 
+    const toolsPool: Record<string, StructuredTool> = {}
+
     ctx.on('chatluna_character/preset_updated', () => {
         globalPreset = preset.getPresetForCache(config.defaultPreset)
         presetPool = {}
@@ -348,6 +443,14 @@ export async function apply(ctx: Context, config: Config) {
     service.collect(async (session, messages) => {
         const guildId = session.event.guild?.id ?? session.guildId
         const model = await getModelForGuild(guildId, globalModel, modelPool)
+
+        const searchTool = await getSearchTool(
+            ctx,
+            config,
+            guildId,
+            model,
+            toolsPool
+        )
 
         const { copyOfConfig, currentPreset } =
             await getConfigAndPresetForGuild(
@@ -362,10 +465,12 @@ export async function apply(ctx: Context, config: Config) {
         const completionMessages = await prepareMessages(
             messages,
             copyOfConfig,
+            session,
             model,
             currentPreset,
             temp,
-            stickerService
+            stickerService,
+            searchTool
         )
 
         logger.debug(

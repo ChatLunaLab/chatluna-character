@@ -2,9 +2,12 @@ import { ChatLunaChatModel } from 'koishi-plugin-chatluna/llm-core/platform/mode
 import { Config } from '.'
 import { Message } from './types'
 import { BaseMessage } from '@langchain/core/messages'
-import { Element, h, Logger } from 'koishi'
+import { Context, Element, h, Logger, Session } from 'koishi'
 import { marked, Token } from 'marked'
 import he from 'he'
+import { PromptTemplate } from '@langchain/core/prompts'
+import { getMessageContent } from 'koishi-plugin-chatluna/utils/string'
+import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
 
 export function isEmoticonStatement(
     text: string,
@@ -326,6 +329,106 @@ function formatMessageString(message: Message) {
     xmlMessage += `>${message.content}</message>`
 
     return xmlMessage
+}
+
+export async function getSearchKeyword(
+    config: Config,
+    session: Session,
+    messages: Message[],
+    model: ChatLunaChatModel
+) {
+    const userNames: Record<string, string> = {
+        [session.bot.selfId]: 'bot'
+    }
+
+    let currentUser = 0
+
+    function getUserName(id: string): string {
+        const name = userNames[id]
+
+        if (name) {
+            return name
+        }
+
+        userNames[id] = `user${currentUser++}`
+        return userNames[id]
+    }
+
+    logger.debug(messages)
+
+    const formattedMessages = messages
+        .map((message) => {
+            let content = message.content
+
+            // match <at name='xx'>xxx</at>
+            const atMatch = /<at\s+name='([^']*)'>.*?<\/at>/g
+
+            content = content.replace(atMatch, (match, id) => {
+                const name = getUserName(id)
+                return ` @${name} `
+            })
+
+            if (message.id === session.bot.userId) {
+                return `bot: ${content}`
+            }
+
+            return `${getUserName(message.id)}: ${content}`
+        })
+        .join('\n')
+
+    // logger.debug('formattedMessages: ', formattedMessages)
+
+    const promptTemplate = PromptTemplate.fromTemplate(config.searchPrompt)
+
+    const prompt = await promptTemplate.invoke({
+        chat_history: formattedMessages,
+        // xx: -> ""
+        question: formattedMessages[messages.length - 1]
+    })
+
+    const result = getMessageContent(
+        await model
+            .invoke(prompt, {
+                temperature: 0
+            })
+            .then((message) => message.content)
+    )
+
+    logger.debug('Search keyword', result)
+
+    return result
+}
+
+export function formatSearchResult(searchResult: string) {
+    const parsedSearchResult = JSON.parse(searchResult) as {
+        title: string
+        description: string
+        url: string
+    }[]
+
+    const formattedSearchResults = parsedSearchResult.map((result) => {
+        // sort like json style
+        // title: xx, xx: xx like
+        let resultString = ''
+
+        for (const key in result) {
+            resultString += `${key}: ${result[key]}, `
+        }
+
+        resultString = resultString.slice(0, -2)
+
+        return resultString
+    })
+
+    return formattedSearchResults.join('\n')
+}
+
+export function createEmbeddingsModel(ctx: Context) {
+    const modelName = ctx.chatluna.config.defaultEmbeddings
+
+    const [platform, model] = parseRawModelName(modelName)
+
+    return ctx.chatluna.createEmbeddings(platform, model)
 }
 
 export async function formatMessage(
