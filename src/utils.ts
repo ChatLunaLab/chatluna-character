@@ -412,7 +412,9 @@ export function formatSearchResult(searchResult: string) {
         let resultString = ''
 
         for (const key in result) {
-            resultString += `${key}: ${result[key]}, `
+            if (key === 'title' || key === 'description') {
+                resultString += `${key}: ${result[key]}, `
+            }
         }
 
         resultString = resultString.slice(0, -2)
