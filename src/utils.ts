@@ -88,56 +88,53 @@ interface TextMatch {
     content: string
     start: number
     end: number
+    children?: TextMatch[]
 }
 
 export function processTextMatches(rawMessage: string, useAt: boolean = true) {
     const currentElements: Element[] = []
     let parsedMessage = ''
 
-    // 获取所有匹配并排序
-    const matches: TextMatch[] = [
-        ...matchAt(rawMessage).map((m) => ({
-            type: 'at' as const,
-            content: m.at,
-            start: m.start,
-            end: m.end
-        })),
-        ...matchPre(rawMessage).map((m) => ({
-            type: 'pre' as const,
-            content: m.pre,
-            start: m.start,
-            end: m.end
-        }))
-    ].sort((a, b) => a.start - b.start)
+    // 使用自定义 lexer 解析文本
+    const tokens: TextMatch[] = textMatchLexer(rawMessage)
 
-    if (matches.length === 0) {
+    if (tokens.length === 0) {
         parsedMessage = rawMessage
         currentElements.push(...transform(rawMessage))
         return { currentElements, parsedMessage }
     }
 
     let lastIndex = 0
-    for (const match of matches) {
-        const before = rawMessage.substring(lastIndex, match.start)
+    for (const token of tokens) {
+        const before = rawMessage.substring(lastIndex, token.start)
 
         if (before.length > 0) {
             parsedMessage += before
             currentElements.push(...transform(before))
         }
 
-        if (match.type === 'at') {
+        if (token.type === 'at') {
             if (useAt) {
-                currentElements.push(h.at(match.content))
+                currentElements.push(h.at(token.content))
             }
-        } else {
-            // pre
-            parsedMessage += match.content
-            currentElements.push(
-                h('text', { span: true, content: match.content })
-            )
+        } else if (token.type === 'pre') {
+            parsedMessage += token.content
+            const children: Element[] = []
+
+            // 处理 children
+            if (!token.children) {
+                children.push(h('text', { span: true, content: token.content }))
+            } else {
+                const { currentElements } = processTextMatches(
+                    token.content,
+                    useAt
+                )
+                children.push(...currentElements)
+            }
+            currentElements.push(h('message', { span: true, children }))
         }
 
-        lastIndex = match.end
+        lastIndex = token.end
     }
 
     const after = rawMessage.substring(lastIndex)
@@ -147,6 +144,65 @@ export function processTextMatches(rawMessage: string, useAt: boolean = true) {
     }
 
     return { currentElements, parsedMessage }
+}
+
+// 自定义 lexer 函数
+function textMatchLexer(input: string): TextMatch[] {
+    const tokens: TextMatch[] = []
+    const stack: { type: 'pre'; start: number; children: TextMatch[] }[] = []
+    let index = 0
+    let inPre = false
+
+    while (index < input.length) {
+        // 检测 <pre> 标签
+        if (input.startsWith('<pre>', index)) {
+            stack.push({ type: 'pre', start: index, children: [] })
+            index += 5 // 跳过 <pre>
+            inPre = true
+            continue
+        }
+
+        // 检测 </pre> 标签
+        if (input.startsWith('</pre>', index)) {
+            const { start } = stack.pop() || {}
+            if (start !== undefined) {
+                const content = input.substring(start + 5, index) // 获取 <pre> 内的内容
+                // 将内容分割为文本和 at 元素
+                const innerTokens = textMatchLexer(content)
+                tokens.push({
+                    type: 'pre',
+                    content,
+                    start,
+                    end: index + 6, // 结束位置
+                    children: innerTokens // 添加子元素
+                })
+            }
+            index += 6 // 跳过 </pre>
+            inPre = false
+            continue
+        }
+
+        // 检测 <at> 标签
+        if (!inPre && input.startsWith('<at', index)) {
+            const endTagIndex = input.indexOf('</at>', index)
+            if (endTagIndex !== -1) {
+                const content = input.substring(index + 4, endTagIndex) // 获取 <at> 内的内容
+                tokens.push({
+                    type: 'at',
+                    content,
+                    start: index,
+                    end: endTagIndex + 5 // 结束位置
+                })
+                index = endTagIndex + 5 // 跳过 </at>
+                continue
+            }
+        }
+
+        // 普通文本处理
+        index++
+    }
+
+    return tokens
 }
 
 export function parseResponse(response: string, useAt: boolean = true) {
