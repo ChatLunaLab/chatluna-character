@@ -42,5 +42,13 @@ export interface PresetTemplate {
 
 export interface GroupInfo {
     messageCount: number
-    messageSendProbability: number
+    messageTimestamps: number[]
+    lastActivityScore: number
+    lastScoreUpdate: number
+    lastResponseTime: number // 新增字段：记录上次响应时间
+}
+
+export interface ActivityScore {
+    score: number
+    timestamp: number
 }

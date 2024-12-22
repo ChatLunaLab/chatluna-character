@@ -1,6 +1,6 @@
-import { Context } from 'koishi'
+import { Context, Time } from 'koishi'
 import { Config } from '..'
-import { GroupInfo, PresetTemplate } from '../types'
+import { ActivityScore, GroupInfo, PresetTemplate } from '../types'
 
 export const groupInfos: Record<string, GroupInfo> = {}
 
@@ -16,10 +16,31 @@ export async function apply(ctx: Context, config: Config) {
 
     service.addFilter((session, message) => {
         const guildId = session.guildId
+        const now = Date.now()
+
         const info = groupInfos[guildId] || {
             messageCount: 0,
-            messageSendProbability: 1
+            messageSendProbability: 1,
+            messageTimestamps: [],
+            lastActivityScore: 0,
+            lastScoreUpdate: now,
+            lastResponseTime: 0
         }
+
+        // 更新消息时间戳
+        info.messageTimestamps.push(now)
+        if (info.messageTimestamps.length > WINDOW_SIZE) {
+            info.messageTimestamps.shift()
+        }
+
+        // 计算新的活跃度分数，传入上次响应时间
+        const activity = calculateActivityScore(
+            info.messageTimestamps,
+            info.lastResponseTime
+        )
+        info.lastActivityScore = activity.score
+        info.lastScoreUpdate = activity.timestamp
+
         const currentGuildConfig = config.configs[guildId]
         let copyOfConfig = Object.assign({}, config)
         let currentPreset = globalPreset
@@ -37,10 +58,10 @@ export async function apply(ctx: Context, config: Config) {
                 })()
         }
 
-        let { messageCount, messageSendProbability } = info
+        let { messageCount } = info
 
         logger.debug(
-            `messageCount: ${messageCount}, messageSendProbability: ${messageSendProbability}. content: ${JSON.stringify(
+            `messageCount: ${messageCount}, activityScore: ${activity.score.toFixed(3)}. content: ${JSON.stringify(
                 message
             )}`
         )
@@ -114,8 +135,8 @@ export async function apply(ctx: Context, config: Config) {
         // 保底必出
         if (
             (messageCount > maxMessages ||
-                messageSendProbability > 1 ||
                 appel ||
+                info.lastActivityScore >= config.messageActivityScore ||
                 (config.isNickname &&
                     currentPreset.nick_name.some((value) =>
                         message.content.startsWith(value)
@@ -123,30 +144,92 @@ export async function apply(ctx: Context, config: Config) {
             !isMute
         ) {
             info.messageCount = 0
-            info.messageSendProbability = 1
 
-            groupInfos[session.guildId] = info
-            return true
-        }
+            // 记录响应时间并降低活跃度
+            info.lastActivityScore -= COOLDOWN_PENALTY
 
-        // 按照概率出
-        if (Math.random() > messageSendProbability && !isMute) {
-            info.messageCount = 0
-            info.messageSendProbability = 1
-
+            info.lastResponseTime = now
             groupInfos[session.guildId] = info
             return true
         }
 
         messageCount++
-        messageSendProbability -=
-            (1 / maxMessages) * copyOfConfig.messageProbability
-
         info.messageCount = messageCount
-        info.messageSendProbability = messageSendProbability
-
         groupInfos[session.guildId] = info
-
         return false
     })
 }
+
+function calculateIntervalScore(interval: number): number {
+    return Math.max(0, 1 - interval / MAX_INTERVAL)
+}
+
+function calculateActivityScore(
+    timestamps: number[],
+    lastResponseTime?: number
+): ActivityScore {
+    const now = Date.now()
+
+    if (timestamps.length < 2) {
+        return { score: 0, timestamp: now }
+    }
+
+    // 计算所有消息间隔
+    const intervals: number[] = []
+    const weights: number[] = []
+    let totalWeight = 0
+
+    for (let i = 1; i < timestamps.length; i++) {
+        const interval = timestamps[i] - timestamps[i - 1]
+        intervals.push(interval)
+
+        // 计算每个间隔的权重，越新的消息权重越大
+        const weight = Math.pow(DECAY_FACTOR, timestamps.length - i)
+        weights.push(weight)
+        totalWeight += weight
+    }
+
+    // 计算加权平均的间隔得分
+    let weightedIntervalScore = 0
+    for (let i = 0; i < intervals.length; i++) {
+        const normalizedWeight = weights[i] / totalWeight
+        weightedIntervalScore +=
+            calculateIntervalScore(intervals[i]) * normalizedWeight
+    }
+
+    // 计算最近消息的即时活跃度
+    const recentInterval = now - timestamps[timestamps.length - 1]
+    const recentScore = calculateIntervalScore(recentInterval)
+
+    // 添加随机因子
+    const randomFactor = Math.random() * BASE_PROBABILITY
+
+    // 综合计算最终得分
+    let score =
+        recentScore * RECENT_WEIGHT +
+        weightedIntervalScore * HISTORY_WEIGHT +
+        randomFactor * RANDOM_WEIGHT
+
+    // 应用冷却期检查
+    if (lastResponseTime) {
+        const timeSinceLastResponse = now - lastResponseTime
+        if (timeSinceLastResponse < MIN_COOLDOWN_TIME) {
+            score *= 0.1
+        }
+    }
+
+    // 确保分数在 0-1 之间
+    score = Math.max(0, Math.min(1, score))
+
+    return { score, timestamp: now }
+}
+
+const WINDOW_SIZE = 100 // 增大滑动窗口
+const MAX_INTERVAL = Time.minute * 5
+const MIN_COOLDOWN_TIME = Time.second * 3
+const BASE_PROBABILITY = 0.02
+const RECENT_WEIGHT = 0.6 // 最近消息的权重
+const HISTORY_WEIGHT = 0.2 // 历史消息的权重
+const RANDOM_WEIGHT = 0.1 // 随机因子权重
+const DECAY_FACTOR = 0.95 // 历史消息衰减因子
+const COOLDOWN_PENALTY = 0.3 // 发送消息后的活跃度降低量

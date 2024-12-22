@@ -79,7 +79,7 @@ export interface Config extends ChatLunaPlugin.Config {
     maxMessages: number
 
     messageInterval: number
-    messageProbability: number
+    messageActivityScore: number
 
     maxTokens: number
     applyGroup: string[]
@@ -187,13 +187,15 @@ Standalone Question or [skip]:`)
             .role('slider')
             .max(100)
             .description('随机发送消息的间隔'),
-        messageProbability: Schema.number()
-            .default(0.1)
+        messageActivityScore: Schema.number()
+            .default(0.6)
             .min(0)
-            .max(4)
+            .max(1)
             .role('slider')
             .step(0.00001)
-            .description('发送消息的叠加概率（线性增长）'),
+            .description(
+                '消息活跃度分数的阈值，当活跃度超过这个阈值则会发送消息'
+            ),
 
         coolDownTime: Schema.number()
             .default(10)
@@ -254,13 +256,15 @@ Standalone Question or [skip]:`)
                     .role('slider')
                     .max(50)
                     .description('随机发送消息的间隔'),
-                messageProbability: Schema.number()
-                    .default(0.1)
+                messageActivityScore: Schema.number()
+                    .default(0.6)
                     .min(0)
                     .max(1)
                     .role('slider')
                     .step(0.00001)
-                    .description('发送消息的叠加概率（线性增长）'),
+                    .description(
+                        '消息活跃度分数的阈值，当活跃度超过这个阈值则会发送消息'
+                    ),
                 search: Schema.boolean()
                     .description('是否启用联网搜索功能')
                     .default(false),
