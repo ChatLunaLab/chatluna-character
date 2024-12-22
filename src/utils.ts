@@ -186,13 +186,27 @@ function textMatchLexer(input: string): TextMatch[] {
         if (!inPre && input.startsWith('<at', index)) {
             const endTagIndex = input.indexOf('</at>', index)
             if (endTagIndex !== -1) {
-                const content = input.substring(index + 4, endTagIndex) // 获取 <at> 内的内容
+                // <at name="xx">xxx</at>
+                // get xxx
+                const atTagPattern = /<at\b[^>]*>(.*?)<\/at>/
+                const match = atTagPattern.exec(
+                    input.substring(index, endTagIndex + 5)
+                )
+
+                if (!match) {
+                    throw new Error(
+                        `Invalid <at> tag at position ${index}: missing content`
+                    )
+                }
+
+                const content = match[1] // 获取 <at> 和 </at> 之间的内容
                 tokens.push({
                     type: 'at',
                     content,
                     start: index,
                     end: endTagIndex + 5 // 结束位置
                 })
+
                 index = endTagIndex + 5 // 跳过 </at>
                 continue
             }
