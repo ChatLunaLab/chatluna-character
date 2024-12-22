@@ -34,12 +34,6 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         // 计算新的活跃度分数，传入上次响应时间
-        const activity = calculateActivityScore(
-            info.messageTimestamps,
-            info.lastResponseTime
-        )
-        info.lastActivityScore = activity.score
-        info.lastScoreUpdate = activity.timestamp
 
         const currentGuildConfig = config.configs[guildId]
         let copyOfConfig = Object.assign({}, config)
@@ -57,6 +51,14 @@ export async function apply(ctx: Context, config: Config) {
                     return template
                 })()
         }
+
+        const activity = calculateActivityScore(
+            info.messageTimestamps,
+            info.lastResponseTime,
+            copyOfConfig.maxMessages
+        )
+        info.lastActivityScore = activity.score
+        info.lastScoreUpdate = activity.timestamp
 
         let { messageCount } = info
 
@@ -166,15 +168,20 @@ function calculateIntervalScore(interval: number): number {
 
 function calculateActivityScore(
     timestamps: number[],
-    lastResponseTime?: number
+    lastResponseTime?: number,
+    maxMessages?: number
 ): ActivityScore {
     const now = Date.now()
 
+    // If less than 2 messages, return minimum score
     if (timestamps.length < 2) {
         return { score: 0, timestamp: now }
     }
 
-    // 计算所有消息间隔
+    // Calculate message accumulation factor (0 to 1)
+    const accumulationFactor = Math.min(timestamps.length / maxMessages, 1)
+
+    // Calculate intervals and weights as before
     const intervals: number[] = []
     const weights: number[] = []
     let totalWeight = 0
@@ -182,14 +189,11 @@ function calculateActivityScore(
     for (let i = 1; i < timestamps.length; i++) {
         const interval = timestamps[i] - timestamps[i - 1]
         intervals.push(interval)
-
-        // 计算每个间隔的权重，越新的消息权重越大
         const weight = Math.pow(DECAY_FACTOR, timestamps.length - i)
         weights.push(weight)
         totalWeight += weight
     }
 
-    // 计算加权平均的间隔得分
     let weightedIntervalScore = 0
     for (let i = 0; i < intervals.length; i++) {
         const normalizedWeight = weights[i] / totalWeight
@@ -197,20 +201,17 @@ function calculateActivityScore(
             calculateIntervalScore(intervals[i]) * normalizedWeight
     }
 
-    // 计算最近消息的即时活跃度
     const recentInterval = now - timestamps[timestamps.length - 1]
     const recentScore = calculateIntervalScore(recentInterval)
-
-    // 添加随机因子
     const randomFactor = Math.random() * BASE_PROBABILITY
 
-    // 综合计算最终得分
+    // Apply accumulation factor to the score calculation
     let score =
-        recentScore * RECENT_WEIGHT +
-        weightedIntervalScore * HISTORY_WEIGHT +
-        randomFactor * RANDOM_WEIGHT
+        (recentScore * RECENT_WEIGHT +
+            weightedIntervalScore * HISTORY_WEIGHT +
+            randomFactor * RANDOM_WEIGHT) *
+        accumulationFactor
 
-    // 应用冷却期检查
     if (lastResponseTime) {
         const timeSinceLastResponse = now - lastResponseTime
         if (timeSinceLastResponse < MIN_COOLDOWN_TIME) {
@@ -218,18 +219,18 @@ function calculateActivityScore(
         }
     }
 
-    // 确保分数在 0-1 之间
     score = Math.max(0, Math.min(1, score))
 
     return { score, timestamp: now }
 }
 
-const WINDOW_SIZE = 100 // 增大滑动窗口
+// Adjust constants for better balance
+const WINDOW_SIZE = 100
 const MAX_INTERVAL = Time.minute * 5
-const MIN_COOLDOWN_TIME = Time.second * 3
+const MIN_COOLDOWN_TIME = Time.second * 10 // Increased cooldown time
 const BASE_PROBABILITY = 0.02
-const RECENT_WEIGHT = 0.6 // 最近消息的权重
-const HISTORY_WEIGHT = 0.2 // 历史消息的权重
-const RANDOM_WEIGHT = 0.1 // 随机因子权重
-const DECAY_FACTOR = 0.95 // 历史消息衰减因子
-const COOLDOWN_PENALTY = 0.3 // 发送消息后的活跃度降低量
+const RECENT_WEIGHT = 0.3 // Slightly reduced
+const HISTORY_WEIGHT = 0.15 // Increased
+const RANDOM_WEIGHT = 0.04
+const DECAY_FACTOR = 0.95
+const COOLDOWN_PENALTY = 0.3

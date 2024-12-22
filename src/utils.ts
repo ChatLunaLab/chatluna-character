@@ -84,7 +84,7 @@ function processElements(elements: Element[]) {
 }
 
 interface TextMatch {
-    type: 'at' | 'pre'
+    type: 'at' | 'pre' | 'emo'
     content: string
     start: number
     end: number
@@ -117,6 +117,10 @@ export function processTextMatches(rawMessage: string, useAt: boolean = true) {
             if (useAt) {
                 currentElements.push(h.at(token.content))
             }
+        } else if (token.type === 'emo') {
+            currentElements.push(
+                h('text', { span: true, content: token.content })
+            )
         } else if (token.type === 'pre') {
             parsedMessage += token.content
             const children: Element[] = []
@@ -208,6 +212,23 @@ function textMatchLexer(input: string): TextMatch[] {
                 })
 
                 index = endTagIndex + 5 // 跳过 </at>
+                continue
+            }
+        }
+
+        // 检查 <emo> 标签
+
+        if (input.startsWith('<emo>', index)) {
+            const endTagIndex = input.indexOf('</emo>', index)
+            if (endTagIndex !== -1) {
+                const content = input.substring(index + 5, endTagIndex) // 获取 <emo> 和 </emo> 之间的内容
+                tokens.push({
+                    type: 'emo',
+                    content,
+                    start: index,
+                    end: endTagIndex + 6 // 结束位置
+                })
+                index = endTagIndex + 6 // 跳过 </emo>
                 continue
             }
         }

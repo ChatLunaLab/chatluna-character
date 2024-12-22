@@ -116,6 +116,8 @@ async function getSearchTool(
 
     const chatlunaTool = ctx.chatluna.platform.getTool('web-search')
 
+    if (!chatlunaTool) return undefined
+
     const tool = await chatlunaTool.createTool({
         model,
         embeddings,
