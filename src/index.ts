@@ -30,25 +30,27 @@ export function apply(ctx: Context, config: Config) {
     )
 
     disposables.push(
-        ctx.middleware(async (session, next) => {
-            if (!ctx.chatluna_character) {
-                return next()
-            }
+        ctx.middleware((session, next) => {
+            return next(async (loop) => {
+                if (!ctx.chatluna_character) {
+                    return loop()
+                }
 
-            // 不接收自己的消息
-            if (ctx.bots[session.uid]) {
-                return next()
-            }
+                // 不接收自己的消息
+                if (ctx.bots[session.uid]) {
+                    return loop()
+                }
 
-            const guildId = session.guildId
+                const guildId = session.guildId
 
-            if (!config.applyGroup.includes(guildId)) {
-                return next()
-            }
+                if (!config.applyGroup.includes(guildId)) {
+                    return loop()
+                }
 
-            if (!(await ctx.chatluna_character.broadcast(session))) {
-                return next()
-            }
+                if (!(await ctx.chatluna_character.broadcast(session))) {
+                    return loop()
+                }
+            })
         })
     )
 
