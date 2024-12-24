@@ -31,22 +31,22 @@ export function apply(ctx: Context, config: Config) {
 
     disposables.push(
         ctx.middleware((session, next) => {
+            if (!ctx.chatluna_character) {
+                return next()
+            }
+
+            // 不接收自己的消息
+            if (ctx.bots[session.uid]) {
+                return next()
+            }
+
+            const guildId = session.guildId
+
+            if (!config.applyGroup.includes(guildId)) {
+                return next()
+            }
+
             return next(async (loop) => {
-                if (!ctx.chatluna_character) {
-                    return loop()
-                }
-
-                // 不接收自己的消息
-                if (ctx.bots[session.uid]) {
-                    return loop()
-                }
-
-                const guildId = session.guildId
-
-                if (!config.applyGroup.includes(guildId)) {
-                    return loop()
-                }
-
                 if (!(await ctx.chatluna_character.broadcast(session))) {
                     return loop()
                 }
