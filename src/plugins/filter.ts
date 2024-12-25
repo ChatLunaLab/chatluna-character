@@ -64,7 +64,7 @@ export async function apply(ctx: Context, config: Config) {
 
         logger.debug(
             `messageCount: ${messageCount}, activityScore: ${activity.score.toFixed(3)}. content: ${JSON.stringify(
-                message
+                Object.assign({}, message, { images: undefined })
             )}`
         )
 

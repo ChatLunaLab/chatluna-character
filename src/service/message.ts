@@ -1,6 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import EventEmitter from 'events'
-import { Context, h, Logger, Service, Session } from 'koishi'
+import { Context, h, Logger, Service, Session, Time } from 'koishi'
 import { createLogger } from 'koishi-plugin-chatluna/utils/logger'
 import { Config } from '..'
 import { Preset } from '../preset'
@@ -185,9 +185,7 @@ export class MessageCollector extends Service {
 
         const groupId = session.guildId
         const maxMessageSize = this._config.maxMessages
-        const groupArray = this._messages[groupId]
-            ? this._messages[groupId]
-            : []
+        let groupArray = this._messages[groupId] ? this._messages[groupId] : []
 
         const elements = session.elements
             ? session.elements
@@ -222,7 +220,8 @@ export class MessageCollector extends Service {
                       name: session.quote?.user?.name,
                       id: session.quote?.user?.id
                   }
-                : undefined
+                : undefined,
+            images: await getImages(this.ctx, session)
         }
 
         groupArray.push(message)
@@ -233,12 +232,24 @@ export class MessageCollector extends Service {
             }
         }
 
-        for (const message of groupArray) {
-            if (
-                message.timestamp != null &&
-                message.timestamp < Date.now() - 1000 * 60 * 60
-            ) {
-                groupArray.splice(groupArray.indexOf(message), 1)
+        const now = Date.now()
+        groupArray = groupArray.filter((message) => {
+            return (
+                message.timestamp == null ||
+                message.timestamp >= now - Time.hour
+            )
+        })
+
+        // delete the message after 10
+        let foundImage = false
+        const maxIndex = groupArray.length - 1 - 10
+        for (let index = groupArray.length - 1; index >= 0; index--) {
+            const message = groupArray[index]
+            if (!foundImage && message.images) {
+                foundImage = true
+                continue
+            } else if ((foundImage && message.images) || index <= maxIndex) {
+                delete message['images']
             }
         }
 
@@ -255,6 +266,7 @@ export class MessageCollector extends Service {
             await this._unlock(session)
             // 禁言时还是不响应好点。。。。
             // 命令是不会受到影响的
+            // 现在感觉
             return this.isMute(session)
         }
     }
@@ -262,10 +274,6 @@ export class MessageCollector extends Service {
 
 function mapElementToString(session: Session, content: string, elements: h[]) {
     const filteredBuffer: string[] = []
-
-    if (content.trimEnd().length < 1) {
-        return ''
-    }
 
     for (const element of elements) {
         if (element.type === 'text') {
@@ -284,10 +292,25 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
             }
 
             filteredBuffer.push(`<at name='${name}'>${element.attrs.id}</at>`)
+        } else if (element.type === 'img') {
+            filteredBuffer.push(`[image]`)
         }
     }
 
+    if (content.trimEnd().length < 1 && filteredBuffer.length < 1) {
+        return ''
+    }
+
     return filteredBuffer.join('')
+}
+
+async function getImages(ctx: Context, session: Session) {
+    const mergedMessage = await ctx.chatluna.messageTransformer.transform(
+        session,
+        session.elements
+    )
+
+    return mergedMessage.additional_kwargs['images'] as string[]
 }
 
 type MessageCollectorFilter = (session: Session, message: Message) => boolean

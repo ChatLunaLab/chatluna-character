@@ -7,6 +7,7 @@ export interface Message {
     id: string
     timestamp?: number
     quote?: Message
+    images?: string[]
 }
 
 export interface GroupTemp {

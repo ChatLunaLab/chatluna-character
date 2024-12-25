@@ -96,6 +96,7 @@ export interface Config extends ChatLunaPlugin.Config {
     searchPrompt: string
     isForceMute: boolean
     sendStickerProbability: number
+    image: boolean
 
     coolDownTime: number
     typingTime: number
@@ -137,7 +138,12 @@ export const Config = Schema.intersect([
             .default(5000)
             .min(1024)
             .max(42000)
-            .description('使用聊天的最大 token 数'),
+            .description('聊天的最大 token 数'),
+        image: Schema.boolean()
+            .description(
+                '是否允许输入图片（注意表情包也会输入，目前仅支持原生多模态的模型）'
+            )
+            .default(false),
         search: Schema.boolean()
             .description('是否启用联网搜索功能')
             .default(false),
@@ -269,6 +275,11 @@ Standalone Question or [skip]:`)
                     ),
                 search: Schema.boolean()
                     .description('是否启用联网搜索功能')
+                    .default(false),
+                image: Schema.boolean()
+                    .description(
+                        '是否允许输入图片（注意表情包也会输入，目前仅支持原生多模态的模型）'
+                    )
                     .default(false),
                 coolDownTime: Schema.number()
                     .default(10)
