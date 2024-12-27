@@ -106,15 +106,17 @@ export function processTextMatches(rawMessage: string, useAt: boolean = true) {
 
     let lastIndex = 0
     for (const token of tokens) {
-        const before = rawMessage.substring(lastIndex, token.start).trim()
+        const before = rawMessage.substring(lastIndex, token.start)
 
-        if (before.length > 0) {
+        if (before.trim().length > 0) {
             parsedMessage += before
             currentElements.push(...transform(before))
         }
 
         if (token.type === 'at') {
             if (useAt) {
+                // Handle special case for leading @mentions
+                currentElements.push(h.text(' '))
                 currentElements.push(h.at(token.content))
             }
         } else if (token.type === 'emo') {
@@ -152,8 +154,8 @@ export function processTextMatches(rawMessage: string, useAt: boolean = true) {
         lastIndex = token.end
     }
 
-    const after = rawMessage.substring(lastIndex).trim()
-    if (after.length > 0) {
+    const after = rawMessage.substring(lastIndex)
+    if (after.trim().length > 0) {
         parsedMessage += after
         currentElements.push(...transform(after))
     }
@@ -261,16 +263,6 @@ export function parseResponse(response: string, useAt: boolean = true) {
             useAt
         )
         const resultElements = processElements(currentElements)
-
-        // Handle special case for leading @mentions
-        if (
-            resultElements[0]?.[0]?.type === 'at' &&
-            resultElements.length > 1
-        ) {
-            resultElements[1].unshift(h.text(' '))
-            resultElements[1].unshift(resultElements[0][0])
-            resultElements.shift()
-        }
 
         return {
             elements: resultElements,
