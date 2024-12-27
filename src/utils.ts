@@ -52,7 +52,7 @@ function parseMessageContent(response: string) {
     }
 }
 
-function processElements(elements: Element[]) {
+export function processElements(elements: Element[]) {
     const resultElements: Element[][] = []
 
     const forEachElement = (elements: Element[]) => {
@@ -73,12 +73,6 @@ function processElements(elements: Element[]) {
                 }
             } else if (['em', 'strong', 'del', 'p'].includes(element.type)) {
                 forEachElement(element.children)
-            } else if (
-                element.type === 'message' &&
-                element.attrs['span'] &&
-                element.children
-            ) {
-                resultElements.push(element.children)
             } else {
                 resultElements.push([element])
             }
@@ -112,7 +106,7 @@ export function processTextMatches(rawMessage: string, useAt: boolean = true) {
 
     let lastIndex = 0
     for (const token of tokens) {
-        const before = rawMessage.substring(lastIndex, token.start)
+        const before = rawMessage.substring(lastIndex, token.start).trim()
 
         if (before.length > 0) {
             parsedMessage += before
@@ -129,7 +123,7 @@ export function processTextMatches(rawMessage: string, useAt: boolean = true) {
             )
         } else if (token.type === 'pre') {
             parsedMessage += token.content
-            const children: Element[] = []
+            let children: Element[] = []
 
             // 处理 children
             if (!token.children) {
@@ -141,13 +135,24 @@ export function processTextMatches(rawMessage: string, useAt: boolean = true) {
                 )
                 children.push(...currentElements)
             }
+
+            children = children.reduce(
+                (acc, element) =>
+                    acc.concat(
+                        element.type === 'p'
+                            ? element.children || element
+                            : element
+                    ),
+                []
+            )
+
             currentElements.push(h('message', { span: true, children }))
         }
 
         lastIndex = token.end
     }
 
-    const after = rawMessage.substring(lastIndex)
+    const after = rawMessage.substring(lastIndex).trim()
     if (after.length > 0) {
         parsedMessage += after
         currentElements.push(...transform(after))
@@ -275,7 +280,7 @@ export function parseResponse(response: string, useAt: boolean = true) {
             messageType
         }
     } catch (e) {
-        logger.error(e)
+        logger?.error(e)
         throw new Error('Failed to parse response: ' + response)
     }
 }
