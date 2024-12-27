@@ -73,6 +73,12 @@ function processElements(elements: Element[]) {
                 }
             } else if (['em', 'strong', 'del', 'p'].includes(element.type)) {
                 forEachElement(element.children)
+            } else if (
+                element.type === 'message' &&
+                element.attrs['span'] &&
+                element.children
+            ) {
+                resultElements.push(element.children)
             } else {
                 resultElements.push([element])
             }
