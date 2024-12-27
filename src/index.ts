@@ -127,11 +127,11 @@ export const Config = Schema.intersect([
     }).description('基础配置'),
 
     Schema.object({
-        model: Schema.dynamic('model').description('使用的模型'),
+        model: Schema.dynamic('model').default('').description('使用的模型'),
         modelOverride: Schema.array(
             Schema.object({
                 groupId: Schema.string().required().description('群组 ID'),
-                model: Schema.dynamic('model').description('模型')
+                model: Schema.dynamic('model').default('').description('模型')
             })
         ).description('针对某个群的模型设置，会覆盖上面的配置'),
         maxTokens: Schema.number()
