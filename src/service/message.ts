@@ -221,7 +221,9 @@ export class MessageCollector extends Service {
                       id: session.quote?.user?.id
                   }
                 : undefined,
-            images: await getImages(this.ctx, session)
+            images: this._config.image
+                ? await getImages(this.ctx, session)
+                : undefined
         }
 
         groupArray.push(message)
