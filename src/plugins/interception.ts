@@ -28,7 +28,7 @@ export function apply(ctx: Context, config: Config) {
         }
 
         if (!appel) {
-            return false
+            return config.disableChatLuna
         }
 
         // 检查是否在名单里面
