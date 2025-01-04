@@ -233,7 +233,7 @@ Standalone Question or [skip]:`)
             .description('发送表情的概率'),
         defaultPreset: Schema.dynamic('character-preset')
             .description('使用的伪装预设')
-            .default('旧梦旧念')
+            .default('煕')
     }).description('对话设置'),
 
     Schema.object({
