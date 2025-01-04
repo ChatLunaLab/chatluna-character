@@ -413,7 +413,7 @@ function formatMessageString(message: Message) {
     let xmlMessage = `<message type='text' name='${message.name}' id='${message.id}'`
 
     if (message.timestamp) {
-        const timestampString = new Date(message.timestamp).toISOString()
+        const timestampString = new Date(message.timestamp).toLocaleString()
         xmlMessage += ` timestamp='${timestampString}'`
     }
 
