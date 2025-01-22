@@ -175,11 +175,7 @@ async function prepareMessages(
         currentPreset.system.template as string
     )
 
-    const formattedSystemPrompt = await currentPreset.system.format({
-        time: new Date().toString(),
-        status: temp.status ?? currentPreset.status ?? '',
-        stickers: JSON.stringify(stickerService.getAllStickTypes())
-    })
+    const formattedSystemPrompt = await currentPreset.system.format({})
 
     logger.debug('messages_new: ' + JSON.stringify(recentMessage))
     logger.debug('messages_last: ' + JSON.stringify(lastMessage))
