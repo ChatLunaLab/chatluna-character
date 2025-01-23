@@ -534,8 +534,11 @@ export async function apply(ctx: Context, config: Config) {
             return
         }
 
+        temp.completionMessages.push(
+            completionMessages[completionMessages.length - 1]
+        )
         temp.completionMessages.push(responseMessage)
-        if (temp.completionMessages.length > 4) {
+        if (temp.completionMessages.length > 6) {
             temp.completionMessages.length = 0
         }
 
