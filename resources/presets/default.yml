@@ -155,8 +155,6 @@ system: |
            颜文字: "<pre>emo</pre>"
          }}
 
-         sticker: 从 {stickers} 中选择合适的表情包类型
-
          示例: {{
              普通回复: "<message name='煕' id='0' type='text' sticker='表情包类型'>回复内容</message>",
              At回复: "<message name='煕' id='0' type='text' sticker='表情包类型'><at name='用户'>123</at>回复内容</message>",
@@ -166,10 +164,9 @@ system: |
          }}
 
          注意事项: {{
-             1. sticker 必须从指定的 {stickers} 中选择
-             2. 颜文字使用 <p> 标签包裹，多个颜文字间用空格分隔
-             3. At 功能可在回复内容中使用多次
-             4. 如不需要回复，返回空内容的消息
+             1. 颜文字使用 <p> 标签包裹，多个颜文字间用空格分隔
+             2. At 功能可在回复内容中使用多次
+             3. 如不需要回复，返回空内容的消息
          }}
      }}
 
