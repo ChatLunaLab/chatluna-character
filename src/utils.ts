@@ -8,6 +8,7 @@ import he from 'he'
 import { PromptTemplate } from '@langchain/core/prompts'
 import { getMessageContent } from 'koishi-plugin-chatluna/utils/string'
 import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
+import { EmptyEmbeddings } from 'koishi-plugin-chatluna/llm-core/model/in_memory'
 
 export function isEmoticonStatement(
     text: string,
@@ -432,6 +433,23 @@ export async function getSearchKeyword(
     messages: Message[],
     model: ChatLunaChatModel
 ) {
+    if (
+        config.searchKeywordExtraModel != null &&
+        config.searchKeywordExtraModel.length > 0
+    ) {
+        const [platform, modelName] = parseRawModelName(
+            config.searchKeywordExtraModel
+        )
+        try {
+            model = await session.app.chatluna.createChatModel(
+                platform,
+                modelName
+            )
+        } catch (e) {
+            logger.error(e)
+        }
+    }
+
     const userNames: Record<string, string> = {
         [session.bot.selfId]: 'bot'
     }
@@ -521,11 +539,16 @@ export function formatSearchResult(searchResult: string) {
 }
 
 export function createEmbeddingsModel(ctx: Context) {
-    const modelName = ctx.chatluna.config.defaultEmbeddings
+    try {
+        const modelName = ctx.chatluna.config.defaultEmbeddings
 
-    const [platform, model] = parseRawModelName(modelName)
+        const [platform, model] = parseRawModelName(modelName)
 
-    return ctx.chatluna.createEmbeddings(platform, model)
+        return ctx.chatluna.createEmbeddings(platform, model)
+    } catch (e) {
+        logger.error(e)
+        return new EmptyEmbeddings()
+    }
 }
 
 export async function formatMessage(

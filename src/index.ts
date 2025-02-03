@@ -85,6 +85,7 @@ export interface Config extends ChatLunaPlugin.Config {
 
     maxTokens: number
     applyGroup: string[]
+    searchKeywordExtraModel: string
 
     modelOverride: { groupId: string; model: string }[]
     configs: Record<string, GuildConfig>
@@ -171,7 +172,10 @@ IMPORTANT: Your rephrased question or [skip] MUST be in the same language as the
 Chat History:
 {chat_history}
 Follow-up Input: {question}
-Standalone Question or [skip]:`)
+Standalone Question or [skip]:`),
+        searchKeywordExtraModel: Schema.dynamic('model')
+            .default('')
+            .description('搜索时使用的模型')
     }).description('模型配置'),
 
     Schema.object({
