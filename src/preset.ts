@@ -32,18 +32,25 @@ export class Preset {
         this._presets.length = 0
 
         for (const file of files) {
-            // use file
-            const extension = path.extname(file)
-            if (extension !== '.yml') {
-                continue
+            try {
+                // use file
+                const extension = path.extname(file)
+                if (extension !== '.yml') {
+                    continue
+                }
+                const rawText = await fs.readFile(
+                    path.join(presetDir, file),
+                    'utf-8'
+                )
+                const preset = loadPreset(rawText)
+                preset.path = path.join(presetDir, file)
+                this._presets.push(preset)
+            } catch (e) {
+                this.ctx.chatluna_character.logger.error(
+                    `error when load ${file}`,
+                    e
+                )
             }
-            const rawText = await fs.readFile(
-                path.join(presetDir, file),
-                'utf-8'
-            )
-            const preset = loadPreset(rawText)
-            preset.path = path.join(presetDir, file)
-            this._presets.push(preset)
         }
 
         this.ctx.schema.set(
@@ -212,11 +219,34 @@ export function loadPreset(text: string): PresetTemplate {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rawPreset = load(text) as any
 
+    let input: PromptTemplate
+    let system: PromptTemplate
+
+    try {
+        input = PromptTemplate.fromTemplate(rawPreset.input)
+    } catch (e) {
+        throw new ChatLunaError(
+            ChatLunaErrorCode.PRESET_LOAD_ERROR,
+            new Error(`input format error: ${rawPreset.input} in ${rawPreset}`)
+        )
+    }
+
+    try {
+        system = PromptTemplate.fromTemplate(rawPreset.system)
+    } catch (e) {
+        throw new ChatLunaError(
+            ChatLunaErrorCode.PRESET_LOAD_ERROR,
+            new Error(
+                `system format error: ${rawPreset.system} in ${rawPreset}`
+            )
+        )
+    }
+
     return {
         name: rawPreset.name,
         nick_name: rawPreset.nick_name,
-        input: PromptTemplate.fromTemplate(rawPreset.input),
-        system: PromptTemplate.fromTemplate(rawPreset.system),
+        input,
+        system,
         mute_keyword: rawPreset.mute_keyword ?? [],
         status: rawPreset?.status
     }
