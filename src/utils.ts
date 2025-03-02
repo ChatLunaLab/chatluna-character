@@ -449,11 +449,7 @@ export function preprocessContent(content: string): string {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function tryParseJSON(content: string): any {
-    try {
-        return JSON.parse(content)
-    } catch (e) {
-        return null
-    }
+    return JSON.parse(content)
 }
 
 /**
@@ -524,9 +520,8 @@ export function parseSearchAction(action: string): SearchAction {
     }
 
     return {
-        action: 'search',
-        thought: action,
-        content: [action]
+        action: 'skip',
+        thought: 'skip the search'
     }
 }
 
@@ -597,7 +592,8 @@ export async function getSearchKeyword(
     const prompt = await promptTemplate.invoke({
         chat_history: formattedMessages,
         // xx: -> ""
-        question: formattedMessages[messages.length - 1]
+        question: formattedMessages[messages.length - 1],
+        time: new Date().toISOString()
     })
 
     const modelResult = getMessageContent(
