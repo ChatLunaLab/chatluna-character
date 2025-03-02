@@ -53,3 +53,9 @@ export interface ActivityScore {
     score: number
     timestamp: number
 }
+
+export interface SearchAction {
+    thought: string
+    action: 'url' | 'search' | 'skip'
+    content?: string[]
+}

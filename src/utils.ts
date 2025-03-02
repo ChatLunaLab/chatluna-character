@@ -1,6 +1,6 @@
 import { ChatLunaChatModel } from 'koishi-plugin-chatluna/llm-core/platform/model'
 import { Config } from '.'
-import { Message } from './types'
+import { Message, SearchAction } from './types'
 import { BaseMessage } from '@langchain/core/messages'
 import { Context, Element, h, Logger, Session } from 'koishi'
 import { marked, Token } from 'marked'
@@ -9,6 +9,7 @@ import { PromptTemplate } from '@langchain/core/prompts'
 import { getMessageContent } from 'koishi-plugin-chatluna/utils/string'
 import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
 import { EmptyEmbeddings } from 'koishi-plugin-chatluna/llm-core/model/in_memory'
+import { StructuredTool } from '@langchain/core/tools'
 
 export function isEmoticonStatement(
     text: string,
@@ -427,6 +428,108 @@ function formatMessageString(message: Message) {
     return xmlMessage
 }
 
+/**
+ * 预处理内容，移除可能的 markdown 代码块标记
+ */
+export function preprocessContent(content: string): string {
+    // 移除 markdown 代码块标记 (```json 和 ```)
+    content = content.replace(
+        /```(?:json|javascript|js)?\s*([\s\S]*?)```/g,
+        '$1'
+    )
+
+    // 移除前后可能的空白字符
+    content = content.trim()
+
+    return content
+}
+
+/**
+ * 尝试解析 JSON，失败时返回 null
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function tryParseJSON(content: string): any {
+    try {
+        return JSON.parse(content)
+    } catch (e) {
+        return null
+    }
+}
+
+/**
+ * 尝试修复常见的 JSON 格式错误
+ */
+export function attemptToFixJSON(content: string): string {
+    let fixedContent = content
+
+    // 修复缺少引号的键名
+    fixedContent = fixedContent.replace(
+        /(\{|\,)\s*([a-zA-Z0-9_]+)\s*\:/g,
+        '$1"$2":'
+    )
+
+    // 修复使用单引号而非双引号的情况
+    fixedContent = fixedContent.replace(/(\{|\,)\s*'([^']+)'\s*\:/g, '$1"$2":')
+    fixedContent = fixedContent.replace(/\:\s*'([^']+)'/g, ':"$1"')
+
+    // 修复缺少逗号的情况
+    fixedContent = fixedContent.replace(/"\s*\}\s*"/g, '","')
+    fixedContent = fixedContent.replace(/"\s*\{\s*"/g, '",{"')
+
+    // 修复多余的逗号
+    fixedContent = fixedContent.replace(/,\s*\}/g, '}')
+    fixedContent = fixedContent.replace(/,\s*\]/g, ']')
+
+    // 修复不完整的数组
+    if (fixedContent.includes('[') && !fixedContent.includes(']')) {
+        fixedContent += ']'
+    }
+
+    // 修复不完整的对象
+    if (fixedContent.includes('{') && !fixedContent.includes('}')) {
+        fixedContent += '}'
+    }
+
+    // 如果内容不是以 [ 开头但包含 [ 字符，尝试提取数组部分
+    if (!fixedContent.trim().startsWith('[') && fixedContent.includes('[')) {
+        const arrayMatch = fixedContent.match(/\[([\s\S]*)\]/)
+        if (arrayMatch && arrayMatch[0]) {
+            fixedContent = arrayMatch[0]
+        }
+    }
+
+    return fixedContent
+}
+
+export function parseSearchAction(action: string): SearchAction {
+    action = preprocessContent(action)
+
+    try {
+        return tryParseJSON(action) as SearchAction
+    } catch (e) {
+        action = attemptToFixJSON(action)
+
+        try {
+            return tryParseJSON(action) as SearchAction
+        } catch (e) {
+            logger?.error(`parse search action failed: ${e}`)
+        }
+    }
+
+    if (action.includes('[skip]')) {
+        return {
+            action: 'skip',
+            thought: 'skip the search'
+        }
+    }
+
+    return {
+        action: 'search',
+        thought: action,
+        content: [action]
+    }
+}
+
 export async function getSearchKeyword(
     config: Config,
     session: Session,
@@ -467,8 +570,6 @@ export async function getSearchKeyword(
         return userNames[id]
     }
 
-    logger.debug(messages)
-
     const formattedMessages = messages
         .map((message) => {
             let content = message.content
@@ -499,7 +600,7 @@ export async function getSearchKeyword(
         question: formattedMessages[messages.length - 1]
     })
 
-    const result = getMessageContent(
+    const modelResult = getMessageContent(
         await model
             .invoke(prompt, {
                 temperature: 0
@@ -507,9 +608,83 @@ export async function getSearchKeyword(
             .then((message) => message.content)
     )
 
-    logger.debug('Search keyword', result)
+    const searchAction = parseSearchAction(modelResult)
 
-    return result
+    logger.debug('Search Action', modelResult)
+
+    return searchAction
+}
+
+export async function executeSearchAction(
+    action: SearchAction,
+    searchTool: StructuredTool,
+    webBrowserTool: StructuredTool
+) {
+    const searchResults: {
+        title: string
+        description: string
+        url: string
+    }[] = []
+
+    if (!Array.isArray(action.content)) {
+        logger?.error(
+            `search action content is not an array: ${JSON.stringify(action)}`
+        )
+        return
+    }
+
+    const searchByQuestion = async (question: string) => {
+        // Use the rephrased question for search
+        const rawSearchResults = await searchTool.invoke(question)
+
+        const parsedSearchResults =
+            (JSON.parse(rawSearchResults as string) as unknown as {
+                title: string
+                description: string
+                url: string
+            }[]) ?? []
+
+        searchResults.push(...parsedSearchResults)
+    }
+
+    const searchByUrl = async (url: string) => {
+        const text = (await webBrowserTool.invoke({
+            action: 'text',
+            url
+        })) as string
+
+        searchResults.push({
+            title: url,
+            description: text,
+            url
+        })
+    }
+
+    if (action.action === 'url') {
+        await Promise.all(action.content.map((url) => searchByUrl(url)))
+    } else if (action.action === 'search') {
+        await Promise.all(
+            action.content.map((question) => searchByQuestion(question))
+        )
+    }
+
+    // format questions
+
+    const formattedSearchResults = searchResults.map((result) => {
+        // sort like json style
+        // title: xx, xx: xx like
+        let resultString = ''
+
+        for (const key in result) {
+            resultString += `${key}: ${result[key]}, `
+        }
+
+        resultString = resultString.slice(0, -2)
+
+        return resultString
+    })
+
+    return formattedSearchResults.join('\n\n')
 }
 
 export function formatSearchResult(searchResult: string) {

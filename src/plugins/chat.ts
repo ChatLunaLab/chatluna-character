@@ -13,9 +13,9 @@ import { Config } from '..'
 import { GroupTemp, Message, PresetTemplate } from '../types'
 import {
     createEmbeddingsModel,
+    executeSearchAction,
     formatCompletionMessages,
     formatMessage,
-    formatSearchResult,
     getSearchKeyword,
     isEmoticonStatement,
     parseResponse,
@@ -91,12 +91,13 @@ async function getModelForGuild(
     return await (modelPool[guildId] ?? Promise.resolve(globalModel))
 }
 
-async function getSearchTool(
+async function getTool(
     ctx: Context,
     config: Config,
     guildId: string,
     model: ChatLunaChatModel,
-    toolsPool: Record<string, StructuredTool>
+    name: string,
+    toolsPool: Record<string, Record<string, StructuredTool>>
 ): Promise<StructuredTool | undefined> {
     let isSearchEnabled = config.search
 
@@ -108,13 +109,15 @@ async function getSearchTool(
         return undefined
     }
 
-    if (toolsPool[guildId]) {
-        return toolsPool[guildId]
+    if (toolsPool[guildId]?.[name]) {
+        return toolsPool[guildId][name]
     }
+
+    toolsPool[guildId] = toolsPool[guildId] ?? {}
 
     const embeddings = await createEmbeddingsModel(ctx)
 
-    const chatlunaTool = ctx.chatluna.platform.getTool('web-search')
+    const chatlunaTool = ctx.chatluna.platform.getTool(name)
 
     if (!chatlunaTool) return undefined
 
@@ -125,7 +128,7 @@ async function getSearchTool(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
 
-    toolsPool[guildId] = tool
+    toolsPool[guildId][name] = tool
 
     return tool
 }
@@ -165,7 +168,8 @@ async function prepareMessages(
     currentPreset: PresetTemplate,
     temp: GroupTemp,
     stickerService: StickerService,
-    searchTool?: StructuredTool
+    searchTool?: StructuredTool,
+    webBroswerTool?: StructuredTool
 ): Promise<BaseMessage[]> {
     const [recentMessage, lastMessage] = await formatMessage(
         messages,
@@ -207,24 +211,21 @@ async function prepareMessages(
     if (searchMatch && searchMatch.length > 0) {
         let searchResult = ''
         if (searchTool) {
-            let keyword = await getSearchKeyword(
+            const searchAction = await getSearchKeyword(
                 config,
                 session,
                 messages,
                 model
             )
 
-            // 过滤空格，空行
-            keyword = keyword.replace(/\s+/g, ' ').trim()
+            if (searchAction.action !== 'skip') {
+                searchResult = await executeSearchAction(
+                    searchAction,
+                    searchTool,
+                    webBroswerTool
+                )
 
-            if (keyword !== '[skip]') {
-                const rawSearchResult = await searchTool
-                    .invoke(keyword)
-                    .then((it) => it as string)
-
-                searchResult = formatSearchResult(rawSearchResult)
-
-                // logger.debug('searchResult: ' + searchResult)
+                logger.debug('searchResult: ' + searchResult)
             }
         }
 
@@ -474,7 +475,7 @@ export async function apply(ctx: Context, config: Config) {
     let globalPreset = preset.getPresetForCache(config.defaultPreset)
     let presetPool: Record<string, PresetTemplate> = {}
 
-    const toolsPool: Record<string, StructuredTool> = {}
+    const toolsPool: Record<string, Record<string, StructuredTool>> = {}
 
     ctx.on('chatluna_character/preset_updated', () => {
         globalPreset = preset.getPresetForCache(config.defaultPreset)
@@ -485,11 +486,21 @@ export async function apply(ctx: Context, config: Config) {
         const guildId = session.event.guild?.id ?? session.guildId
         const model = await getModelForGuild(guildId, globalModel, modelPool)
 
-        const searchTool = await getSearchTool(
+        const searchTool = await getTool(
             ctx,
             config,
             guildId,
             model,
+            'web-search',
+            toolsPool
+        )
+
+        const webBrowserTool = await getTool(
+            ctx,
+            config,
+            guildId,
+            model,
+            'web-browser',
             toolsPool
         )
 
@@ -511,7 +522,8 @@ export async function apply(ctx: Context, config: Config) {
             currentPreset,
             temp,
             stickerService,
-            searchTool
+            searchTool,
+            webBrowserTool
         )
 
         logger.debug(
