@@ -51,7 +51,7 @@
     "@typescript-eslint/eslint-plugin": "^7.18.1-alpha.3",
     "@typescript-eslint/parser": "^8.15.1-alpha.0",
     "atsc": "^1.2.2",
-    "esbuild": "^0.23.1",
+    "esbuild": "^0.25.0",
     "esbuild-register": "^3.6.0",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^9.1.0",
