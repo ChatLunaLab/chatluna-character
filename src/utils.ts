@@ -565,32 +565,30 @@ export async function getSearchKeyword(
         return userNames[id]
     }
 
-    const formattedMessages = messages
-        .map((message) => {
-            let content = message.content
+    const formattedMessages = messages.map((message) => {
+        let content = message.content
 
-            // match <at name='xx'>xxx</at>
-            const atMatch = /<at\s+name='([^']*)'>.*?<\/at>/g
+        // match <at name='xx'>xxx</at>
+        const atMatch = /<at\s+name='([^']*)'>.*?<\/at>/g
 
-            content = content.replace(atMatch, (match, id) => {
-                const name = getUserName(id)
-                return ` @${name} `
-            })
-
-            if (message.id === session.bot.userId) {
-                return `bot: ${content}`
-            }
-
-            return `${getUserName(message.id)}: ${content}`
+        content = content.replace(atMatch, (match, id) => {
+            const name = getUserName(id)
+            return ` @${name} `
         })
-        .join('\n')
+
+        if (message.id === session.bot.userId) {
+            return `bot: ${content}`
+        }
+
+        return `${getUserName(message.id)}: ${content}`
+    })
 
     // logger.debug('formattedMessages: ', formattedMessages)
 
     const promptTemplate = PromptTemplate.fromTemplate(config.searchPrompt)
 
     const prompt = await promptTemplate.invoke({
-        chat_history: formattedMessages,
+        chat_history: formattedMessages.join('\n'),
         // xx: -> ""
         question: formattedMessages[formatCompletionMessages.length - 1],
         time: new Date().toISOString()
