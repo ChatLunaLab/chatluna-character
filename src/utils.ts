@@ -590,7 +590,7 @@ export async function getSearchKeyword(
     const prompt = await promptTemplate.invoke({
         chat_history: formattedMessages.join('\n'),
         // xx: -> ""
-        question: formattedMessages[formatCompletionMessages.length - 1],
+        question: formattedMessages[formattedMessages.length - 1],
         time: new Date().toISOString()
     })
 
