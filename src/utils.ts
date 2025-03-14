@@ -448,8 +448,20 @@ export function preprocessContent(content: string): string {
  * 尝试解析 JSON，失败时返回 null
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function tryParseJSON(content: string): any {
-    return JSON.parse(content)
+export function tryParseJSON<T = any>(content: string): T {
+    content = preprocessContent(content)
+
+    try {
+        return JSON.parse(content)
+    } catch (e) {
+        content = attemptToFixJSON(content)
+
+        try {
+            return JSON.parse(content)
+        } catch (e) {
+            logger?.error(`parse search action failed: ${e}`)
+        }
+    }
 }
 
 /**
@@ -503,13 +515,7 @@ export function parseSearchAction(action: string): SearchAction {
     try {
         return tryParseJSON(action) as SearchAction
     } catch (e) {
-        action = attemptToFixJSON(action)
-
-        try {
-            return tryParseJSON(action) as SearchAction
-        } catch (e) {
-            logger?.error(`parse search action failed: ${e}`)
-        }
+        logger?.error(`parse search action failed: ${e}`)
     }
 
     if (action.includes('[skip]')) {
@@ -891,4 +897,14 @@ let logger: Logger
 
 export function setLogger(setLogger: Logger) {
     logger = setLogger
+}
+
+export function messagesToString(messages: BaseMessage[]): string {
+    const buffer: string[] = []
+
+    for (const message of messages) {
+        buffer.push(`${message.getType()}: ${message.content}`)
+    }
+
+    return buffer.join('\n')
 }
