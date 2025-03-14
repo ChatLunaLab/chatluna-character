@@ -335,7 +335,9 @@ async function handleVoiceMessage(
     elements: h[]
 ): Promise<boolean> {
     try {
-        await session.send(await ctx.vits.say({ input: text }))
+        await session.send(
+            await ctx.vits.say(Object.assign({ input: text }, { session }))
+        )
         return true
     } catch (e) {
         logger.error(e)
