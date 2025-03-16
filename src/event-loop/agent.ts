@@ -1,26 +1,50 @@
-import {
-    BaseMessagePromptTemplate,
-    SystemMessagePromptTemplate
-} from '@langchain/core/prompts'
+import { SystemMessagePromptTemplate } from '@langchain/core/prompts'
 import { BaseAgent, BaseAgentInput } from '../agent/base'
 import { CharacterPrompt } from '../agent/prompt'
-import { AgentPlanAction, AgentAction } from '../agent/type'
+import { AgentAction } from '../agent/type'
 import { GENERATE_EVENT_LOOP_PLAN_PROMPT } from './prompt'
 import { PresetTemplate } from '../types'
+import { AgentFinish } from '@langchain/core/agents'
 
 export interface EventLoopAgentInput extends BaseAgentInput {
     charaterPrompt: PresetTemplate
 }
 
 export class EventLoopAgent extends BaseAgent {
+    characterPrompt: PresetTemplate
 
-    constructor
+    constructor(input: EventLoopAgentInput) {
+        super(input)
+        this.characterPrompt = input.charaterPrompt
+    }
 
     private _prompt: CharacterPrompt
-    _execute(
+    async *_execute(
         chainValues: Record<string, unknown>
-    ): Promise<AsyncGenerator<AgentAction<'plan' | 'action' | 'finish'>>> {
-        throw new Error('Method not implemented.')
+    ): AsyncGenerator<AgentAction<'plan' | 'action' | 'finish'>> {
+        const date = new Date()
+        chainValues['weekday'] = `星期 ${date.getDay()}`
+        chainValues['time'] = date.toLocaleString()
+        chainValues['system'] =
+            await this.characterPrompt.system.format(chainValues)
+        chainValues['chat_history'] = []
+        chainValues['input'] = ''
+        chainValues['variables'] = chainValues
+
+        for await (const step of this.executor._streamIterator(chainValues)) {
+            if (step.output) {
+                yield {
+                    type: 'finish',
+                    action: step as AgentFinish
+                }
+                return
+            } else {
+                yield {
+                    type: 'action',
+                    action: step.intermediateSteps
+                }
+            }
+        }
     }
 
     get prompt(): CharacterPrompt {
@@ -28,7 +52,7 @@ export class EventLoopAgent extends BaseAgent {
             this._prompt = new CharacterPrompt({
                 tokenCounter: (text) => this.executeModel.getNumTokens(text),
                 sendTokenLimit: 10000,
-                systemPrompt: new SystemMessagePromptTemplate(
+                systemPrompt: SystemMessagePromptTemplate.fromTemplate(
                     GENERATE_EVENT_LOOP_PLAN_PROMPT
                 )
             })

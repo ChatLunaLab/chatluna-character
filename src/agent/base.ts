@@ -45,11 +45,11 @@ export abstract class BaseAgent implements BaseAgentInput {
         this.executeModel = input.executeModel
 
         this.executeMode = input.executeMode
-        this.maxIterations = input.maxIterations
-        this.tools = input.tools
+        this.maxIterations = input.maxIterations ?? 6
+        this.tools = input.tools ?? []
     }
 
-    async _plan(
+    private async _plan(
         chainValues: Record<string, unknown>
     ): Promise<AgentPlanAction> {
         if (!this.planModel) {
@@ -129,7 +129,7 @@ export abstract class BaseAgent implements BaseAgentInput {
 
     abstract _execute(
         chainValues: Record<string, unknown>
-    ): Promise<AsyncGenerator<AgentAction<'plan' | 'action' | 'finish'>>>
+    ): AsyncGenerator<AgentAction<'plan' | 'action' | 'finish'>>
 
     abstract get prompt(): CharacterPrompt
 
@@ -159,13 +159,14 @@ export abstract class BaseAgent implements BaseAgentInput {
                 (this.planAction == null && currentAction.type !== 'finish')) &&
             currentIteration < this.maxIterations
         ) {
-            for await (const agentAction of await this._execute({
+            for await (const agentAction of this._execute({
                 before_agent_scrapad:
                     await CURRENT_PLAN_FORMAT_PROMOPT.formatMessages({
-                        plan: this.planAction.currentPlan
+                        plan: this.planAction?.currentPlan ?? ''
                     }),
                 ...chainValues
             })) {
+                console.log(2, agentAction)
                 // 只有确定完成才会传输 finish 的 action
                 if (this.planAction != null && agentAction.type === 'finish') {
                     currentAction = agentAction
@@ -195,6 +196,10 @@ export abstract class BaseAgent implements BaseAgentInput {
                 }
             }
 
+            if (this.planAction == null && currentAction.type === 'finish') {
+                return
+            }
+
             currentIteration++
         }
 
@@ -210,7 +215,7 @@ export abstract class BaseAgent implements BaseAgentInput {
 
         // 计划都完成后，在调用一次 agent 获取最终的结果。
 
-        for await (const agentAction of await this._execute({
+        for await (const agentAction of this._execute({
             before_agent_scrapad:
                 await CURRENT_CONTEXT_FORMAT_PROMOPT.formatMessages({
                     context: this.agentScratchpad.join('\n\n')
@@ -221,12 +226,14 @@ export abstract class BaseAgent implements BaseAgentInput {
         }
     }
 
-    checkPlanSuccess(action: AgentPlanAction = this.planAction): boolean {
+    private checkPlanSuccess(
+        action: AgentPlanAction = this.planAction
+    ): boolean {
         if (action == null) {
-            return true
+            return false
         }
         if (action.plans.length === 0) {
-            return true
+            return false
         }
 
         return action.plans.every((plan) => {
@@ -249,7 +256,8 @@ export abstract class BaseAgent implements BaseAgentInput {
                 tools,
                 memory: undefined,
                 verbose: false,
-                maxIterations: 3,
+                maxIterations: 6,
+                returnIntermediateSteps: true,
                 handleParsingErrors: true
             })
         }
@@ -262,6 +270,7 @@ export abstract class BaseAgent implements BaseAgentInput {
                 prompt: this.prompt
             }),
             tools,
+            returnIntermediateSteps: true,
             memory: undefined,
             verbose: false
         })

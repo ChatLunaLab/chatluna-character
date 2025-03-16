@@ -9,19 +9,19 @@ export const GENERATE_EVENT_LOOP_PLAN_PROMPT = `你现在需要完全代入下�
 
 下面是输出的 JSON 格式示例：
 
-[{
+[{{
     "timeStart": "00:00",
     "timeEnd": "06:03",
     "event": "睡觉",
     "status": "done",
     "eventActions": ["又刷手机到半夜了，唉睡觉", "给手机充电", "睡觉"]
-},{
+}},{{
     "timeStart": "06:03",
     "timeEnd": "06:20",
     "event": "起床洗漱",
     "status": "todo",
     "eventActions": []
-}]
+}}]
 
 请注意以下字段的要求：
 - timeStart: 事件开始时间，格式为"HH:MM"
@@ -35,6 +35,7 @@ export const GENERATE_EVENT_LOOP_PLAN_PROMPT = `你现在需要完全代入下�
   * 对于"done"状态的事件，详细描述已完成的行动
   * 对于"doing"状态的事件，描述已经完成和正在进行的部分
   * 对于"todo"状态的事件，此数组应为空[]
+  * 新布置的计划，默认状态为'todo'，必须为空
 
 请确保：
 1. 一整天的时间（00:00到23:59）都被完整覆盖，没有时间空隙

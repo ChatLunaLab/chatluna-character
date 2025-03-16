@@ -162,7 +162,13 @@ export class CharacterPrompt
         result.push(...formatResult.messages)
         usedTokens = formatResult.usedTokens
 
-        result.push(input)
+        if (typeof input === 'string') {
+            if (input !== '') {
+                result.push(new HumanMessage(input))
+            }
+        } else {
+            result.push(input)
+        }
 
         if (beforeAgentScratchpad) {
             if (Array.isArray(beforeAgentScratchpad)) {
@@ -186,6 +192,7 @@ export class CharacterPrompt
             )
 
             const mapMessages = result.map((msg) => {
+                console.log(msg.toDict, msg)
                 const original = msg.toDict()
                 const dict = structuredClone(original)
                 if (dict.data == null) {
@@ -243,17 +250,19 @@ export class CharacterPrompt
     }
 }
 
-export const CURRENT_PLAN_FORMAT_PROMOPT = new SystemMessagePromptTemplate(
-    `这是你的当前任务：{plan}。请你根据当前任务和历史聊天信息，调用合适的工具完成这个任务。`
-)
+export const CURRENT_PLAN_FORMAT_PROMOPT: SystemMessagePromptTemplate =
+    SystemMessagePromptTemplate.fromTemplate(
+        `这是你的当前任务：{plan}。请你根据当前任务和历史聊天信息，调用合适的工具完成这个任务。`
+    )
 
-export const CURRENT_CONTEXT_FORMAT_PROMOPT = new SystemMessagePromptTemplate(
-    `这是你之前调用工具后总结输出的结果： {context}。请你根据这些结果和用户的需求进行总结输出。无需调用任何工具。`
-)
+export const CURRENT_CONTEXT_FORMAT_PROMOPT: SystemMessagePromptTemplate =
+    SystemMessagePromptTemplate.fromTemplate(
+        `这是你之前调用工具后总结输出的结果： {context}。请你根据这些结果和用户的需求进行总结输出。无需调用任何工具。`
+    )
 
 /* eslint-disable max-len */
-export const GENERATE_AGENT_PLAN_PROMPT =
-    new SystemMessagePromptTemplate(`你是一个智能助手，负责根据用户的需求生成和管理执行计划。请根据以下信息进行操作：
+export const GENERATE_AGENT_PLAN_PROMPT: SystemMessagePromptTemplate =
+    SystemMessagePromptTemplate.fromTemplate(`你是一个智能助手，负责根据用户的需求生成和管理执行计划。请根据以下信息进行操作：
 
 <聊天历史>
 {chat_history}
@@ -287,46 +296,46 @@ export const GENERATE_AGENT_PLAN_PROMPT =
 3. 使用双引号而非单引号
 
 ## 生成新计划时的输出格式示例：
-{
+{{
   "plans": [
-    {
+    {{
       "title": "识别并提取用户查询中的关键信息和意图",
       "status": "pending"
-    },
-    {
+    }},
+    {{
       "title": "在知识库中检索与用户问题相关的技术文档和解决方案",
       "status": "pending"
-    },
-    {
+    }},
+    {{
       "title": "分析多个信息源并筛选最相关的解决方案",
       "status": "pending"
-    },
-    {
+    }},
+    {{
       "title": "组织信息并生成结构化的技术解答",
       "status": "pending"
-    },
-    {
+    }},
+    {{
       "title": "检查回答的准确性并添加相关示例代码",
       "status": "pending"
-    }
+    }}
   ],
-  "currentPlan": {
+  "currentPlan": {{
     "title": "识别并提取用户查询中的关键信息和意图",
     "status": "pending"
-  }
-}
+  }}
+}}
 
 ## 更新现有计划时的输出格式示例：
 
-{
-  "nextPlan": {
+{{
+  "nextPlan": {{
     "title": "在知识库中检索与用户问题相关的技术文档和解决方案"
-  },
-  "currentPlan": {
+  }},
+  "currentPlan": {{
     "title": "识别并提取用户查询中的关键信息和意图",
     "status": "done"
-  }
-}
+  }}
+}}
 
 请注意：
 - 生成新计划时，返回完整的plans数组和当前计划

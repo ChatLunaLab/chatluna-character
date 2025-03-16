@@ -1,10 +1,12 @@
 /* eslint-disable max-len */
-import { Context, Disposable, Schema } from 'koishi'
+import { Context, Disposable, Schema, sleep } from 'koishi'
 
 import { ChatLunaPlugin } from 'koishi-plugin-chatluna/services/chat'
 import { plugins } from './plugin'
 import { MessageCollector } from './service/message'
 import { GuildConfig } from './types'
+import { EventLoopAgent } from './event-loop/agent'
+import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
 
 export function apply(ctx: Context, config: Config) {
     const disposables: Disposable[] = []
@@ -18,6 +20,26 @@ export function apply(ctx: Context, config: Config) {
                 await ctx.chatluna_character.stickerService.init()
                 await ctx.chatluna_character.preset.init()
                 await plugins(ctx, config)
+
+                await sleep(2000)
+
+                ctx.logger.error('开始执行事件循环')
+                const eventLoopAgent = new EventLoopAgent({
+                    charaterPrompt:
+                        await ctx.chatluna_character.preset.getPreset('煕'),
+                    executeModel: await ctx.chatluna.createChatModel(
+                        ...parseRawModelName(config.model)
+                    )
+                })
+
+                for await (const action of eventLoopAgent.stream({
+                    status: '',
+                    stickers: '',
+
+                    date: ''
+                })) {
+                    console.log(1, action)
+                }
             },
             inject: Object.assign({}, inject2, {
                 chatluna_character: {
