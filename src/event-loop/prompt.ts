@@ -5,7 +5,7 @@ export const GENERATE_EVENT_LOOP_PLAN_PROMPT = `你现在需要完全代入下�
 2. 如果今天是特殊节日或假期（如元旦、春节、劳动节等），请在计划中体现出来
 3. 计划应该反映角色的性格、习惯、爱好和日常生活方式
 4. 考虑角色的社交关系、工作/学习环境和生活场景
-5. 已经过去的时间（{time}之前）的事件状态应为'done'，当前正在进行的事件状态为'doing'，未来的事件状态为'todo'
+5. 每半个小时到两个小时之间安排一个事件，确保时间无缝衔接
 
 下面是输出的 JSON 格式示例：
 
@@ -13,29 +13,19 @@ export const GENERATE_EVENT_LOOP_PLAN_PROMPT = `你现在需要完全代入下�
     "timeStart": "00:00",
     "timeEnd": "06:03",
     "event": "睡觉",
-    "status": "done",
-    "eventActions": ["又刷手机到半夜了，唉睡觉", "给手机充电", "睡觉"]
+    "eventDescription": "",
 }},{{
     "timeStart": "06:03",
     "timeEnd": "06:20",
     "event": "起床洗漱",
-    "status": "todo",
-    "eventActions": []
+    "eventDescription": "",
 }}]
 
 请注意以下字段的要求：
 - timeStart: 事件开始时间，格式为"HH:MM"
 - timeEnd: 事件结束时间，格式为"HH:MM"
 - event: 事件名称，简洁描述活动内容
-- status: 事件状态，必须是以下三种之一：
-  * "done" - 表示已完成的事件（{time}之前的事件）
-  * "doing" - 表示正在进行的事件（包含{time}的时间段）
-  * "todo" - 表示未来将要进行的事件（{time}之后的事件）
-- eventActions: 事件的具体行动描述数组，每个行动都需要一个字符串描述
-  * 对于"done"状态的事件，详细描述已完成的行动
-  * 对于"doing"状态的事件，描述已经完成和正在进行的部分
-  * 对于"todo"状态的事件，此数组应为空[]
-  * 新布置的计划，默认状态为'todo'，必须为空
+- eventDescription: 事件描述，提供事件的详细说明或备注
 
 请确保：
 1. 一整天的时间（00:00到23:59）都被完整覆盖，没有时间空隙
@@ -49,6 +39,11 @@ export const GENERATE_EVENT_LOOP_PLAN_PROMPT = `你现在需要完全代入下�
 {system}
 </system>
 
-请严格按照JSON格式输出，不要包含任何其他信息或解释，包括 Markdown 代码块等。确保输出的JSON格式正确，使用双引号而非单引号，并且没有多余的逗号。如果你按照要求输出成功了，作为回报我会给你 10000 美刀的小费。
+请按照下面的格式输出你的内容：
 
-输出JSON内容：`
+<think>你的思考内容，描述为什么要执行这个计划</think>
+<output>
+输出JSON内容:请严格按照JSON格式输出，不要包含任何其他信息或解释，包括 Markdown 代码块等。确保输出的JSON格式正确，使用双引号而非单引号，并且没有多余的逗号。如果你按照要求输出成功了，作为回报我会给你 10000 美刀的小费。
+</output>
+
+输出内容：`
