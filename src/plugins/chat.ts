@@ -298,7 +298,7 @@ async function getModelResponse(
     completionMessages: BaseMessage[],
     isAt: boolean
 ): Promise<ModelResponse | null> {
-    for (let retryCount = 0; retryCount < 3; retryCount++) {
+    for (let retryCount = 0; retryCount < 2; retryCount++) {
         try {
             const responseMessage = await model.invoke(completionMessages)
             logger.debug('model response: ' + responseMessage.content)
@@ -309,7 +309,7 @@ async function getModelResponse(
             return { responseMessage, parsedResponse }
         } catch (e) {
             logger.error('model requests failed', e)
-            if (retryCount === 2) return null
+            if (retryCount === 1) return null
             await sleep(3000)
         }
     }
