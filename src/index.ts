@@ -11,48 +11,49 @@ export function apply(ctx: Context, config: Config) {
 
     ctx.on('ready', async () => {
         ctx.plugin(MessageCollector, config)
-    })
-    ctx.plugin(
-        {
-            apply: async (ctx: Context, config: Config) => {
-                await ctx.chatluna_character.stickerService.init()
-                await ctx.chatluna_character.preset.init()
-                await plugins(ctx, config)
+
+        ctx.plugin(
+            {
+                apply: async (ctx: Context, config: Config) => {
+                    await ctx.chatluna_character.stickerService.init()
+                    await ctx.chatluna_character.preset.init()
+                    await plugins(ctx, config)
+                },
+                inject: Object.assign({}, inject2, {
+                    chatluna_character: {
+                        required: true
+                    }
+                }),
+                name: 'chatluna_character_entry_point'
             },
-            inject: Object.assign({}, inject2, {
-                chatluna_character: {
-                    required: true
+            config
+        )
+
+        disposables.push(
+            ctx.middleware((session, next) => {
+                if (!ctx.chatluna_character) {
+                    return next()
                 }
-            }),
-            name: 'chatluna_character_entry_point'
-        },
-        config
-    )
 
-    disposables.push(
-        ctx.middleware((session, next) => {
-            if (!ctx.chatluna_character) {
-                return next()
-            }
-
-            // 不接收自己的消息
-            if (ctx.bots[session.uid]) {
-                return next()
-            }
-
-            const guildId = session.guildId
-
-            if (!config.applyGroup.includes(guildId)) {
-                return next()
-            }
-
-            return next(async (loop) => {
-                if (!(await ctx.chatluna_character.broadcast(session))) {
-                    return loop()
+                // 不接收自己的消息
+                if (ctx.bots[session.uid]) {
+                    return next()
                 }
+
+                const guildId = session.guildId
+
+                if (!config.applyGroup.includes(guildId)) {
+                    return next()
+                }
+
+                return next(async (loop) => {
+                    if (!(await ctx.chatluna_character.broadcast(session))) {
+                        return loop()
+                    }
+                })
             })
-        })
-    )
+        )
+    })
 
     ctx.on('dispose', () => {
         disposables.forEach((disposable) => disposable())
