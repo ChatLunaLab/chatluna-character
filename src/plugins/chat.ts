@@ -436,7 +436,10 @@ async function handleModelResponse(
 
         if (elements.length < 1) continue
 
-        const maxTime = calculateMessageDelay(text, elements, config.typingTime)
+        const maxTime =
+            text.length > config.largeTextSize
+                ? text.length * config.largeTextTypingTime + 100
+                : calculateMessageDelay(text, elements, config.typingTime)
 
         breakSay = await handleMessageSending(
             session,

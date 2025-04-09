@@ -94,6 +94,9 @@ export interface Config extends ChatLunaPlugin.Config {
     defaultPreset: string
     isNickname: boolean
     search: boolean
+    largeTextSize: number
+    largeTextTypingTime: number
+
     searchSummayType: string
     searchPrompt: string
     isForceMute: boolean
@@ -214,7 +217,7 @@ JSON Response:`),
             .default(14)
             .min(0)
             .role('slider')
-            .max(100)
+            .max(10000)
             .description('随机发送消息的间隔'),
         messageActivityScore: Schema.number()
             .default(0.6)
@@ -238,6 +241,18 @@ JSON Response:`),
             .role('slider')
             .max(1500)
             .description('模拟打字时的间隔（毫秒）'),
+
+        largeTextSize: Schema.number()
+            .default(300)
+            .min(100)
+            .max(1000)
+            .description('大文本消息的判断阈值（字符数）'),
+
+        largeTextTypingTime: Schema.number()
+            .default(100)
+            .min(10)
+            .max(1500)
+            .description('大文本消息的模拟打字间隔（毫秒）'),
 
         muteTime: Schema.number()
             .default(1000 * 60)
@@ -314,6 +329,17 @@ JSON Response:`),
                     .role('slider')
                     .max(1700)
                     .description('模拟打字时的间隔（毫秒）'),
+                largeTextSize: Schema.number()
+                    .default(300)
+                    .min(100)
+                    .max(1000)
+                    .description('大文本消息的判断阈值（每段分句的字符数）'),
+
+                largeTextTypingTime: Schema.number()
+                    .default(100)
+                    .min(10)
+                    .max(1500)
+                    .description('大文本消息的模拟打字间隔（毫秒）'),
 
                 muteTime: Schema.number()
                     .default(1000 * 60)
