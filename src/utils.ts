@@ -839,6 +839,17 @@ export function parseXmlToObject(xml: string) {
     return { name, id, type, sticker, content }
 }
 
+// V2
+
+export async function getMessageImages(ctx: Context, session: Session) {
+    const mergedMessage = await ctx.chatluna.messageTransformer.transform(
+        session,
+        session.elements
+    )
+
+    return mergedMessage.additional_kwargs['images'] as string[]
+}
+
 const tagRegExp = /<(\/?)([^!\s>/]+)([^>]*?)\s*(\/?)>/
 
 function renderToken(token: Token): h {

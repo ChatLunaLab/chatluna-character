@@ -130,6 +130,7 @@ export interface Config extends ChatLunaPlugin.Config {
 
     splitVoice: boolean
     isAt: boolean
+
 }
 
 export const Config = Schema.intersect([
