@@ -7,6 +7,6 @@ export class EventLoopService extends Service {
     private _currentEvent: DayEvent | undefined = null
 
     constructor(public readonly ctx: Context) {
-        super(ctx, 'chatluna_event_loop_service')
+        super(ctx, 'chatluna_character_event_loop')
     }
 }
