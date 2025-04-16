@@ -1,9 +1,8 @@
 /* eslint-disable max-len */
-import { Context, Disposable, Schema, sleep } from 'koishi'
+import { Context, Disposable, Schema } from 'koishi'
 
 import { ChatLunaPlugin } from 'koishi-plugin-chatluna/services/chat'
 import { plugins } from './plugin'
-import { MessageCollector } from './service/message'
 import { GuildConfig } from './types'
 import { EventLoopAgent } from './event-loop/generate-agent'
 import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
@@ -12,50 +11,44 @@ export function apply(ctx: Context, config: Config) {
     const disposables: Disposable[] = []
 
     ctx.on('ready', async () => {
-        ctx.plugin(MessageCollector, config)
-    })
-    ctx.plugin(
-        {
-            apply: async (ctx: Context, config: Config) => {
-                await ctx.chatluna_character.stickerService.init()
-                await ctx.chatluna_character.preset.init()
-                await plugins(ctx, config)
+        await plugins(ctx, config)
 
-                await sleep(2000)
+        ctx.plugin(
+            {
+                apply: async (ctx: Context, config: Config) => {
+                    ctx.logger.error('开始执行事件循环')
+                    const eventLoopAgent = new EventLoopAgent({
+                        charaterPrompt:
+                            await ctx.chatluna_character_preset.getPreset('煕'),
+                        executeModel: await ctx.chatluna.createChatModel(
+                            ...parseRawModelName(config.model)
+                        )
+                    })
 
-                ctx.logger.error('开始执行事件循环')
-                const eventLoopAgent = new EventLoopAgent({
-                    charaterPrompt:
-                        await ctx.chatluna_character.preset.getPreset('煕'),
-                    executeModel: await ctx.chatluna.createChatModel(
-                        ...parseRawModelName(config.model)
-                    )
-                })
-
-                for await (const action of eventLoopAgent.stream({
-                    status: '',
-                    stickers: '',
-
-                    date: ''
-                })) {
-                    console.log(1, action)
-                }
+                    for await (const action of eventLoopAgent.stream({
+                        status: '',
+                        stickers: '',
+                        date: ''
+                    })) {
+                        console.log(1, action.action['value'])
+                    }
+                },
+                inject: Object.assign({}, inject2, {
+                    chatluna_character_preset: {
+                        required: true
+                    }
+                }),
+                name: 'chatluna_character_entry_point'
             },
-            inject: Object.assign({}, inject2, {
-                chatluna_character: {
-                    required: true
-                }
-            }),
-            name: 'chatluna_character_entry_point'
-        },
-        config
-    )
+            config
+        )
+    })
 
     disposables.push(
         ctx.middleware((session, next) => {
-            if (!ctx.chatluna_character) {
+            /*  if (!ctx.chatluna_character) {
                 return next()
-            }
+            } */
 
             // 不接收自己的消息
             if (ctx.bots[session.uid]) {
@@ -69,9 +62,9 @@ export function apply(ctx: Context, config: Config) {
             }
 
             return next(async (loop) => {
-                if (!(await ctx.chatluna_character.broadcast(session))) {
+                /*  if (!(await ctx.chatluna_character.broadcast(session))) {
                     return loop()
-                }
+                } */
             })
         })
     )
@@ -130,7 +123,6 @@ export interface Config extends ChatLunaPlugin.Config {
 
     splitVoice: boolean
     isAt: boolean
-
 }
 
 export const Config = Schema.intersect([

@@ -1,6 +1,5 @@
 import { StructuredTool, tool } from '@langchain/core/tools'
 import { z } from 'zod'
-import { zodToJsonSchema } from 'zod-to-json-schema'
 
 export class AgentStatus {
     variables: Record<string, unknown> = {}
@@ -38,9 +37,11 @@ export class AgentStatus {
             {
                 name: 'update_agent_status',
                 description: 'Update agent status',
-                schema: zodToJsonSchema(recordToZodSchema(this.formatTemplate))
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                schema: recordToZodSchema(this.formatTemplate) as any
             }
-        )
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ) as any
     }
 
     asReadTool(): StructuredTool {
@@ -51,9 +52,11 @@ export class AgentStatus {
             {
                 name: 'read_agent_status',
                 description: 'Read agent status',
-                schema: zodToJsonSchema(recordToZodSchema(this.variables))
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                schema: recordToZodSchema(this.variables) as any
             }
-        )
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ) as any
     }
 }
 

@@ -166,9 +166,8 @@ export abstract class BaseAgent implements BaseAgentInput {
                     }),
                 ...chainValues
             })) {
-                console.log(2, agentAction)
                 // 只有确定完成才会传输 finish 的 action
-                if (this.planAction != null && agentAction.type === 'finish') {
+                if (this.planAction == null && agentAction.type === 'finish') {
                     currentAction = agentAction
                     yield agentAction
                 } else if (agentAction.type !== 'finish') {

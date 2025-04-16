@@ -5,6 +5,7 @@ import { apply as chat } from './plugins/chat'
 import { apply as commands } from './plugins/commands'
 import { apply as config } from './plugins/config'
 import { apply as filter } from './plugins/filter'
+import { apply as service } from './plugins/service'
 import { apply as interception } from './plugins/interception' // import end
 
 export async function plugins(ctx: Context, parent: Config) {
@@ -12,7 +13,7 @@ export async function plugins(ctx: Context, parent: Config) {
 
     const middlewares: Command[] =
         // middleware start
-        [chat, commands, config, filter, interception] // middleware end
+        [chat, commands, config, filter, interception, service] // middleware end
 
     for (const middleware of middlewares) {
         await middleware(ctx, parent)

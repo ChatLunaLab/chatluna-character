@@ -1,23 +1,24 @@
 import { PromptTemplate } from '@langchain/core/prompts'
 import fs from 'fs/promises'
 import { load } from 'js-yaml'
-import { Context, Schema } from 'koishi'
+import { Context, Schema, Service } from 'koishi'
 
 import {
     ChatLunaError,
     ChatLunaErrorCode
 } from 'koishi-plugin-chatluna/utils/error'
 import path from 'path'
-import { PresetTemplate } from './types'
+import { PresetTemplate } from '../types'
 import { fileURLToPath } from 'url'
 import { watch } from 'fs'
 
-export class Preset {
+export class PresetService extends Service {
     private readonly _presets: PresetTemplate[] = []
 
     private _aborter: AbortController | null = null
 
-    constructor(private readonly ctx: Context) {
+    constructor(readonly ctx: Context) {
+        super(ctx, 'chatluna_character_preset')
         ctx.on('dispose', () => {
             this._aborter?.abort()
         })
@@ -46,10 +47,7 @@ export class Preset {
                 preset.path = path.join(presetDir, file)
                 this._presets.push(preset)
             } catch (e) {
-                this.ctx.chatluna_character.logger.error(
-                    `error when load ${file}`,
-                    e
-                )
+                this.ctx.logger.error(`error when load ${file}`, e)
             }
         }
 
@@ -101,7 +99,7 @@ export class Preset {
                     }, 100)
 
                     await this.loadAllPreset()
-                    this.ctx.chatluna_character.logger.debug(
+                    this.ctx.logger.debug(
                         `trigger full reload preset by ${filename}`
                     )
 
@@ -109,9 +107,7 @@ export class Preset {
                 }
 
                 await this.loadAllPreset()
-                this.ctx.chatluna_character.logger.debug(
-                    `trigger full reload preset`
-                )
+                this.ctx.logger.debug(`trigger full reload preset`)
             }
         )
     }
@@ -206,7 +202,7 @@ export class Preset {
             const fileStat = await fs.stat(filePath)
             if (fileStat.isFile()) {
                 await fs.mkdir(currentPresetDir, { recursive: true })
-                this.ctx.chatluna_character.logger.debug(
+                this.ctx.logger.debug(
                     `copy preset file ${filePath} to ${currentPresetDir}`
                 )
                 await fs.copyFile(filePath, path.join(currentPresetDir, file))
@@ -255,5 +251,8 @@ export function loadPreset(text: string): PresetTemplate {
 declare module 'koishi' {
     interface Events {
         'chatluna_character/preset_updated': () => void
+    }
+    interface Context {
+        chatluna_character_preset: PresetService
     }
 }

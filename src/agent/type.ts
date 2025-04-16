@@ -10,6 +10,11 @@ export interface AgentPlanAction {
     currentPlan: AgentPlan
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface AgentFinishAction<T = any> extends AgentFinish {
+    value?: T
+}
+
 export interface AgentAction<
     T extends 'plan' | 'action' | 'finish' = 'plan' | 'action' | 'finish'
 > {
@@ -19,6 +24,6 @@ export interface AgentAction<
         : T extends 'action'
           ? AgentStep | AgentStep[]
           : T extends 'finish'
-            ? AgentFinish
+            ? AgentFinishAction
             : AgentPlanAction | AgentStep[] | AgentFinish
 }

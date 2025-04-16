@@ -5,7 +5,6 @@ import {
     MessageCollectorTrigger
 } from './types'
 import { getNotEmptyString } from 'koishi-plugin-chatluna/utils/string'
-import { getMessageImages } from '../utils'
 import { ObjectLock } from 'koishi-plugin-chatluna/utils/lock'
 
 export class MessageCollector extends Service {
@@ -140,4 +139,13 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
     }
 
     return filteredBuffer.join('')
+}
+
+async function getMessageImages(ctx: Context, session: Session) {
+    const mergedMessage = await ctx.chatluna.messageTransformer.transform(
+        session,
+        session.elements
+    )
+
+    return mergedMessage.additional_kwargs['images'] as string[]
 }

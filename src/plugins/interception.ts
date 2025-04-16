@@ -31,7 +31,7 @@ export function apply(ctx: Context, config: Config) {
             return config.disableChatLuna
         }
 
-        // 检查是否在名单里面
+        /*   // 检查是否在名单里面
         if (
             config.disableChatLuna &&
             config.whiteListDisableChatLuna?.includes(guildId)
@@ -62,7 +62,7 @@ export function apply(ctx: Context, config: Config) {
 
                 maxRecentMessage++
             }
-        }
+        } */
 
         return config.disableChatLuna
     })

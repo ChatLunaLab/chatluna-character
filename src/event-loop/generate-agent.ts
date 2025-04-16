@@ -5,6 +5,7 @@ import { AgentAction } from '../agent/type'
 import { GENERATE_EVENT_LOOP_PLAN_PROMPT } from './prompt'
 import { PresetTemplate } from '../types'
 import { AgentFinish } from '@langchain/core/agents'
+import { tryParseJSON } from '../utils'
 
 export interface EventLoopAgentInput extends BaseAgentInput {
     charaterPrompt: PresetTemplate
@@ -33,9 +34,27 @@ export class EventLoopAgent extends BaseAgent {
 
         for await (const step of this.executor._streamIterator(chainValues)) {
             if (step.output) {
-                yield {
-                    type: 'finish',
-                    action: step as AgentFinish
+                const output = (step as AgentFinish)['output']
+
+                // match <output>
+                const match = output.match(/<output>(.*)<\/output>/s)
+                if (match) {
+                    yield {
+                        type: 'finish',
+                        action: {
+                            ...(step as AgentFinish),
+                            returnValues: step,
+                            value: tryParseJSON(match[1])
+                        }
+                    }
+                } else {
+                    yield {
+                        type: 'finish',
+                        action: {
+                            ...(step as AgentFinish),
+                            returnValues: step
+                        }
+                    }
                 }
                 return
             } else {
