@@ -36,8 +36,12 @@ export class EventLoopAgent extends BaseAgent {
             if (step.output) {
                 const output = (step as AgentFinish)['output']
 
-                // match <output>
-                const match = output.match(/<output>(.*)<\/output>/s)
+                // match <o> or <s> tags
+                let match = output.match(/<o>(.*)<\/o>/s)
+                if (!match) {
+                    match = output.match(/<s>(.*)<\/s>/s)
+                }
+
                 if (match) {
                     yield {
                         type: 'finish',
