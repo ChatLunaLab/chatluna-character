@@ -5,27 +5,6 @@ import {
     MemoryType
 } from 'koishi-plugin-chatluna-long-memory'
 
-// 定义数据库表结构
-declare module 'koishi' {
-    interface Tables {
-        chatluna_character_memory: CharacterMemory
-    }
-
-    interface Context {
-        chatluna_character_memory: MemoryService
-    }
-}
-
-// 定义数据库表结构
-export interface CharacterMemory {
-    id: number
-    userId: string
-    key: string
-    content: string
-    type: string
-    createdAt: Date
-}
-
 export class MemoryService extends Service {
     private userMemoryCache: Record<string, Record<string, string>> = {}
 
@@ -296,4 +275,25 @@ export class MemoryService extends Service {
     }
 
     static inject = ['chatluna_long_memory', 'chatluna']
+}
+
+// 定义数据库表结构
+declare module 'koishi' {
+    interface Tables {
+        chatluna_character_memory: CharacterMemory
+    }
+
+    interface Context {
+        chatluna_character_memory: MemoryService
+    }
+}
+
+// 定义数据库表结构
+export interface CharacterMemory {
+    id: number
+    userId: string
+    key: string
+    content: string
+    type: string
+    createdAt: Date
 }

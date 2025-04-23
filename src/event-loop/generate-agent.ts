@@ -8,7 +8,7 @@ import { AgentFinish } from '@langchain/core/agents'
 import { tryParseJSON } from '../utils'
 
 export interface EventLoopAgentInput extends BaseAgentInput {
-    charaterPrompt: PresetTemplate
+    characterPrompt: PresetTemplate
 }
 
 export class EventLoopAgent extends BaseAgent {
@@ -16,7 +16,7 @@ export class EventLoopAgent extends BaseAgent {
 
     constructor(input: EventLoopAgentInput) {
         super(input)
-        this.characterPrompt = input.charaterPrompt
+        this.characterPrompt = input.characterPrompt
     }
 
     private _prompt: CharacterPrompt

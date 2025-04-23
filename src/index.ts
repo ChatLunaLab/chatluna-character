@@ -18,7 +18,7 @@ export function apply(ctx: Context, config: Config) {
                 apply: async (ctx: Context, config: Config) => {
                     ctx.logger.error('开始执行事件循环')
                     const eventLoopAgent = new EventLoopAgent({
-                        charaterPrompt:
+                        characterPrompt:
                             await ctx.chatluna_character_preset.getPreset('煕'),
                         executeModel: await ctx.chatluna.createChatModel(
                             ...parseRawModelName(config.model)

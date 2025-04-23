@@ -1,122 +1,23 @@
-import { Context, Service } from 'koishi'
+import { Context, Disposable, Service } from 'koishi'
 import { DayEvent } from './type'
 import { EventLoopAgent } from './generate-agent'
 import { EventDelta, EventLoopUpdateAgent } from './update-agent'
 import { EventDescriptionAgent } from './event-description-agent'
 import { PresetTemplate } from '../types'
 import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
-
-// 定义数据库表结构
-declare module 'koishi' {
-    interface Tables {
-        chatluna_character_event_loop: CharacterEventLoop
-        chatluna_character_event_descriptions: CharacterEventDescription
-    }
-
-    interface Context {
-        chatluna_character_event_loop: EventLoopService
-    }
-
-    // 定义事件
-    interface Events {
-        'chatluna_character_event_loop/created': (
-            presetKey: string,
-            events: DayEvent[]
-        ) => void
-        'chatluna_character_event_loop/before-update': (
-            presetKey: string,
-            events: DayEvent[]
-        ) => void
-        'chatluna_character_event_loop/after-update': (
-            presetKey: string,
-            events: DayEvent[]
-        ) => void
-        'chatluna_character_event_loop/current-event-updated': (
-            presetKey: string,
-            event: DayEvent,
-            description?: string
-        ) => void
-        'chatluna_character_event_loop/event-customized': (
-            presetKey: string,
-            eventId: string,
-            updates: Partial<{
-                timeStart: string
-                timeEnd: string
-                event: string
-                eventDescription: string
-                status: 'done' | 'doing' | 'todo'
-            }>
-        ) => void
-        'chatluna_character_event_loop/event-deleted': (
-            presetKey: string,
-            eventId: string
-        ) => void
-        'chatluna_character_event_loop/event-added': (
-            presetKey: string,
-            eventId: string,
-            event: {
-                timeStart: string
-                timeEnd: string
-                event: string
-                eventDescription?: string
-                status?: 'done' | 'doing' | 'todo'
-            }
-        ) => void
-        'chatluna_character_event_loop/daily-refresh': (
-            presetKey: string,
-            oldEvents: DayEvent[],
-            newEvents: DayEvent[]
-        ) => void
-        'chatluna_character_event_loop/description-updated': (
-            presetKey: string,
-            eventId: string,
-            description: string
-        ) => void
-        'chatluna_character_event_loop/preset-activated': (
-            presetKey: string
-        ) => void
-        'chatluna_character_event_loop/preset-deactivated': (
-            presetKey: string
-        ) => void
-    }
-}
-
-// 定义事件描述数据库表
-export interface CharacterEventDescription {
-    id: number
-    presetKey: string
-    eventId: string
-    description: string
-    createdAt: Date
-    updatedAt: Date
-}
-
-// 定义数据库表结构
-export interface CharacterEventLoop {
-    id: number
-    presetKey: string
-    eventId: string
-    timeStart: string
-    timeEnd: string
-    date: Date
-    refreshInterval: number
-    event: string
-    eventDescription: string
-    status: 'done' | 'doing' | 'todo'
-    createdAt: Date
-    updatedAt: Date
-}
-
+import { Config } from '..'
 export class EventLoopService extends Service {
-    private _events: Record<string, DayEvent[]> = {}
     private _currentEvent: Record<string, DayEvent | undefined> = {}
-    private _updateIntervalId: NodeJS.Timeout | undefined = undefined
-    private _dailyRefreshIntervalId: NodeJS.Timeout | undefined = undefined
+    private _updateIntervalDisposable: Disposable | undefined = undefined
+    private _dailyRefreshIntervalDisposable: Disposable | undefined = undefined
     private _eventCache: Record<string, DayEvent[]> = {}
     private _descriptionCache: Record<string, string> = {}
     private _activePresets: Set<string> = new Set()
 
-    constructor(public readonly ctx: Context) {
+    constructor(
+        public readonly ctx: Context,
+        readonly config: Config
+    ) {
         super(ctx, 'chatluna_character_event_loop', true)
 
         // 初始化数据库表
@@ -253,7 +154,7 @@ export class EventLoopService extends Service {
      */
     private startEventLoop() {
         // 每5分钟更新一次事件
-        this._updateIntervalId = this.ctx.setInterval(
+        this._updateIntervalDisposable = this.ctx.setInterval(
             async () => {
                 try {
                     await this.updateCurrentEvent()
@@ -262,7 +163,7 @@ export class EventLoopService extends Service {
                 }
             },
             5 * 60 * 1000
-        ) as unknown as NodeJS.Timeout // 5分钟
+        )
     }
 
     /**
@@ -283,19 +184,8 @@ export class EventLoopService extends Service {
                 // 执行每日刷新
                 await this.performDailyRefresh()
 
-                // 设置每24小时执行一次的定时器
-                this._dailyRefreshIntervalId = this.ctx.setInterval(
-                    async () => {
-                        try {
-                            await this.performDailyRefresh()
-                        } catch (e) {
-                            this.ctx
-                                .logger('chatluna_character_event_loop')
-                                .error(e)
-                        }
-                    },
-                    24 * 60 * 60 * 1000
-                ) as unknown as NodeJS.Timeout // 24小时
+                // 重新设置定时器
+                this.startDailyRefresh()
             } catch (e) {
                 this.ctx.logger('chatluna_character_event_loop').error(e)
             }
@@ -360,15 +250,8 @@ export class EventLoopService extends Service {
      * 停止事件循环
      */
     public stopEventLoop() {
-        if (this._updateIntervalId) {
-            clearInterval(this._updateIntervalId)
-            this._updateIntervalId = undefined
-        }
-
-        if (this._dailyRefreshIntervalId) {
-            clearInterval(this._dailyRefreshIntervalId)
-            this._dailyRefreshIntervalId = undefined
-        }
+        this._updateIntervalDisposable?.()
+        this._dailyRefreshIntervalDisposable?.()
     }
 
     /**
@@ -389,9 +272,9 @@ export class EventLoopService extends Service {
         // 创建事件生成代理
         const agent = new EventLoopAgent({
             executeModel: await this.ctx.chatluna.createChatModel(
-                ...parseRawModelName(this.ctx.config.model || 'gpt-3.5-turbo')
+                ...parseRawModelName(this.config.model || 'gpt-3.5-turbo')
             ),
-            charaterPrompt: characterPrompt
+            characterPrompt
         })
 
         // 执行代理生成事件
@@ -1211,4 +1094,105 @@ export class EventLoopService extends Service {
 
     // 注入依赖
     static inject = ['database', 'chatluna', 'chatluna_character_preset']
+}
+
+// 定义数据库表结构
+declare module 'koishi' {
+    interface Tables {
+        chatluna_character_event_loop: CharacterEventLoop
+        chatluna_character_event_descriptions: CharacterEventDescription
+    }
+
+    interface Context {
+        chatluna_character_event_loop: EventLoopService
+    }
+
+    // 定义事件
+    interface Events {
+        'chatluna_character_event_loop/created': (
+            presetKey: string,
+            events: DayEvent[]
+        ) => void
+        'chatluna_character_event_loop/before-update': (
+            presetKey: string,
+            events: DayEvent[]
+        ) => void
+        'chatluna_character_event_loop/after-update': (
+            presetKey: string,
+            events: DayEvent[]
+        ) => void
+        'chatluna_character_event_loop/current-event-updated': (
+            presetKey: string,
+            event: DayEvent,
+            description?: string
+        ) => void
+        'chatluna_character_event_loop/event-customized': (
+            presetKey: string,
+            eventId: string,
+            updates: Partial<{
+                timeStart: string
+                timeEnd: string
+                event: string
+                eventDescription: string
+                status: 'done' | 'doing' | 'todo'
+            }>
+        ) => void
+        'chatluna_character_event_loop/event-deleted': (
+            presetKey: string,
+            eventId: string
+        ) => void
+        'chatluna_character_event_loop/event-added': (
+            presetKey: string,
+            eventId: string,
+            event: {
+                timeStart: string
+                timeEnd: string
+                event: string
+                eventDescription?: string
+                status?: 'done' | 'doing' | 'todo'
+            }
+        ) => void
+        'chatluna_character_event_loop/daily-refresh': (
+            presetKey: string,
+            oldEvents: DayEvent[],
+            newEvents: DayEvent[]
+        ) => void
+        'chatluna_character_event_loop/description-updated': (
+            presetKey: string,
+            eventId: string,
+            description: string
+        ) => void
+        'chatluna_character_event_loop/preset-activated': (
+            presetKey: string
+        ) => void
+        'chatluna_character_event_loop/preset-deactivated': (
+            presetKey: string
+        ) => void
+    }
+}
+
+// 定义事件描述数据库表
+export interface CharacterEventDescription {
+    id: number
+    presetKey: string
+    eventId: string
+    description: string
+    createdAt: Date
+    updatedAt: Date
+}
+
+// 定义数据库表结构
+export interface CharacterEventLoop {
+    id: number
+    presetKey: string
+    eventId: string
+    timeStart: string
+    timeEnd: string
+    date: Date
+    refreshInterval: number
+    event: string
+    eventDescription: string
+    status: 'done' | 'doing' | 'todo'
+    createdAt: Date
+    updatedAt: Date
 }

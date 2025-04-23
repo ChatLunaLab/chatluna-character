@@ -3,13 +3,18 @@ import { BaseAgent, BaseAgentInput } from '../agent/base'
 import { CharacterPrompt } from '../agent/prompt'
 import { AgentAction } from '../agent/type'
 import { AgentFinish } from '@langchain/core/agents'
-import { GLOBAL_THINK_PROMPT } from './prompt'
+import { GLOBAL_THINK_PROMPT, GROUP_OR_PRIVATE_THINK_PROMPT } from './prompt'
 
-export interface GlobalThinkAgentInput extends BaseAgentInput {}
+export interface ThinkAgentInput extends BaseAgentInput {
+    thinkType: 'global' | 'group'
+}
 
-export class GlobalThinkAgent extends BaseAgent {
-    constructor(input: GlobalThinkAgentInput) {
+export class ThinkAgent extends BaseAgent {
+    thinkType: 'global' | 'group'
+
+    constructor(input: ThinkAgentInput) {
         super(input)
+        this.thinkType = input.thinkType
     }
 
     private _prompt: CharacterPrompt
@@ -41,10 +46,11 @@ export class GlobalThinkAgent extends BaseAgent {
             this._prompt = new CharacterPrompt({
                 tokenCounter: (text) => this.executeModel.getNumTokens(text),
                 sendTokenLimit: 10000,
-                systemPrompt:
-                    SystemMessagePromptTemplate.fromTemplate(
-                        GLOBAL_THINK_PROMPT
-                    )
+                systemPrompt: SystemMessagePromptTemplate.fromTemplate(
+                    this.thinkType === 'global'
+                        ? GLOBAL_THINK_PROMPT
+                        : GROUP_OR_PRIVATE_THINK_PROMPT
+                )
             })
         }
         return this._prompt
