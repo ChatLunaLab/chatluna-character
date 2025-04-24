@@ -1,4 +1,4 @@
-import { Context, Service, Session } from 'koishi'
+import { Context, Service } from 'koishi'
 import { Topic } from './type'
 import { Message } from '../message-counter/types'
 import { Config } from '..'
@@ -6,10 +6,9 @@ import { TopicAnalysisAgent } from './topic-analysis-agent'
 import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
 
 export class TopicService extends Service {
-    private topicMap: Record<string, Topic[]> = {}
-    private messageCounter: number = 0;
-    private pendingMessages: Record<string, Message[]> = {};
-    private messageThreshold: number = 5; // Process after 5 messages
+    private topicMap: Record<string, Topic[]> = {} // groupId -> Topic[]
+    private messageCounter: Record<string, number> = {} // groupId -> count
+    private messageThreshold: number = 5 // Process after 5 messages
 
     constructor(
         public readonly ctx: Context,
@@ -17,185 +16,171 @@ export class TopicService extends Service {
     ) {
         super(ctx, 'chatluna_character_topic', true)
 
-        // Register a filter with the message collector
+        // Register handler with the message collector
         ctx.on('ready', () => {
-            ctx.chatluna_character_message.addTrigger(
+            ctx.chatluna_character_message.addHandler(
+                // Handler function - will be called when a message passes the filter
                 async (session, message, history) => {
-                    await this.handleNewMessage(session, message, history);
+                    const groupId = session.isDirect
+                        ? session.author.id
+                        : session.guildId
+
+                    await this.analyzeTopics(
+                        groupId,
+                        history.slice(-this.messageThreshold)
+                    )
                 },
-                async () => true // Always trigger for all messages
-            );
-        });
-    }
-
-    /**
-     * Handle a new message from the message collector
-     */
-    private async handleNewMessage(session: Session, message: Message, history: Message[]): Promise<void> {
-        const groupId = session.isDirect ? session.author.id : session.guildId;
-
-        // Initialize pending messages array if not exists
-        if (!this.pendingMessages[groupId]) {
-            this.pendingMessages[groupId] = [];
-        }
-
-        // Add message to pending
-        this.pendingMessages[groupId].push(message);
-
-        // Process if we've reached the threshold
-        if (this.pendingMessages[groupId].length >= this.messageThreshold) {
-            const presetKey = await this.getActivePreset(session);
-            if (presetKey) {
-                await this.analyzeTopics(presetKey, groupId, this.pendingMessages[groupId]);
-            }
-            // Clear the pending messages
-            this.pendingMessages[groupId] = [];
-        }
-    }
-
-    /**
-     * Get active preset for the current session
-     */
-    private async getActivePreset(session: Session): Promise<string | null> {
-        try {
-            // Get active presets from the event loop service
-            const activePresets = this.ctx.chatluna_character_event_loop.getActivePresets();
-
-            // For now just return the first active preset
-            // In a more advanced implementation, you might want to map sessions to specific presets
-            return activePresets.length > 0 ? activePresets[0] : null;
-        } catch (error) {
-            this.ctx.logger('chatluna_character_topic').error(error);
-            return null;
-        }
+                // Filter function - only process when we reach the threshold
+                async (session, message, history) => {
+                    return history.length % this.messageThreshold === 0
+                }
+            )
+        })
     }
 
     /**
      * Analyze topics from a batch of messages
      */
-    private async analyzeTopics(presetKey: string, groupId: string, messages: Message[]): Promise<void> {
+    async analyzeTopics(groupId: string, messages: Message[]): Promise<void> {
         try {
+            // Initialize message counter for this group if not exists
+            if (!this.messageCounter[groupId]) {
+                this.messageCounter[groupId] = 0
+            }
+
             // Get existing topics
-            const existingTopics = this.getTopics(presetKey);
+            const existingTopics = this.getTopics(groupId)
 
             // Format messages for the agent
-            const formattedMessages = messages.map((msg, index) => {
-                return `[${this.messageCounter + index + 1}] ${msg.name}: ${msg.content}`;
-            }).join('\n');
+            const formattedMessages = messages
+                .map((msg, index) => {
+                    return `[${this.messageCounter[groupId] + index + 1}] ${msg.name}: ${msg.content}`
+                })
+                .join('\n')
 
             // Format existing topics for the agent
-            const formattedTopics = existingTopics.map(topic => topic.content).join(', ');
+            const formattedTopics = existingTopics
+                .map((topic) => topic.content)
+                .join(', ')
 
             // Create the topic analysis agent
             const agent = new TopicAnalysisAgent({
                 executeModel: await this.ctx.chatluna.createChatModel(
                     ...parseRawModelName(this.config.model || 'gpt-3.5-turbo')
                 )
-            });
+            })
 
             // Execute the agent
-            let result;
+            let result
             for await (const action of agent.stream({
                 messages: formattedMessages,
                 topic: formattedTopics
             })) {
                 if (action.type === 'finish') {
-                    result = action.action;
-                    break;
+                    result = action.action
+                    break
                 }
             }
 
             if (!result || !result.output) {
-                return;
+                return
             }
 
             // Extract topics from the result
             try {
-                const output = result.output as string;
+                const output = result.output as string
 
                 // Try to parse JSON format
-                const jsonMatch = output.match(/```json\s*([\s\S]*?)\s*```/i);
+                const jsonMatch = output.match(/```json\s*([\s\S]*?)\s*```/i)
                 if (jsonMatch && jsonMatch[1]) {
-                    const jsonData = JSON.parse(jsonMatch[1].replace(/{{/g, '{').replace(/}}/g, '}'));
+                    const jsonData = JSON.parse(
+                        jsonMatch[1].replace(/{{/g, '{').replace(/}}/g, '}')
+                    )
 
                     if (jsonData.topics && Array.isArray(jsonData.topics)) {
                         // Process each topic
                         for (const topicData of jsonData.topics) {
                             if (topicData.summary) {
                                 // Create message IDs by adding the current counter
-                                const messageIds = (topicData.messages || []).map(
-                                    id => typeof id === 'number' ? this.messageCounter + id : id
-                                );
+                                const messageIds = (
+                                    topicData.messages || []
+                                ).map((id) =>
+                                    typeof id === 'number'
+                                        ? this.messageCounter[groupId] + id
+                                        : id
+                                )
 
                                 // Add the topic
-                                this.addTopic(presetKey, {
-                                    id: `${presetKey}-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`,
+                                this.addTopic(groupId, {
+                                    id: `${groupId}-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`,
                                     content: topicData.summary,
-                                    messageIds: messageIds,
+                                    messageIds,
                                     createdAt: new Date(),
                                     updatedAt: new Date(),
                                     attention: topicData.attention || 0.5
-                                });
+                                })
                             }
                         }
                     }
                 }
             } catch (error) {
-                this.ctx.logger('chatluna_character_topic').error(
-                    'Failed to parse topics:', error
-                );
+                this.ctx
+                    .logger('chatluna_character_topic')
+                    .error('Failed to parse topics:', error)
             }
 
             // Update message counter
-            this.messageCounter += messages.length;
-
+            this.messageCounter[groupId] += messages.length
         } catch (error) {
-            this.ctx.logger('chatluna_character_topic').error(
-                'Topic analysis failed:', error
-            );
+            this.ctx
+                .logger('chatluna_character_topic')
+                .error('Topic analysis failed:', error)
         }
     }
 
     /**
-     * Add a topic for a preset
+     * Add a topic for a group
      */
-    addTopic(presetKey: string, topic: Topic): void {
-        if (!this.topicMap[presetKey]) {
-            this.topicMap[presetKey] = [];
+    addTopic(groupId: string, topic: Topic): void {
+        if (!this.topicMap[groupId]) {
+            this.topicMap[groupId] = []
         }
 
         // Add the new topic
-        this.topicMap[presetKey].push(topic);
+        this.topicMap[groupId].push(topic)
 
-        // Limit to 10 topics per preset
-        if (this.topicMap[presetKey].length > 10) {
-            this.topicMap[presetKey].shift();
+        // Limit to 10 topics per group
+        if (this.topicMap[groupId].length > 10) {
+            this.topicMap[groupId].shift()
         }
 
         // Emit topic added event
-        this.ctx.emit(
-            'chatluna_character_topic/added',
-            presetKey,
-            topic
-        );
+        this.ctx.emit('chatluna_character_topic/added', groupId, topic)
     }
 
     /**
-     * Get topics for a preset
+     * Get topics for a group
      */
-    getTopics(presetKey: string): Topic[] {
-        return this.topicMap[presetKey] || [];
+    getTopics(groupId: string): Topic[] {
+        return this.topicMap[groupId] || []
     }
 
     /**
-     * Get the most recent topics for a preset (limited to count)
+     * Get the most recent topics for a group (limited to count)
      */
-    getRecentTopics(presetKey: string, count: number = 5): Topic[] {
-        const topics = this.topicMap[presetKey] || [];
-        return topics.slice(-Math.min(count, topics.length));
+    getRecentTopics(groupId: string, count: number = 5): Topic[] {
+        const topics = this.getTopics(groupId)
+        return topics.slice(-Math.min(count, topics.length))
     }
 
-    static inject = ['chatluna', 'chatluna_character_message', 'chatluna_character_event_loop']
+    /**
+     * Set the message threshold
+     */
+    setMessageThreshold(threshold: number): void {
+        this.messageThreshold = threshold
+    }
+
+    static inject = ['chatluna', 'chatluna_character_message']
 }
 
 declare module 'koishi' {
@@ -205,7 +190,7 @@ declare module 'koishi' {
 
     interface Events {
         'chatluna_character_topic/added': (
-            presetKey: string,
+            groupId: string,
             topic: Topic
         ) => void
     }

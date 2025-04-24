@@ -55,8 +55,7 @@ export class ThinkService extends Service {
         }
 
         // Get topics from the topic service
-        const topics =
-            this.ctx.chatluna_character_topic.getRecentTopics(presetKey)
+        const topics = this.ctx.chatluna_character_topic.getRecentTopics(id)
 
         // Get previous think content
         let previousThink: Think | undefined
@@ -115,18 +114,32 @@ export class ThinkService extends Service {
 
         // Parse the output
         const output = result.output as string
-        const contentMatch =
-            output.match(/思考内容：(.+?)(?=\n|$)/) ||
-            output.match(/私人思考：(.+?)(?=\n|$)/)
-        const emotionMatch =
-            output.match(/情绪状态：(.+?)(?=\n|$)/) ||
-            output.match(/真实情绪：(.+?)(?=\n|$)/)
-        const socialTendencyMatch = output.match(/社交倾向：(.+?)(?=\n|$)/)
 
+        // Extract the text block from the prompt response
+        // Look for the text section between the ```text and ``` markers
+        const textBlockMatch = output.match(/```text\s*([\s\S]*?)\s*```/)
+        const textBlock = textBlockMatch
+            ? textBlockMatch[1].trim()
+            : output.trim()
+
+        // Extract the full text or look for specific content line
+        let content = textBlock
+
+        // Look for specific "thinking content" line if available
+        const lines = textBlock.split('\n').filter((line) => line.trim())
+        for (const line of lines) {
+            if (
+                line.startsWith('思考内容：') ||
+                line.startsWith('私人思考：')
+            ) {
+                content = line.substring(line.indexOf('：') + 1).trim()
+                break
+            }
+        }
+
+        // Create think object
         const think: Think = {
-            content: contentMatch?.[1].trim() || output.trim(),
-            emotion: emotionMatch?.[1].trim() || 'neutral',
-            socialTendency: socialTendencyMatch?.[1].trim(),
+            content,
             createdAt: now,
             updatedAt: now
         }
@@ -202,7 +215,7 @@ export class ThinkService extends Service {
         type: 'global' | 'group' | 'private' = 'global',
         id?: string
     ): Promise<Think | null> {
-        // Check cache
+        // Check cachess
         if (type === 'global' && this.globalThink[presetKey]) {
             return this.globalThink[presetKey]
         } else if (type === 'group' && id && this.groupThink[presetKey]?.[id]) {

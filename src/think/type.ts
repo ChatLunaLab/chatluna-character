@@ -7,8 +7,6 @@ export interface Topic {
 
 export interface Think {
     content: string
-    emotion: string
-    socialTendency?: string
     createdAt: Date
     updatedAt: Date
 }

@@ -19,16 +19,17 @@ export class MessageCollector extends Service {
     private _locks: Record<string, ObjectLock> = {}
 
     constructor(ctx: Context) {
+        // TODO: max message count in memory
         super(ctx, 'chatluna_character_message')
     }
 
-    async addTrigger(
-        trigger: MessageCollectorTrigger,
-        filter: MessageCollectorFilter
+    async addHandler(
+        handler: MessageCollectorTrigger,
+        trigger: MessageCollectorFilter
     ) {
         this._triggerFunctions.push({
-            trigger,
-            filter
+            trigger: handler,
+            filter: trigger
         })
     }
 
