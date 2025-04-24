@@ -162,10 +162,98 @@ export async function apply(ctx: Context, config: Config) {
     })
 }
 
-function calculateIntervalScore(interval: number): number {
-    return Math.max(0, 1 - interval / MAX_INTERVAL)
+// Improved constants for the activity scoring algorithm
+const WINDOW_SIZE = 100
+const MAX_INTERVAL = Time.minute * 5
+const MIN_COOLDOWN_TIME = Time.second * 15
+const BASE_PROBABILITY = 0.02
+const COOLDOWN_PENALTY = 0.3
+const ENTROPY_WEIGHT = 0.4
+const POISSON_WEIGHT = 0.3
+const RECENCY_WEIGHT = 0.25
+const RANDOM_WEIGHT = 0.05
+const LAMBDA_SCALE = 30000 // Scale factor for Poisson (30 seconds)
+const ENTROPY_NORMALIZER = Math.log2(MAX_INTERVAL)
+
+/**
+ * Calculate Shannon entropy for a set of time intervals
+ * Higher entropy indicates more unpredictable/chaotic messaging patterns
+ */
+function calculateShannonEntropy(intervals: number[]): number {
+    if (intervals.length < 2) return 0
+
+    // Bin the intervals into discrete categories
+    const binSize = MAX_INTERVAL / 10
+    const bins: Record<number, number> = {}
+
+    // Count occurrences in each bin
+    for (const interval of intervals) {
+        const binIndex = Math.min(Math.floor(interval / binSize), 9)
+        bins[binIndex] = (bins[binIndex] || 0) + 1
+    }
+
+    // Calculate entropy
+    let entropy = 0
+    const totalCount = intervals.length
+
+    for (const binIndex in bins) {
+        const probability = bins[binIndex] / totalCount
+        entropy -= probability * Math.log2(probability)
+    }
+
+    // Normalize to 0-1 range
+    return Math.min(entropy / ENTROPY_NORMALIZER, 1)
 }
 
+/**
+ * Calculate Poisson probability for message rate
+ * Measure how unusual the current messaging rate is compared to expectation
+ */
+function calculatePoissonActivity(intervals: number[]): number {
+    if (intervals.length < 2) return 0
+
+    // Calculate average interval (lambda for Poisson)
+    const avgInterval =
+        intervals.reduce((sum, interval) => sum + interval, 0) /
+        intervals.length
+    if (avgInterval === 0) return 1 // Avoid division by zero
+
+    // Calculate recent message rate (last 3 messages or fewer)
+    const recentIntervals = intervals.slice(-Math.min(3, intervals.length))
+    const recentAvgInterval =
+        recentIntervals.reduce((sum, interval) => sum + interval, 0) /
+        recentIntervals.length
+
+    // Normalize lambda for Poisson calculation
+    const lambda = avgInterval / LAMBDA_SCALE
+    const recentLambda = recentAvgInterval / LAMBDA_SCALE
+
+    // Exponential function to compare recent activity to average
+    // Higher activity (lower interval) creates higher score
+    const activityRatio = lambda / (recentLambda + 0.001) // Avoid division by zero
+
+    // Scale to a 0-1 range with diminishing returns for very high activity
+    return Math.min(1 - Math.exp(-activityRatio), 1)
+}
+
+/**
+ * Calculates recency score using exponential decay
+ * More recent messages have higher weight
+ */
+function calculateRecencyScore(timestamps: number[]): number {
+    const now = Date.now()
+    if (timestamps.length === 0) return 0
+
+    const lastMessageTime = timestamps[timestamps.length - 1]
+    const timeSinceLastMessage = now - lastMessageTime
+
+    // Exponential decay function
+    return Math.exp(-timeSinceLastMessage / MAX_INTERVAL)
+}
+
+/**
+ * Advanced activity score calculation combining information theory and statistical methods
+ */
 function calculateActivityScore(
     timestamps: number[],
     lastResponseTime?: number,
@@ -173,64 +261,59 @@ function calculateActivityScore(
 ): ActivityScore {
     const now = Date.now()
 
-    // If less than 2 messages, return minimum score
+    // If fewer than 2 messages, return minimum score
     if (timestamps.length < 2) {
         return { score: 0, timestamp: now }
     }
 
-    // Calculate message accumulation factor (0 to 1)
-    const accumulationFactor = Math.min(timestamps.length / maxMessages, 1)
-
-    // Calculate intervals and weights as before
+    // Calculate intervals between messages
     const intervals: number[] = []
-    const weights: number[] = []
-    let totalWeight = 0
-
     for (let i = 1; i < timestamps.length; i++) {
-        const interval = timestamps[i] - timestamps[i - 1]
-        intervals.push(interval)
-        const weight = Math.pow(DECAY_FACTOR, timestamps.length - i)
-        weights.push(weight)
-        totalWeight += weight
+        intervals.push(timestamps[i] - timestamps[i - 1])
     }
 
-    let weightedIntervalScore = 0
-    for (let i = 0; i < intervals.length; i++) {
-        const normalizedWeight = weights[i] / totalWeight
-        weightedIntervalScore +=
-            calculateIntervalScore(intervals[i]) * normalizedWeight
-    }
+    // Calculate accumulation factor - logarithmic growth provides diminishing returns as messages accumulate
+    const accumulationFactor = maxMessages
+        ? Math.min(
+              Math.log(timestamps.length + 1) / Math.log(maxMessages + 1),
+              1
+          )
+        : Math.min(timestamps.length / WINDOW_SIZE, 1)
 
-    const recentInterval = now - timestamps[timestamps.length - 1]
-    const recentScore = calculateIntervalScore(recentInterval)
+    // Information entropy score - measures randomness/unpredictability in messaging patterns
+    const entropyScore = calculateShannonEntropy(intervals)
+
+    // Poisson-based activity score - measures how unusual current activity is compared to average
+    const poissonScore = calculatePoissonActivity(intervals)
+
+    // Recency score - higher weight for more recent messages
+    const recencyScore = calculateRecencyScore(timestamps)
+
+    // Add controlled randomness for natural variability
     const randomFactor = Math.random() * BASE_PROBABILITY
 
-    // Apply accumulation factor to the score calculation
+    // Weighted combination of all factors
     let score =
-        (recentScore * RECENT_WEIGHT +
-            weightedIntervalScore * HISTORY_WEIGHT +
+        (entropyScore * ENTROPY_WEIGHT +
+            poissonScore * POISSON_WEIGHT +
+            recencyScore * RECENCY_WEIGHT +
             randomFactor * RANDOM_WEIGHT) *
         accumulationFactor
 
+    // Apply cooldown if bot recently responded
     if (lastResponseTime) {
         const timeSinceLastResponse = now - lastResponseTime
         if (timeSinceLastResponse < MIN_COOLDOWN_TIME) {
-            score *= 0.1
+            // Exponential cooldown - stronger effect immediately after response
+            const cooldownFactor = Math.exp(
+                -MIN_COOLDOWN_TIME / timeSinceLastResponse
+            )
+            score *= cooldownFactor
         }
     }
 
+    // Ensure score is within valid range
     score = Math.max(0, Math.min(1, score))
 
     return { score, timestamp: now }
 }
-
-// Adjust constants for better balance
-const WINDOW_SIZE = 100
-const MAX_INTERVAL = Time.minute * 5
-const MIN_COOLDOWN_TIME = Time.second * 10 // Increased cooldown time
-const BASE_PROBABILITY = 0.02
-const RECENT_WEIGHT = 0.3 // Slightly reduced
-const HISTORY_WEIGHT = 0.15 // Increased
-const RANDOM_WEIGHT = 0.04
-const DECAY_FACTOR = 0.95
-const COOLDOWN_PENALTY = 0.3
