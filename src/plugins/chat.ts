@@ -16,6 +16,7 @@ import {
     executeSearchAction,
     formatCompletionMessages,
     formatMessage,
+    formatTimestamp,
     getSearchKeyword,
     isEmoticonStatement,
     parseResponse,
@@ -192,7 +193,7 @@ async function prepareMessages(
         await currentPreset.input.format({
             history_new: recentMessage,
             history_last: lastMessage,
-            time: new Date().toString(),
+            time: formatTimestamp(new Date()),
             stickers: JSON.stringify(stickerService.getAllStickTypes()),
             status: temp.status ?? currentPreset.status ?? ''
         })

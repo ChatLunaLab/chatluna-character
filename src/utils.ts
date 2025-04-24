@@ -27,7 +27,7 @@ export function isEmoticonStatement(
 export function isOnlyPunctuation(text: string): boolean {
     // 匹配中英文标点符号
     const regex =
-        /^[.,;!?…·—–—()【】「」『』《》<>《》{}【】〔〕“”‘’'"\[\]@#￥%\^&\*\-+=|\\~？。`]+$/
+        /^[.,;!?…·—–—()【】「」『』《》<>《》{}【】〔〕"":'\[\]@#￥%\^&\*\-+=|\\~？。`]+$/
     return regex.test(text)
 }
 
@@ -411,11 +411,25 @@ export function matchPre(str: string) {
     })
 }
 
+export function formatTimestamp(timestamp: number | Date): string {
+    const date = timestamp instanceof Date ? timestamp : new Date(timestamp)
+    return date.toLocaleString('en-US', {
+        month: 'numeric',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+        timeZoneName: 'short'
+    })
+}
+
 function formatMessageString(message: Message) {
     let xmlMessage = `<message type='text' name='${message.name}' id='${message.id}'`
 
     if (message.timestamp) {
-        const timestampString = new Date(message.timestamp).toString()
+        const timestampString = formatTimestamp(message.timestamp)
         xmlMessage += ` timestamp='${timestampString}'`
     }
 
@@ -591,7 +605,7 @@ export async function getSearchKeyword(
         chat_history: formattedMessages.join('\n'),
         // xx: -> ""
         question: formattedMessages[formattedMessages.length - 1],
-        time: new Date().toISOString()
+        time: formatTimestamp(new Date())
     })
 
     const modelResult = getMessageContent(
