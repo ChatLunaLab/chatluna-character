@@ -4,8 +4,6 @@ import { Context, Disposable, Schema } from 'koishi'
 import { ChatLunaPlugin } from 'koishi-plugin-chatluna/services/chat'
 import { plugins } from './plugin'
 import { GuildConfig } from './types'
-import { EventLoopAgent } from './event-loop/generate-agent'
-import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
 
 export function apply(ctx: Context, config: Config) {
     const disposables: Disposable[] = []

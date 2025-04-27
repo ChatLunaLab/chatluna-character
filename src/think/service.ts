@@ -45,12 +45,12 @@ export class ThinkService extends Service {
         }
 
         // Get current event
-        const currentEvent =
-            await this.ctx.chatluna_character_event_loop.getCurrentEvent(
+        const currentEvents =
+            await this.ctx.chatluna_character_event_loop.getRecentEvents(
                 presetKey
             )
 
-        if (!currentEvent) {
+        if (!currentEvents) {
             throw new Error(`No current event for preset: ${presetKey}`)
         }
 
@@ -94,7 +94,7 @@ export class ThinkService extends Service {
         for await (const action of agent.stream({
             time: now.toLocaleString(),
             weekday,
-            event: currentEvent.event,
+            event: JSON.stringify(currentEvents),
             topics: topics.map((t) => t.content).join(', '),
             think: previousThink?.content || '',
             preset: preset.name,
@@ -115,15 +115,9 @@ export class ThinkService extends Service {
         // Parse the output
         const output = result.output as string
 
-        // Extract the text block from the prompt response
-        // Look for the text section between the ```text and ``` markers
-        const textBlockMatch = output.match(/```text\s*([\s\S]*?)\s*```/)
-        const textBlock = textBlockMatch
-            ? textBlockMatch[1].trim()
-            : output.trim()
-
-        // Extract the full text or look for specific content line
-        const content = textBlock
+        // Extract content between <output> and </output> tags
+        const outputMatch = output.match(/<output>([\s\S]*?)<\/output>/i)
+        const content = outputMatch ? outputMatch[1].trim() : output.trim()
 
         // Create think object
         const think: Think = {
@@ -135,8 +129,8 @@ export class ThinkService extends Service {
         // Save the think content
         this.saveThink(presetKey, type, id, think)
 
-        this.ctx.logger.error(
-            `Generated think for ${presetKey} ${type} ${id}: ${think.content}`
+        this.ctx.logger.info(
+            `Generated think for ${presetKey} ${type} ${id || 'global'} ${output}`
         )
 
         return think
@@ -207,7 +201,7 @@ export class ThinkService extends Service {
         type: 'global' | 'group' | 'private' = 'global',
         id?: string
     ): Promise<Think | null> {
-        // Check cachess
+        // Check caches
         if (type === 'global' && this.globalThink[presetKey]) {
             return this.globalThink[presetKey]
         } else if (type === 'group' && id && this.groupThink[presetKey]?.[id]) {
