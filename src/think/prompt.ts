@@ -6,6 +6,7 @@ export const GLOBAL_THINK_PROMPT = `<context>
 </context>
 
 ## 指导原则:
+0. 事件更多需要关注正在 \`doing\` 的事件，那是当前最重要的
 1. 基于当前预设，事件和相关话题生成简单、自然的思考内容（50 字以上）
 2. 思考内容应反映角色的性格、价值观和当前情绪状态
 3. 考虑角色的背景知识和经历，确保思考内容符合角色设定
@@ -44,11 +45,12 @@ export const GROUP_OR_PRIVATE_THINK_PROMPT = `<context>
 之前的思考内容: {think}
 全局思考内容: {global_think}
 当前预设: {preset}
-当前群聊ID: {group}
-当前私聊ID: {private_id}
+当前群聊ID(如果存在): {group}
+当前私聊ID(如果存在): {private_id}
 </context>
 
 ## 指导原则:
+0. 事件更多需要关注正在 \`doing\` 的事件，那是当前最重要的
 1. 基于当前预设，事件和相关话题生成个性化、私人的思考内容
 2. 思考内容应深入反映角色的内心世界、隐私想法和真实情感
 3. 考虑角色与特定群聊或私聊对象的关系历史和互动方式

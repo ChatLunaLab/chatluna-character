@@ -4,7 +4,7 @@ import { Config } from '.'
 import { apply as chat } from './plugins/chat'
 import { apply as commands } from './plugins/commands'
 import { apply as config } from './plugins/config'
-import { apply as filter } from './plugins/filter'
+import { apply as filter } from './plugins/message'
 import { apply as service } from './plugins/service'
 import { apply as interception } from './plugins/interception' // import end
 

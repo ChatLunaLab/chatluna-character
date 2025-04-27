@@ -32,6 +32,7 @@ export class TopicService extends Service {
                 },
                 // Filter function - only process when we reach the threshold
                 async (session, message, history) => {
+                    console.log(message)
                     return history.length % this.messageThreshold === 0
                 }
             )
@@ -89,6 +90,8 @@ export class TopicService extends Service {
             // Extract topics from the result
             try {
                 const output = result.output as string
+
+                console.log('output', output)
 
                 // Try to parse JSON format
                 const jsonMatch = output.match(/```json\s*([\s\S]*?)\s*```/i)
