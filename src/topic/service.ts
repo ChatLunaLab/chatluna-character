@@ -4,6 +4,7 @@ import { Message } from '../message-counter/types'
 import { Config } from '..'
 import { TopicAnalysisAgent } from './topic-analysis-agent'
 import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
+import { HumanMessage } from '@langchain/core/messages'
 
 export class TopicService extends Service {
     private topicMap: Record<string, Topic[]> = {} // groupId -> Topic[]
@@ -32,7 +33,7 @@ export class TopicService extends Service {
                 },
                 // Filter function - only process when we reach the threshold
                 async (session, message, history) => {
-                    console.log(message)
+                    //  console.log(message)
                     return history.length % this.messageThreshold === 0
                 }
             )
@@ -53,11 +54,25 @@ export class TopicService extends Service {
             const existingTopics = this.getTopics(groupId)
 
             // Format messages for the agent
-            const formattedMessages = messages
-                .map((msg, index) => {
-                    return `[${this.messageCounter[groupId] + index + 1}] ${msg.name}: ${msg.content}`
-                })
-                .join('\n')
+            const formattedMessages = new HumanMessage(
+                JSON.stringify(
+                    messages.map((msg) => ({
+                        name: msg.name,
+                        content: msg.content,
+                        id: msg.id
+                    }))
+                )
+            )
+
+            formattedMessages.additional_kwargs = {}
+
+            const images = messages
+                .flatMap((msg) => msg.images)
+                .filter((image) => image != null)
+
+            if (images.length > 0) {
+                formattedMessages.additional_kwargs.images = images
+            }
 
             // Format existing topics for the agent
             const formattedTopics = existingTopics
