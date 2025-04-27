@@ -6,6 +6,7 @@ import {
 } from './types'
 import { getNotEmptyString } from 'koishi-plugin-chatluna/utils/string'
 import { ObjectLock } from 'koishi-plugin-chatluna/utils/lock'
+import { Config } from '..'
 
 export class MessageCollector extends Service {
     private _groupMessages: Record<string, Message[]> = {}
@@ -18,7 +19,10 @@ export class MessageCollector extends Service {
 
     private _locks: Record<string, ObjectLock> = {}
 
-    constructor(ctx: Context) {
+    constructor(
+        ctx: Context,
+        public config: Config
+    ) {
         // TODO: max message count in memory
         super(ctx, 'chatluna_character_message')
     }
@@ -78,13 +82,13 @@ export class MessageCollector extends Service {
         let history: Message[]
         if (isPrivateMessage) {
             this._privateMessages[session.author.id] = [
-                ...this._privateMessages[session.author.id],
+                ...(this._privateMessages[session.author.id] ?? []),
                 message
             ]
             history = this._privateMessages[session.author.id]
         } else {
             this._groupMessages[session.guildId] = [
-                ...this._groupMessages[session.guildId],
+                ...(this._groupMessages[session.guildId] ?? []),
                 message
             ]
             history = this._groupMessages[session.guildId]
@@ -148,5 +152,5 @@ async function getMessageImages(ctx: Context, session: Session) {
         session.elements
     )
 
-    return mergedMessage.additional_kwargs['images'] as string[]
+    return mergedMessage.additional_kwargs?.['images'] as string[]
 }
