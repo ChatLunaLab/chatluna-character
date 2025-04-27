@@ -192,7 +192,6 @@ export class CharacterPrompt
             )
 
             const mapMessages = result.map((msg) => {
-                console.log(msg.toDict, msg)
                 const original = msg.toDict()
                 const dict = structuredClone(original)
                 if (dict.data == null) {

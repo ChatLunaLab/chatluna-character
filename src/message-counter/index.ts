@@ -7,6 +7,7 @@ import {
 import { getNotEmptyString } from 'koishi-plugin-chatluna/utils/string'
 import { ObjectLock } from 'koishi-plugin-chatluna/utils/lock'
 import { Config } from '..'
+import { randomUUID } from 'crypto'
 
 export class MessageCollector extends Service {
     private _groupMessages: Record<string, Message[]> = {}
@@ -60,6 +61,7 @@ export class MessageCollector extends Service {
                 session.username
             ),
             id: session.author.id,
+            uuid: randomUUID(),
             timestamp: session.event.timestamp,
             quote: session.quote
                 ? {

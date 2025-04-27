@@ -755,12 +755,22 @@ export class EventLoopService extends Service {
             (e) => e.timeStart === currentEvent.timeStart
         )
 
+        const now = new Date()
+
         const recentEvents = events.slice(
             currentEventIndex - upperLimit,
             currentEventIndex + lowerLimit
         )
 
-        return recentEvents
+        return recentEvents.map((e) => ({
+            ...e,
+            status:
+                e.timeStart <= now && now <= e.timeEnd
+                    ? 'doing'
+                    : e.timeStart > now
+                      ? 'todo'
+                      : 'done'
+        }))
     }
 
     /**

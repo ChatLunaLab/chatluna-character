@@ -4,11 +4,11 @@ import { Message } from '../message-counter/types'
 import { Config } from '..'
 import { TopicAnalysisAgent } from './topic-analysis-agent'
 import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
-import { HumanMessage } from '@langchain/core/messages'
 
 export class TopicService extends Service {
     private topicMap: Record<string, Topic[]> = {} // groupId -> Topic[]
     private messageCounter: Record<string, number> = {} // groupId -> count
+    private messageHistory: Record<string, Message[]> = {} // groupId -> Message[]
     private messageThreshold: number = 5 // Process after 5 messages
 
     constructor(
@@ -50,29 +50,34 @@ export class TopicService extends Service {
                 this.messageCounter[groupId] = 0
             }
 
+            // Initialize message history if not exists
+            if (!this.messageHistory[groupId]) {
+                this.messageHistory[groupId] = []
+            }
+
+            // Store current messages for history update later
+            const currentMessages = [...messages]
+
             // Get existing topics
             const existingTopics = this.getTopics(groupId)
 
-            // Format messages for the agent
-            const formattedMessages = new HumanMessage(
-                JSON.stringify(
-                    messages.map((msg) => ({
-                        name: msg.name,
-                        content: msg.content,
-                        id: msg.id
-                    }))
-                )
+            // Format new messages for the agent
+            const formattedNewMessages = JSON.stringify(
+                messages.map((msg) => ({
+                    name: msg.name,
+                    content: msg.content,
+                    id: msg.uuid
+                }))
             )
 
-            formattedMessages.additional_kwargs = {}
-
-            const images = messages
-                .flatMap((msg) => msg.images)
-                .filter((image) => image != null)
-
-            if (images.length > 0) {
-                formattedMessages.additional_kwargs.images = images
-            }
+            // Format history messages
+            const formattedHistoryMessages = JSON.stringify(
+                this.messageHistory[groupId].map((msg) => ({
+                    name: msg.name,
+                    content: msg.content,
+                    id: msg.uuid
+                }))
+            )
 
             // Format existing topics for the agent
             const formattedTopics = existingTopics
@@ -89,7 +94,8 @@ export class TopicService extends Service {
             // Execute the agent
             let result
             for await (const action of agent.stream({
-                messages: formattedMessages,
+                messages: formattedHistoryMessages,
+                messages_new: formattedNewMessages,
                 topic: formattedTopics
             })) {
                 if (action.type === 'finish') {
@@ -100,6 +106,19 @@ export class TopicService extends Service {
 
             if (!result || !result.output) {
                 return
+            }
+
+            // Update message history with new messages
+            this.messageHistory[groupId] = [
+                ...this.messageHistory[groupId],
+                ...currentMessages
+            ]
+
+            // Limit history size (keep last 50 messages)
+            const maxHistorySize = 50
+            if (this.messageHistory[groupId].length > maxHistorySize) {
+                this.messageHistory[groupId] =
+                    this.messageHistory[groupId].slice(-maxHistorySize)
             }
 
             // Extract topics from the result

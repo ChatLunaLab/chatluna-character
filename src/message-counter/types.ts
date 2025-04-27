@@ -6,6 +6,7 @@ export interface Message {
     id: string
     timestamp?: number
     quote?: Message
+    uuid?: string
     images?: string[]
 }
 
