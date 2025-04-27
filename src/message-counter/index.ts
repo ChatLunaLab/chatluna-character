@@ -14,7 +14,7 @@ export class MessageCollector extends Service {
     private _triggerFunctions: {
         trigger: MessageCollectorTrigger
         filter: MessageCollectorFilter
-    }[]
+    }[] = []
 
     private _locks: Record<string, ObjectLock> = {}
 

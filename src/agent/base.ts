@@ -4,8 +4,8 @@ import { ChatLunaChatModel } from 'koishi-plugin-chatluna/llm-core/platform/mode
 import { AgentAction, AgentPlan, AgentPlanAction } from './type'
 import {
     CharacterPrompt,
-    CURRENT_CONTEXT_FORMAT_PROMOPT,
-    CURRENT_PLAN_FORMAT_PROMOPT,
+    CURRENT_CONTEXT_FORMAT_PROMPT,
+    CURRENT_PLAN_FORMAT_PROMPT,
     GENERATE_AGENT_PLAN_PROMPT
 } from './prompt'
 import {
@@ -161,9 +161,11 @@ export abstract class BaseAgent implements BaseAgentInput {
         ) {
             for await (const agentAction of this._execute({
                 before_agent_scrapad:
-                    await CURRENT_PLAN_FORMAT_PROMOPT.formatMessages({
-                        plan: this.planAction?.currentPlan ?? ''
-                    }),
+                    this.planAction != null
+                        ? await CURRENT_PLAN_FORMAT_PROMPT.formatMessages({
+                              plan: this.planAction?.currentPlan ?? ''
+                          })
+                        : undefined,
                 ...chainValues
             })) {
                 // 只有确定完成才会传输 finish 的 action
@@ -216,7 +218,7 @@ export abstract class BaseAgent implements BaseAgentInput {
 
         for await (const agentAction of this._execute({
             before_agent_scrapad:
-                await CURRENT_CONTEXT_FORMAT_PROMOPT.formatMessages({
+                await CURRENT_CONTEXT_FORMAT_PROMPT.formatMessages({
                     context: this.agentScratchpad.join('\n\n')
                 }),
             ...chainValues

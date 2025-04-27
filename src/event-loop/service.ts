@@ -287,6 +287,7 @@ export class EventLoopService extends Service {
         }
 
         if (!result || !result.value) {
+            console.log(result)
             throw new Error('Failed to generate events')
         }
 
@@ -565,6 +566,54 @@ export class EventLoopService extends Service {
         )
 
         if (!eventRecords || eventRecords.length === 0) {
+            return []
+        }
+
+        // 检查事件是否为当天的事件
+        const today = new Date()
+        const todayDate = new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            today.getDate()
+        )
+
+        // 获取第一个事件的日期进行比较
+        const firstEventDate = new Date(eventRecords[0].date)
+        const eventDate = new Date(
+            firstEventDate.getFullYear(),
+            firstEventDate.getMonth(),
+            firstEventDate.getDate()
+        )
+
+        // 如果不是当天的事件，清空所有事件并返回空数组
+        if (todayDate.getTime() !== eventDate.getTime()) {
+            // 清空该预设的所有事件
+            await this.ctx.database.remove('chatluna_character_event_loop', {
+                presetKey
+            })
+
+            // 清空该预设的所有事件描述
+            await this.ctx.database.remove(
+                'chatluna_character_event_descriptions',
+                {
+                    presetKey
+                }
+            )
+
+            // 清除缓存
+            delete this._eventCache[presetKey]
+
+            // 如果预设仍然激活，需要重新生成事件
+            if (this._activePresets.has(presetKey)) {
+                const preset =
+                    await this.ctx.chatluna_character_preset.getPreset(
+                        presetKey
+                    )
+                if (preset) {
+                    return await this.generateEvents(presetKey, preset)
+                }
+            }
+
             return []
         }
 

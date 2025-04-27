@@ -123,19 +123,7 @@ export class ThinkService extends Service {
             : output.trim()
 
         // Extract the full text or look for specific content line
-        let content = textBlock
-
-        // Look for specific "thinking content" line if available
-        const lines = textBlock.split('\n').filter((line) => line.trim())
-        for (const line of lines) {
-            if (
-                line.startsWith('思考内容：') ||
-                line.startsWith('私人思考：')
-            ) {
-                content = line.substring(line.indexOf('：') + 1).trim()
-                break
-            }
-        }
+        const content = textBlock
 
         // Create think object
         const think: Think = {
@@ -146,6 +134,10 @@ export class ThinkService extends Service {
 
         // Save the think content
         this.saveThink(presetKey, type, id, think)
+
+        this.ctx.logger.error(
+            `Generated think for ${presetKey} ${type} ${id}: ${think.content}`
+        )
 
         return think
     }

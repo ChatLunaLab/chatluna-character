@@ -170,15 +170,15 @@ export class CharacterPrompt
             result.push(input)
         }
 
-        if (beforeAgentScratchpad) {
-            if (Array.isArray(beforeAgentScratchpad)) {
-                result.push(...beforeAgentScratchpad)
-            } else {
-                result.push(beforeAgentScratchpad)
-            }
-        }
-
         if (agentScratchpad) {
+            if (beforeAgentScratchpad) {
+                if (Array.isArray(beforeAgentScratchpad)) {
+                    result.push(...beforeAgentScratchpad)
+                } else {
+                    result.push(beforeAgentScratchpad)
+                }
+            }
+
             if (Array.isArray(agentScratchpad)) {
                 result.push(...agentScratchpad)
             } else {
@@ -250,12 +250,12 @@ export class CharacterPrompt
     }
 }
 
-export const CURRENT_PLAN_FORMAT_PROMOPT: SystemMessagePromptTemplate =
+export const CURRENT_PLAN_FORMAT_PROMPT: SystemMessagePromptTemplate =
     SystemMessagePromptTemplate.fromTemplate(
         `这是你的当前任务：{plan}。请你根据当前任务和历史聊天信息，调用合适的工具完成这个任务。`
     )
 
-export const CURRENT_CONTEXT_FORMAT_PROMOPT: SystemMessagePromptTemplate =
+export const CURRENT_CONTEXT_FORMAT_PROMPT: SystemMessagePromptTemplate =
     SystemMessagePromptTemplate.fromTemplate(
         `这是你之前调用工具后总结输出的结果： {context}。请你根据这些结果和用户的需求进行总结输出。无需调用任何工具。`
     )

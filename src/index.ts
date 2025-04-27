@@ -17,21 +17,7 @@ export function apply(ctx: Context, config: Config) {
             {
                 apply: async (ctx: Context, config: Config) => {
                     ctx.logger.error('开始执行事件循环')
-                    const eventLoopAgent = new EventLoopAgent({
-                        characterPrompt:
-                            await ctx.chatluna_character_preset.getPreset('煕'),
-                        executeModel: await ctx.chatluna.createChatModel(
-                            ...parseRawModelName(config.model)
-                        )
-                    })
-
-                    for await (const action of eventLoopAgent.stream({
-                        status: '',
-                        stickers: '',
-                        date: ''
-                    })) {
-                        console.log(1, action.action['value'])
-                    }
+                    await ctx.chatluna_character_event_loop.activatePreset('煕')
                 },
                 inject: Object.assign({}, inject2, {
                     chatluna_character_preset: {
@@ -75,7 +61,7 @@ export function apply(ctx: Context, config: Config) {
 }
 
 export const inject = {
-    required: ['chatluna'],
+    required: ['chatluna', 'database'],
     optional: ['chatluna_character', 'vits']
 }
 
