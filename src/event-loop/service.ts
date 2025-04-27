@@ -266,6 +266,7 @@ export class EventLoopService extends Service {
         // 检查是否已有事件
         const existingEvents = await this.getEvents(presetKey)
         if (existingEvents && existingEvents.length > 0) {
+            await this.updateEvents(presetKey, characterPrompt)
             return existingEvents
         }
 
@@ -331,6 +332,16 @@ export class EventLoopService extends Service {
 
             events.push(event)
 
+            let eventStatus: 'todo' | 'doing' | 'done' = 'todo'
+
+            if (timeStart < now && timeEnd > now) {
+                eventStatus = 'doing'
+            } else if (timeStart < now && timeEnd < now) {
+                eventStatus = 'done'
+            } else if (timeStart > now && timeEnd > now) {
+                eventStatus = 'todo'
+            }
+
             // 保存到数据库
             await this.ctx.database.create('chatluna_character_event_loop', {
                 presetKey,
@@ -341,10 +352,26 @@ export class EventLoopService extends Service {
                 refreshInterval: 24 * 60 * 60 * 1000,
                 event: eventData.event,
                 eventDescription: eventData.eventDescription || eventData.event,
-                status: 'todo',
+                status: eventStatus,
                 createdAt: now,
                 updatedAt: now
             })
+
+            if (eventStatus === 'doing') {
+                // generate description
+                /* await this.generateEventDescription(
+                    presetKey,
+                    event,
+                    characterPrompt
+                ) */
+                // 触发当前事件
+                this.ctx.emit(
+                    'chatluna_character_event_loop/current-event-updated',
+                    presetKey,
+                    event
+                )
+                this._currentEvent[presetKey] = event
+            }
         }
 
         // 更新缓存
@@ -353,6 +380,12 @@ export class EventLoopService extends Service {
         // 触发事件创建事件
         this.ctx.emit(
             'chatluna_character_event_loop/created',
+            presetKey,
+            events
+        )
+
+        this.ctx.emit(
+            'chatluna_character_event_loop/after-update',
             presetKey,
             events
         )
@@ -570,23 +603,15 @@ export class EventLoopService extends Service {
         }
 
         // 检查事件是否为当天的事件
-        const today = new Date()
-        const todayDate = new Date(
-            today.getFullYear(),
-            today.getMonth(),
-            today.getDate()
-        )
+        const todayDate = new Date()
 
-        // 获取第一个事件的日期进行比较
+        // 设置全部为 0
+        todayDate.setHours(0, 0, 0, 0)
+
         const firstEventDate = new Date(eventRecords[0].date)
-        const eventDate = new Date(
-            firstEventDate.getFullYear(),
-            firstEventDate.getMonth(),
-            firstEventDate.getDate()
-        )
-
+        firstEventDate.setHours(0, 0, 0, 0)
         // 如果不是当天的事件，清空所有事件并返回空数组
-        if (todayDate.getTime() !== eventDate.getTime()) {
+        if (todayDate.getTime() !== firstEventDate.getTime()) {
             // 清空该预设的所有事件
             await this.ctx.database.remove('chatluna_character_event_loop', {
                 presetKey

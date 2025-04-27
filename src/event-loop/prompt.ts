@@ -64,31 +64,31 @@ export const GENERATE_EVENT_LOOP_UPDATE_PROMPT = `你现在需要完全代入下
 
 下面是输出的 JSON 格式示例：
 
-[{
+[{{
     "id": "event-1",
     "timeStart": "00:00",
     "timeEnd": "06:03",
     "event": "睡觉",
     "eventDescription": "事件详细描述",
     "changeType": "update"
-},{
+}},{{
     "id": "event-3",
     "timeStart": "07:30",
     "timeEnd": "08:15",
     "event": "早餐",
     "eventDescription": "事件详细描述",
     "changeType": "update"
-},{
+}},{{
     "id": "event-5",
     "timeStart": "19:30",
     "timeEnd": "21:00",
     "event": "临时加班",
     "eventDescription": "事件详细描述",
     "changeType": "add"
-},{
+}},{{
     "id": "event-8",
     "changeType": "delete"
-}]
+}}]
 
 请注意以下字段的要求：
 - id: 事件的唯一标识符，更新现有事件时必须使用原有ID，新增事件时创建新ID
