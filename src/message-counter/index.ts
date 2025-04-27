@@ -51,62 +51,63 @@ export class MessageCollector extends Service {
         const lock = this._getLock(session)
 
         const unlock = await lock.lock()
-
-        const message: Message = {
-            content: session.content,
-            name: getNotEmptyString(
-                session.author?.nick,
-                session.author?.name,
-                session.event.user?.name,
-                session.username
-            ),
-            id: session.author.id,
-            uuid: randomUUID(),
-            timestamp: session.event.timestamp,
-            quote: session.quote
-                ? {
-                      content: mapElementToString(
-                          session,
-                          session.quote.content,
-                          session.quote.elements ?? [
-                              h.text(session.quote.content)
-                          ]
-                      ),
-                      name: session.quote?.user?.name,
-                      id: session.quote?.user?.id
-                  }
-                : undefined,
-            images: this.config.image
-                ? await getMessageImages(this.ctx, session)
-                : undefined
-        }
-
-        let history: Message[]
-        if (isPrivateMessage) {
-            this._privateMessages[session.author.id] = [
-                ...(this._privateMessages[session.author.id] ?? []),
-                message
-            ]
-            history = this._privateMessages[session.author.id]
-        } else {
-            this._groupMessages[session.guildId] = [
-                ...(this._groupMessages[session.guildId] ?? []),
-                message
-            ]
-            history = this._groupMessages[session.guildId]
-        }
-
-        const promises = this._triggerFunctions.map(
-            async ({ trigger, filter }) => {
-                if (await filter(session, message, history)) {
-                    await trigger(session, message, history)
-                }
+        try {
+            const message: Message = {
+                content: session.content,
+                name: getNotEmptyString(
+                    session.author?.nick,
+                    session.author?.name,
+                    session.event.user?.name,
+                    session.username
+                ),
+                id: session.author.id,
+                uuid: randomUUID(),
+                timestamp: session.event.timestamp,
+                quote: session.quote
+                    ? {
+                          content: mapElementToString(
+                              session,
+                              session.quote.content,
+                              session.quote.elements ?? [
+                                  h.text(session.quote.content)
+                              ]
+                          ),
+                          name: session.quote?.user?.name,
+                          id: session.quote?.user?.id
+                      }
+                    : undefined,
+                images: this.config.image
+                    ? await getMessageImages(this.ctx, session)
+                    : undefined
             }
-        )
 
-        await Promise.all(promises)
+            let history: Message[]
+            if (isPrivateMessage) {
+                this._privateMessages[session.author.id] = [
+                    ...(this._privateMessages[session.author.id] ?? []),
+                    message
+                ]
+                history = this._privateMessages[session.author.id]
+            } else {
+                this._groupMessages[session.guildId] = [
+                    ...(this._groupMessages[session.guildId] ?? []),
+                    message
+                ]
+                history = this._groupMessages[session.guildId]
+            }
 
-        unlock()
+            const promises = this._triggerFunctions.map(
+                async ({ trigger, filter }) => {
+                    if (await filter(session, message, history)) {
+                        await trigger(session, message, history)
+                    }
+                }
+            )
+
+            await Promise.all(promises)
+        } finally {
+            unlock()
+        }
     }
 }
 
