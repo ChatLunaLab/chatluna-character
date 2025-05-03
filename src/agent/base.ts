@@ -13,7 +13,7 @@ import {
     createOpenAIAgent,
     createReactAgent
 } from 'koishi-plugin-chatluna/llm-core/agent'
-import { messagesToString, tryParseJSON } from '../utils'
+import { tryParseJSON } from '../utils'
 
 export interface BaseAgentInput {
     planModel?: ChatLunaChatModel
@@ -60,9 +60,7 @@ export abstract class BaseAgent implements BaseAgentInput {
         const messages = await this.planPrompt.formatMessages({
             chat_history: chainValues.chat_history ?? '',
             input: chainValues.input,
-            system: messagesToString(
-                await this.prompt.formatSystemPrompts(chainValues)
-            ),
+            system: chainValues.system ?? '',
             plan: JSON.stringify(this.planAction),
             agent_scratchpad: this.agentScratchpad.join('\n\n')
         })
@@ -163,26 +161,29 @@ export abstract class BaseAgent implements BaseAgentInput {
                 before_agent_scrapad:
                     this.planAction != null
                         ? await CURRENT_PLAN_FORMAT_PROMPT.formatMessages({
-                              plan: this.planAction?.currentPlan ?? ''
+                              plan: this.planAction?.currentPlan ?? '',
+                              context: this.agentScratchpad.join('\n\n')
                           })
                         : undefined,
                 ...chainValues
             })) {
                 // 只有确定完成才会传输 finish 的 action
-                if (this.planAction == null && agentAction.type === 'finish') {
-                    currentAction = agentAction
-                    yield agentAction
-                } else if (agentAction.type !== 'finish') {
-                    currentAction = agentAction
+                currentAction = agentAction
+                if (agentAction.type === 'finish' && this.planAction === null) {
                     yield agentAction
                 }
-            }
 
-            // 将 agent 调用的结果缓存
-            this.agentScratchpad.push(
-                (currentAction as AgentAction<'finish'>).action.returnValues
-                    .output
-            )
+                if (agentAction.type === 'finish' && this.planAction !== null) {
+                    this.agentScratchpad.push(
+                        ...(agentAction.action['intermediateSteps'].map(
+                            (step) => JSON.stringify(step)
+                        ) as string[])
+                    )
+                    this.agentScratchpad.push(agentAction.action['output'])
+
+                    console.log(2, this.agentScratchpad)
+                }
+            }
 
             // 完成后更新计划
             if (this.planAction != null) {

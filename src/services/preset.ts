@@ -11,13 +11,17 @@ import path from 'path'
 import { PresetTemplate } from '../types'
 import { fileURLToPath } from 'url'
 import { watch } from 'fs'
+import { Config } from '..'
 
 export class PresetService extends Service {
     private readonly _presets: PresetTemplate[] = []
 
     private _aborter: AbortController | null = null
 
-    constructor(readonly ctx: Context) {
+    constructor(
+        readonly ctx: Context,
+        public config: Config
+    ) {
         super(ctx, 'chatluna_character_preset')
         ctx.on('dispose', () => {
             this._aborter?.abort()
@@ -144,7 +148,9 @@ export class PresetService extends Service {
             await this.loadAllPreset()
         }
 
-        const preset = this._presets.find((preset) => preset.name === '默认')
+        const preset = this._presets.find(
+            (preset) => preset.name === this.config.defaultPreset
+        )
 
         if (preset) {
             // await this.cache.set('default-preset', 'chatgpt')

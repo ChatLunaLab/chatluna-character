@@ -98,8 +98,13 @@ export class MessageCollector extends Service {
 
             const promises = this._triggerFunctions.map(
                 async ({ trigger, filter }) => {
-                    if (await filter(session, message, history)) {
-                        await trigger(session, message, history)
+                    try {
+                        const result = await filter(session, message, history)
+                        if (result) {
+                            await trigger(session, message, history)
+                        }
+                    } catch (error) {
+                        this.ctx.logger.error(error)
                     }
                 }
             )

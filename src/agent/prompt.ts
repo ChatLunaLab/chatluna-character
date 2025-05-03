@@ -134,6 +134,16 @@ export class CharacterPrompt
         usedTokens += inputTokens
 
         if (agentScratchpad) {
+            if (beforeAgentScratchpad) {
+                if (Array.isArray(beforeAgentScratchpad)) {
+                    result.push(...beforeAgentScratchpad)
+                } else {
+                    result.push(beforeAgentScratchpad)
+                }
+            }
+        }
+
+        if (agentScratchpad) {
             if (Array.isArray(agentScratchpad)) {
                 usedTokens += await agentScratchpad.reduce(
                     async (accPromise, message) => {
@@ -170,22 +180,6 @@ export class CharacterPrompt
             result.push(input)
         }
 
-        if (agentScratchpad) {
-            if (beforeAgentScratchpad) {
-                if (Array.isArray(beforeAgentScratchpad)) {
-                    result.push(...beforeAgentScratchpad)
-                } else {
-                    result.push(beforeAgentScratchpad)
-                }
-            }
-
-            if (Array.isArray(agentScratchpad)) {
-                result.push(...agentScratchpad)
-            } else {
-                result.push(agentScratchpad)
-            }
-        }
-
         if (logger?.level === Logger.DEBUG) {
             logger?.debug(
                 `Used tokens: ${usedTokens} exceed limit: ${this.sendTokenLimit}`
@@ -210,7 +204,6 @@ export class CharacterPrompt
 
     private async _formatWithMessagesPlaceholder(
         chatHistory: BaseMessage[],
-
         usedTokens: number
     ): Promise<{ messages: BaseMessage[]; usedTokens: number }> {
         const result: BaseMessage[] = []
@@ -251,7 +244,7 @@ export class CharacterPrompt
 
 export const CURRENT_PLAN_FORMAT_PROMPT: SystemMessagePromptTemplate =
     SystemMessagePromptTemplate.fromTemplate(
-        `这是你的当前任务：{plan}。请你根据当前任务和历史聊天信息，调用合适的工具完成这个任务。`
+        `这是你的当前任务：{plan}，这是你之前调用工具后总结输出的结果：{context}。请你根据当前任务和历史聊天信息，调用合适的工具完成这个任务。`
     )
 
 export const CURRENT_CONTEXT_FORMAT_PROMPT: SystemMessagePromptTemplate =
