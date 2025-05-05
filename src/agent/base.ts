@@ -24,6 +24,14 @@ export interface BaseAgentInput {
     tools?: StructuredTool[]
 }
 
+export interface PlanDelta {
+    id: string
+    title?: string
+    status?: 'pending' | 'doing' | 'done' | 'failed'
+    changeType: 'add' | 'update' | 'delete'
+    currentPlan?: boolean
+}
+
 export abstract class BaseAgent implements BaseAgentInput {
     planModel?: ChatLunaChatModel
     planPrompt?: BaseMessagePromptTemplate
@@ -34,6 +42,7 @@ export abstract class BaseAgent implements BaseAgentInput {
 
     planAction: AgentPlanAction
     currentPlan: AgentPlan
+    allPlans: AgentPlan[] = []
 
     executor: AgentExecutor
 
@@ -61,7 +70,7 @@ export abstract class BaseAgent implements BaseAgentInput {
             chat_history: chainValues.chat_history ?? '',
             input: chainValues.input,
             system: chainValues.system ?? '',
-            plan: JSON.stringify(this.planAction),
+            plan: this.planAction ? JSON.stringify(this.allPlans) : '',
             agent_scratchpad: this.agentScratchpad.join('\n\n')
         })
 
@@ -69,49 +78,66 @@ export abstract class BaseAgent implements BaseAgentInput {
         const response = await this.planModel.invoke(messages)
 
         // Parse the response content as JSON
-        let planAction: AgentPlanAction
+        let planDeltas: PlanDelta[] = []
+        let newCurrentPlan: AgentPlan | null = null
         try {
             const content = response.content as string
-            const parsedContent = tryParseJSON(content)
+            planDeltas = tryParseJSON(content)
 
-            if (parsedContent.plans) {
-                // This is a new plan generation
-                planAction = {
-                    plans: parsedContent.plans,
-                    currentPlan: parsedContent.currentPlan
-                }
-            } else if (parsedContent.nextPlan && parsedContent.currentPlan) {
-                // This is a plan update
-                // Update the current plan status
-                const updatedPlans =
-                    this.planAction?.plans.map((plan) => {
-                        if (plan.title === parsedContent.currentPlan.title) {
-                            return {
-                                ...plan,
-                                status: parsedContent.currentPlan.status
-                            }
-                        }
-                        return plan
-                    }) || []
-
-                // Find the next plan
-                const nextPlanIndex = updatedPlans.findIndex(
-                    (plan) => plan.title === parsedContent.nextPlan.title
-                )
-
-                planAction = {
-                    plans: updatedPlans,
-                    currentPlan:
-                        nextPlanIndex >= 0
-                            ? updatedPlans[nextPlanIndex]
-                            : parsedContent.nextPlan
-                }
-            } else {
-                throw new Error('Invalid plan format')
+            if (!Array.isArray(planDeltas)) {
+                throw new Error('Expected an array of plan deltas')
             }
         } catch (error) {
             console.error('Failed to parse plan response:', error)
             throw new Error(`Failed to parse plan response: ${error.message}`)
+        }
+
+        // Apply deltas to existing plans
+        for (const delta of planDeltas) {
+            if (delta.changeType === 'add') {
+                const newPlan: AgentPlan = {
+                    id: delta.id,
+                    title: delta.title,
+                    status: delta.status || 'pending'
+                }
+                this.allPlans.push(newPlan)
+
+                if (delta.currentPlan) {
+                    newCurrentPlan = newPlan
+                }
+            } else if (delta.changeType === 'update') {
+                const existingPlan = this.allPlans.find(
+                    (plan) => plan.id === delta.id
+                )
+                if (existingPlan) {
+                    if (delta.title) existingPlan.title = delta.title
+                    if (delta.status) existingPlan.status = delta.status
+
+                    if (delta.currentPlan) {
+                        newCurrentPlan = existingPlan
+                    }
+                }
+            } else if (delta.changeType === 'delete') {
+                this.allPlans = this.allPlans.filter(
+                    (plan) => plan.id !== delta.id
+                )
+            }
+        }
+
+        // If no current plan is explicitly set, use the first pending plan
+        if (
+            !newCurrentPlan &&
+            this.allPlans.some((plan) => plan.status === 'pending')
+        ) {
+            newCurrentPlan = this.allPlans.find(
+                (plan) => plan.status === 'pending'
+            )
+        }
+
+        // Create the final plan action
+        const planAction: AgentPlanAction = {
+            plans: this.allPlans,
+            currentPlan: newCurrentPlan || this.currentPlan
         }
 
         return planAction
@@ -158,7 +184,7 @@ export abstract class BaseAgent implements BaseAgentInput {
             currentIteration < this.maxIterations
         ) {
             for await (const agentAction of this._execute({
-                before_agent_scrapad:
+                before_agent_scratchpad:
                     this.planAction != null
                         ? await CURRENT_PLAN_FORMAT_PROMPT.formatMessages({
                               plan: this.planAction?.currentPlan ?? '',
@@ -218,7 +244,7 @@ export abstract class BaseAgent implements BaseAgentInput {
         // 计划都完成后，在调用一次 agent 获取最终的结果。
 
         for await (const agentAction of this._execute({
-            before_agent_scrapad:
+            before_agent_scratchpad:
                 await CURRENT_CONTEXT_FORMAT_PROMPT.formatMessages({
                     context: this.agentScratchpad.join('\n\n')
                 }),

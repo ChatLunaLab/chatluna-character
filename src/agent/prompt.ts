@@ -31,7 +31,7 @@ export interface CharacterPromptFormat {
     chat_history: BaseMessage[] | string
     variables?: ChainValues
     agent_scratchpad?: BaseMessage[] | BaseMessage
-    before_agent_scrapad?: BaseMessage[] | BaseMessage
+    before_agent_scratchpad?: BaseMessage[] | BaseMessage
 }
 
 export class CharacterPrompt
@@ -57,7 +57,7 @@ export class CharacterPrompt
                 'variables',
                 'input',
                 'agent_scratchpad',
-                'before_agent_scrapad'
+                'before_agent_scratchpad'
             ]
         })
 
@@ -105,7 +105,7 @@ export class CharacterPrompt
         input,
         variables,
         agent_scratchpad: agentScratchpad,
-        before_agent_scrapad: beforeAgentScratchpad,
+        before_agent_scratchpad: beforeAgentScratchpad,
         instructions
     }: CharacterPromptFormat) {
         const result: BaseMessage[] = []
@@ -244,7 +244,7 @@ export class CharacterPrompt
 
 export const CURRENT_PLAN_FORMAT_PROMPT: SystemMessagePromptTemplate =
     SystemMessagePromptTemplate.fromTemplate(
-        `这是你的当前任务：{plan}，这是你之前调用工具后总结输出的结果：{context}。请你根据当前任务和历史聊天信息，调用合适的工具完成这个任务。`
+        `这是你的当前任务：{plan}，这是你之前调用工具的过程和结果：{context}。请你根据当前任务和历史聊天信息，调用合适的工具完成这个任务。`
     )
 
 export const CURRENT_CONTEXT_FORMAT_PROMPT: SystemMessagePromptTemplate =
@@ -287,52 +287,41 @@ export const GENERATE_AGENT_PLAN_PROMPT: SystemMessagePromptTemplate =
 2. 不要包含任何额外的解释或注释
 3. 使用双引号而非单引号
 
-## 生成新计划时的输出格式示例：
-{{
-  "plans": [
-    {{
-      "title": "识别并提取用户查询中的关键信息和意图",
-      "status": "pending"
-    }},
-    {{
-      "title": "在知识库中检索与用户问题相关的技术文档和解决方案",
-      "status": "pending"
-    }},
-    {{
-      "title": "分析多个信息源并筛选最相关的解决方案",
-      "status": "pending"
-    }},
-    {{
-      "title": "组织信息并生成结构化的技术解答",
-      "status": "pending"
-    }},
-    {{
-      "title": "检查回答的准确性并添加相关示例代码",
-      "status": "pending"
-    }}
-  ],
-  "currentPlan": {{
+## 生成新计划时的输出格式：
+[
+  {
+    "id": "plan-1",
     "title": "识别并提取用户查询中的关键信息和意图",
-    "status": "pending"
-  }}
-}}
+    "status": "pending",
+    "changeType": "add"
+  },
+  {
+    "id": "plan-2",
+    "title": "在知识库中检索与用户问题相关的技术文档和解决方案",
+    "status": "pending",
+    "changeType": "add"
+  }
+]
 
-## 更新现有计划时的输出格式示例：
-
-{{
-  "nextPlan": {{
-    "title": "在知识库中检索与用户问题相关的技术文档和解决方案"
-  }},
-  "currentPlan": {{
-    "title": "识别并提取用户查询中的关键信息和意图",
-    "status": "done"
-  }}
-}}
+## 更新现有计划时的输出格式：
+[
+  {
+    "id": "plan-1",
+    "status": "done",
+    "changeType": "update"
+  },
+  {
+    "id": "plan-2",
+    "status": "pending",
+    "changeType": "update",
+    "currentPlan": true
+  }
+]
 
 请注意：
-- 生成新计划时，返回完整的plans数组和当前计划
-- 更新现有计划时，只需返回nextPlan和currentPlan
-- 计划状态必须是以下之一："pending"、"done"或"failed"
-- nextPlan是下一个需要执行的计划，currentPlan是当前正在执行的计划
+- 生成新计划时，为每个计划分配唯一ID，所有计划的changeType为"add"
+- 更新现有计划时，只需返回有变更的计划
+- 计划状态必须是以下之一："pending"、"doing"、"done"或"failed"
+- 使用currentPlan: true标记当前正在执行的计划
 
 现在，请根据提供的信息生成或更新计划：`)

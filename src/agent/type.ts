@@ -1,8 +1,9 @@
 import { AgentStep, AgentFinish } from '@langchain/core/agents'
 
 export interface AgentPlan {
+    id: string
     title: string
-    status: 'pending' | 'done' | 'failed'
+    status: 'pending' | 'doing' | 'done' | 'failed'
 }
 
 export interface AgentPlanAction {

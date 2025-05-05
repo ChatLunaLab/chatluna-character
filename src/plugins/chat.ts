@@ -53,7 +53,7 @@ export async function apply(ctx: Context, config: Config) {
                                 )
                             )
                         })) {
-                            ctx.logger.error(action)
+                            ctx.logger.error('result', action)
                         }
                     },
                     async (session, message, history) => {
