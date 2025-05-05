@@ -265,7 +265,9 @@ export const GENERATE_AGENT_PLAN_PROMPT: SystemMessagePromptTemplate =
 </用户输入>
 
 <系统角色>
+
 {system}
+
 </系统角色>
 
 <工具调用结果>
@@ -286,36 +288,37 @@ export const GENERATE_AGENT_PLAN_PROMPT: SystemMessagePromptTemplate =
 1. 必须是有效的JSON格式
 2. 不要包含任何额外的解释或注释
 3. 使用双引号而非单引号
+4. 不能输出任何xml标签
 
 ## 生成新计划时的输出格式：
 [
-  {
+  {{
     "id": "plan-1",
     "title": "识别并提取用户查询中的关键信息和意图",
     "status": "pending",
     "changeType": "add"
-  },
-  {
+  }},
+  {{
     "id": "plan-2",
     "title": "在知识库中检索与用户问题相关的技术文档和解决方案",
     "status": "pending",
     "changeType": "add"
-  }
+  }}
 ]
 
 ## 更新现有计划时的输出格式：
 [
-  {
+  {{
     "id": "plan-1",
     "status": "done",
     "changeType": "update"
-  },
-  {
+  }},
+  {{
     "id": "plan-2",
     "status": "pending",
     "changeType": "update",
     "currentPlan": true
-  }
+  }}
 ]
 
 请注意：

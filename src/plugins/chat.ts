@@ -57,8 +57,15 @@ export async function apply(ctx: Context, config: Config) {
                         }
                     },
                     async (session, message, history) => {
-                        ctx.logger.error(1, history)
-                        return history.length % 5 === 0
+                        const result =
+                            history.length % 5 === 0 &&
+                            session.isDirect === false &&
+                            session.guildId === '391122026'
+
+                        if (result) {
+                            ctx.logger.error(1, history)
+                            return true
+                        }
                     }
                 )
             })
