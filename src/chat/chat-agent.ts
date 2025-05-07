@@ -27,6 +27,7 @@ export class ChatAgent extends BaseAgent {
 
         chainValues['variables'] = chainValues
 
+        // TODO: image input
         const characterInputPrompt =
             await this.characterPrompt.input.format(chainValues)
 

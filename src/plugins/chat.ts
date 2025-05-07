@@ -8,6 +8,7 @@ import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_t
 import { BeforeChatAgent } from '../chat/before-chat-agent'
 import { GENERATE_AGENT_PLAN_PROMPT } from '../agent/prompt'
 import { HumanMessage } from '@langchain/core/messages'
+import { ChatAgent } from '../chat/chat-agent'
 
 export async function apply(ctx: Context, config: Config) {
     ctx.plugin({
@@ -26,13 +27,19 @@ export async function apply(ctx: Context, config: Config) {
                                 })
                             )
                         )
+                        const preset =
+                            await ctx.chatluna_character_preset.getDefaultPreset()
                         const beforeAgent = new BeforeChatAgent({
                             tools: webTools,
-                            characterPrompt:
-                                await ctx.chatluna_character_preset.getDefaultPreset(),
+                            characterPrompt: preset,
                             executeModel: model,
                             planModel: model,
                             planPrompt: GENERATE_AGENT_PLAN_PROMPT
+                        })
+
+                        const chatAgent = new ChatAgent({
+                            characterPrompt: preset,
+                            executeModel: model
                         })
 
                         // ctx.logger.error(2, history)
@@ -62,9 +69,41 @@ export async function apply(ctx: Context, config: Config) {
                             }
                         }
 
-                        console.log('beforeAgentResult', beforeAgentResult)
-
                         ctx.logger.error('beforeAgentResult', beforeAgentResult)
+
+                        let chatAgentResult = ''
+
+                        for await (const action of chatAgent.stream({
+                            chat_history: [],
+                            history: JSON.stringify(history),
+                            input: '',
+                            think: JSON.stringify(
+                                await ctx.chatluna_character_think.getThink(
+                                    preset.name,
+                                    'global'
+                                )
+                            ),
+                            think_before: JSON.stringify(beforeAgentResult),
+                            think_group: JSON.stringify(
+                                await ctx.chatluna_character_think.getThink(
+                                    preset.name,
+                                    'group',
+                                    session.guildId
+                                )
+                            ),
+                            history_last: JSON.stringify(message.content),
+                            related_topics: JSON.stringify(
+                                await ctx.chatluna_character_topic.getRecentTopics(
+                                    session.guildId
+                                )
+                            )
+                        })) {
+                            if (action.type === 'finish') {
+                                chatAgentResult += action.action['output']
+                            }
+                        }
+
+                        ctx.logger.error('chatAgentResult', chatAgentResult)
                     },
                     async (session, message, history) => {
                         const result =

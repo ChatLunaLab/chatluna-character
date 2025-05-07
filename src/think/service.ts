@@ -55,7 +55,8 @@ export class ThinkService extends Service {
         }
 
         // Get topics from the topic service
-        const topics = this.ctx.chatluna_character_topic.getRecentTopics(id)
+        const topics =
+            await this.ctx.chatluna_character_topic.getRecentTopics(id)
 
         // Get previous think content
         let previousThink: Think | undefined

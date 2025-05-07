@@ -4,12 +4,14 @@ import { Message } from '../message-counter/types'
 import { Config } from '..'
 import { TopicAnalysisAgent } from './topic-analysis-agent'
 import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
+import { ObjectLock } from 'koishi-plugin-chatluna/utils/lock'
 
 export class TopicService extends Service {
     private topicMap: Record<string, Topic[]> = {} // groupId -> Topic[]
     private messageCounter: Record<string, number> = {} // groupId -> count
     private messageHistory: Record<string, Message[]> = {} // groupId -> Message[]
     private messageThreshold: number = 5 // Process after 5 messages
+    private topicLocker: Record<string, ObjectLock> = {} // groupId -> ObjectLock
 
     constructor(
         public readonly ctx: Context,
@@ -44,6 +46,12 @@ export class TopicService extends Service {
      * Analyze topics from a batch of messages
      */
     async analyzeTopics(groupId: string, messages: Message[]): Promise<void> {
+        const lock = this.topicLocker[groupId] || new ObjectLock()
+
+        this.topicLocker[groupId] = lock
+
+        const unlock = await lock.lock()
+
         try {
             // Initialize message counter for this group if not exists
             if (!this.messageCounter[groupId]) {
@@ -170,6 +178,8 @@ export class TopicService extends Service {
             this.ctx
                 .logger('chatluna_character_topic')
                 .error('Topic analysis failed:', error)
+        } finally {
+            unlock()
         }
     }
 
@@ -203,9 +213,20 @@ export class TopicService extends Service {
     /**
      * Get the most recent topics for a group (limited to count)
      */
-    getRecentTopics(groupId: string, count: number = 5): Topic[] {
-        const topics = this.getTopics(groupId)
-        return topics.slice(-Math.min(count, topics.length))
+    async getRecentTopics(
+        groupId: string,
+        count: number = 5
+    ): Promise<Topic[]> {
+        const lock = this.topicLocker[groupId] || new ObjectLock()
+
+        const unlock = await lock.lock()
+
+        try {
+            const topics = this.getTopics(groupId)
+            return topics.slice(-Math.min(count, topics.length))
+        } finally {
+            unlock()
+        }
     }
 
     /**
