@@ -114,8 +114,8 @@ export class TopicService extends Service {
                 ...currentMessages
             ]
 
-            // Limit history size (keep last 50 messages)
-            const maxHistorySize = 50
+            // Limit history size (keep last 200 messages)
+            const maxHistorySize = 200
             if (this.messageHistory[groupId].length > maxHistorySize) {
                 this.messageHistory[groupId] =
                     this.messageHistory[groupId].slice(-maxHistorySize)
@@ -124,8 +124,6 @@ export class TopicService extends Service {
             // Extract topics from the result
             try {
                 const output = result.output as string
-
-                console.log('output', output)
 
                 // Try to parse JSON format
                 const jsonMatch = output.match(/```json\s*([\s\S]*?)\s*```/i)

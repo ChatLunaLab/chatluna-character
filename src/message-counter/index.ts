@@ -13,6 +13,8 @@ export class MessageCollector extends Service {
     private _groupMessages: Record<string, Message[]> = {}
     private _privateMessages: Record<string, Message[]> = {}
 
+    private _maxMessageCount = 200
+
     private _triggerFunctions: {
         trigger: MessageCollectorTrigger
         filter: MessageCollectorFilter
@@ -83,16 +85,20 @@ export class MessageCollector extends Service {
 
             let history: Message[]
             if (isPrivateMessage) {
-                this._privateMessages[session.author.id] = [
-                    ...(this._privateMessages[session.author.id] ?? []),
-                    message
-                ]
+                const prev = this._privateMessages[session.author.id] ?? []
+                prev.push(message)
+                if (prev.length > this._maxMessageCount)
+                    prev.splice(0, prev.length - this._maxMessageCount)
+
+                this._privateMessages[session.author.id] = prev
                 history = this._privateMessages[session.author.id]
             } else {
-                this._groupMessages[session.guildId] = [
-                    ...(this._groupMessages[session.guildId] ?? []),
-                    message
-                ]
+                const prev = this._groupMessages[session.guildId] ?? []
+                prev.push(message)
+                if (prev.length > this._maxMessageCount)
+                    prev.splice(0, prev.length - this._maxMessageCount)
+
+                this._groupMessages[session.guildId] = prev
                 history = this._groupMessages[session.guildId]
             }
 
