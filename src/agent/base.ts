@@ -207,7 +207,7 @@ export abstract class BaseAgent implements BaseAgentInput {
                     )
                     this.agentScratchpad.push(agentAction.action['output'])
 
-                    console.log(2, this.agentScratchpad)
+                    // console.log(2, this.agentScratchpad)
                 }
             }
 

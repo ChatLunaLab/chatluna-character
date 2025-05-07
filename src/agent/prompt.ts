@@ -165,7 +165,6 @@ export class CharacterPrompt
 
         const formatResult = await this._formatWithMessagesPlaceholder(
             chatHistory as BaseMessage[],
-
             usedTokens
         )
 

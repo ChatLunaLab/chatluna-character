@@ -35,7 +35,10 @@ export async function apply(ctx: Context, config: Config) {
                             planPrompt: GENERATE_AGENT_PLAN_PROMPT
                         })
 
-                        ctx.logger.error(2, history)
+                        // ctx.logger.error(2, history)
+
+                        let beforeAgentResult = ''
+
                         for await (const action of beforeAgent.stream({
                             chat_history: [],
                             history: JSON.stringify(history),
@@ -53,8 +56,15 @@ export async function apply(ctx: Context, config: Config) {
                                 )
                             )
                         })) {
-                            ctx.logger.error('result', action)
+                            if (action.type === 'finish') {
+                                ctx.logger.error(1, 'result', action)
+                                beforeAgentResult += action.action['output']
+                            }
                         }
+
+                        console.log('beforeAgentResult', beforeAgentResult)
+
+                        ctx.logger.error('beforeAgentResult', beforeAgentResult)
                     },
                     async (session, message, history) => {
                         const result =
