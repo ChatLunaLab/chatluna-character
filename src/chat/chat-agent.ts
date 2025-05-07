@@ -27,6 +27,11 @@ export class ChatAgent extends BaseAgent {
 
         chainValues['variables'] = chainValues
 
+        const characterInputPrompt =
+            await this.characterPrompt.input.format(chainValues)
+
+        chainValues['input'] = characterInputPrompt
+
         for await (const step of this.executor._streamIterator(chainValues)) {
             if (step.output) {
                 const output = (step as AgentFinish)['output']

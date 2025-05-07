@@ -195,11 +195,12 @@ export abstract class BaseAgent implements BaseAgentInput {
             })) {
                 // 只有确定完成才会传输 finish 的 action
                 currentAction = agentAction
-                if (agentAction.type === 'finish' && this.planAction === null) {
+
+                if (agentAction.type === 'finish' && this.planAction == null) {
                     yield agentAction
                 }
 
-                if (agentAction.type === 'finish' && this.planAction !== null) {
+                if (agentAction.type === 'finish' && this.planAction != null) {
                     this.agentScratchpad.push(
                         ...(agentAction.action['intermediateSteps'].map(
                             (step) => JSON.stringify(step)

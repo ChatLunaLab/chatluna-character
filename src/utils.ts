@@ -34,7 +34,7 @@ export function tryParseJSON<T = any>(content: string): T {
         try {
             return JSON.parse(content)
         } catch (e) {
-            // logger?.error(`parse search action failed: ${e}`)
+            console.error(`parse json failed`, content, e)
         }
     }
 }
