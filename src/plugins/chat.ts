@@ -9,6 +9,7 @@ import { BeforeChatAgent } from '../chat/before-chat-agent'
 import { GENERATE_AGENT_PLAN_PROMPT } from '../agent/prompt'
 import { HumanMessage } from '@langchain/core/messages'
 import { ChatAgent } from '../chat/chat-agent'
+import { AfterChatAgent } from '../chat/after-chat-agent'
 
 export async function apply(ctx: Context, config: Config) {
     ctx.plugin({
@@ -40,6 +41,14 @@ export async function apply(ctx: Context, config: Config) {
                         const chatAgent = new ChatAgent({
                             characterPrompt: preset,
                             executeModel: model
+                        })
+
+                        const afterAgent = new AfterChatAgent({
+                            tools: [],
+                            characterPrompt: preset,
+                            executeModel: model,
+                            planModel: model,
+                            planPrompt: GENERATE_AGENT_PLAN_PROMPT
                         })
 
                         // ctx.logger.error(2, history)
@@ -104,6 +113,50 @@ export async function apply(ctx: Context, config: Config) {
                         }
 
                         ctx.logger.error('chatAgentResult', chatAgentResult)
+
+                        // Create memory and status update tools
+                        /*  const postProcessTools = await Promise.all(
+                            ['memory-store', 'status-update']
+                                .map((name) => {
+                                    return ctx.chatluna.platform
+                                        .getTool(name)
+                                        ?.createTool({
+                                            model,
+                                            embeddings
+                                        })
+                                })
+                                .filter(Boolean)
+                        ) */
+
+                        // After chat agent to process the response
+
+                        let afterAgentResult = ''
+
+                        for await (const action of afterAgent.stream({
+                            chat_history: [],
+                            history: JSON.stringify(history),
+                            input: message.content,
+                            response: chatAgentResult,
+                            think: JSON.stringify(
+                                await ctx.chatluna_character_think.getThink(
+                                    preset.name,
+                                    'global'
+                                )
+                            ),
+                            think_group: JSON.stringify(
+                                await ctx.chatluna_character_think.getThink(
+                                    preset.name,
+                                    'group',
+                                    session.guildId
+                                )
+                            )
+                        })) {
+                            if (action.type === 'finish') {
+                                afterAgentResult += action.action['output']
+                            }
+                        }
+
+                        ctx.logger.error('afterAgentResult', afterAgentResult)
                     },
                     async (session, message, history) => {
                         const result =
