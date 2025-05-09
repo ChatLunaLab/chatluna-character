@@ -125,6 +125,13 @@ export class EventDescriptionAgent extends BaseAgent {
     async execute(
         input: EventDescriptionInput
     ): Promise<EventDescriptionOutput> {
+        if (this.executor == null) {
+            this.executor = await this._createExecutor(
+                this.executeModel,
+                this.tools
+            )
+        }
+
         let description = ''
 
         const chainValues: Record<string, unknown> = {

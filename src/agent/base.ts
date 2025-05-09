@@ -270,7 +270,7 @@ export abstract class BaseAgent implements BaseAgentInput {
         })
     }
 
-    private async _createExecutor(
+    protected async _createExecutor(
         llm: ChatLunaChatModel,
         tools: StructuredTool[]
     ) {
