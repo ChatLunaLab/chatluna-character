@@ -5,11 +5,7 @@ import { Context } from 'koishi'
 
 import { Config } from '..'
 import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
-import { BeforeChatAgent } from '../chat/before-chat-agent'
-import { GENERATE_AGENT_PLAN_PROMPT } from '../agent/prompt'
-import { HumanMessage } from '@langchain/core/messages'
-import { ChatAgent } from '../chat/chat-agent'
-import { AfterChatAgent } from '../chat/after-chat-agent'
+import { createChatPipe } from '../chat/pipe'
 
 export async function apply(ctx: Context, config: Config) {
     ctx.plugin({
@@ -18,145 +14,27 @@ export async function apply(ctx: Context, config: Config) {
                 ctx.logger.error('cok')
                 const embeddings = await getEmbeddings(ctx)
                 const model = await getModel(ctx, config)
+
+                // Create the chat pipe with default middleware
+                const chatPipe = createChatPipe(ctx)
+
                 await ctx.chatluna_character_message.addHandler(
                     async (session, message, history) => {
-                        const webTools = await Promise.all(
-                            ['web-search', 'web-browser'].map((name) =>
-                                ctx.chatluna.platform.getTool(name).createTool({
-                                    model,
-                                    embeddings
-                                })
-                            )
-                        )
+                        // Get the character preset
                         const preset =
                             await ctx.chatluna_character_preset.getDefaultPreset()
-                        const beforeAgent = new BeforeChatAgent({
-                            tools: webTools,
-                            characterPrompt: preset,
-                            executeModel: model,
-                            planModel: model,
-                            planPrompt: GENERATE_AGENT_PLAN_PROMPT
-                        })
 
-                        const chatAgent = new ChatAgent({
-                            characterPrompt: preset,
-                            executeModel: model
-                        })
+                        // Execute the chat pipe with context
+                        const result = await chatPipe.execute(
+                            session,
+                            message,
+                            history,
+                            preset,
+                            model,
+                            embeddings
+                        )
 
-                        const afterAgent = new AfterChatAgent({
-                            tools: [],
-                            characterPrompt: preset,
-                            executeModel: model,
-                            planModel: model,
-                            planPrompt: GENERATE_AGENT_PLAN_PROMPT
-                        })
-
-                        // ctx.logger.error(2, history)
-
-                        let beforeAgentResult = ''
-
-                        for await (const action of beforeAgent.stream({
-                            chat_history: [],
-                            history: JSON.stringify(history),
-                            input: new HumanMessage(message.content),
-                            think: JSON.stringify(
-                                ctx.chatluna_character_think.getThink(
-                                    config.defaultPreset,
-                                    'group',
-                                    session.guildId
-                                )
-                            ),
-                            related_topics: JSON.stringify(
-                                ctx.chatluna_character_topic.getRecentTopics(
-                                    session.guildId
-                                )
-                            )
-                        })) {
-                            if (action.type === 'finish') {
-                                ctx.logger.error(1, 'result', action)
-                                beforeAgentResult += action.action['output']
-                            }
-                        }
-
-                        ctx.logger.error('beforeAgentResult', beforeAgentResult)
-
-                        let chatAgentResult = ''
-
-                        for await (const action of chatAgent.stream({
-                            chat_history: [],
-                            history: JSON.stringify(history),
-                            input: '',
-                            think: JSON.stringify(
-                                await ctx.chatluna_character_think.getThink(
-                                    preset.name,
-                                    'global'
-                                )
-                            ),
-                            think_before: JSON.stringify(beforeAgentResult),
-                            think_group: JSON.stringify(
-                                await ctx.chatluna_character_think.getThink(
-                                    preset.name,
-                                    'group',
-                                    session.guildId
-                                )
-                            ),
-                            history_last: JSON.stringify(message.content),
-                            related_topics: JSON.stringify(
-                                await ctx.chatluna_character_topic.getRecentTopics(
-                                    session.guildId
-                                )
-                            )
-                        })) {
-                            if (action.type === 'finish') {
-                                chatAgentResult += action.action['output']
-                            }
-                        }
-
-                        ctx.logger.error('chatAgentResult', chatAgentResult)
-
-                        // Create memory and status update tools
-                        /*  const postProcessTools = await Promise.all(
-                            ['memory-store', 'status-update']
-                                .map((name) => {
-                                    return ctx.chatluna.platform
-                                        .getTool(name)
-                                        ?.createTool({
-                                            model,
-                                            embeddings
-                                        })
-                                })
-                                .filter(Boolean)
-                        ) */
-
-                        // After chat agent to process the response
-
-                        let afterAgentResult = ''
-
-                        for await (const action of afterAgent.stream({
-                            chat_history: [],
-                            history: JSON.stringify(history),
-                            input: message.content,
-                            response: chatAgentResult,
-                            think: JSON.stringify(
-                                await ctx.chatluna_character_think.getThink(
-                                    preset.name,
-                                    'global'
-                                )
-                            ),
-                            think_group: JSON.stringify(
-                                await ctx.chatluna_character_think.getThink(
-                                    preset.name,
-                                    'group',
-                                    session.guildId
-                                )
-                            )
-                        })) {
-                            if (action.type === 'finish') {
-                                afterAgentResult += action.action['output']
-                            }
-                        }
-
-                        ctx.logger.error('afterAgentResult', afterAgentResult)
+                        ctx.logger.info('Chat pipe completed', { result })
                     },
                     async (session, message, history) => {
                         const result =
