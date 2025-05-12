@@ -55,16 +55,21 @@ function parseMessageContent(response: string) {
     }
 }
 
-export function processElements(elements: Element[]) {
+export async function processElements(
+    elements: Element[],
+    voiceRender?: (element: h) => Promise<h[]>
+) {
     const resultElements: Element[][] = []
 
-    const forEachElement = (elements: Element[]) => {
+    const forEachElement = async (elements: Element[]) => {
         for (let i = 0; i < elements.length; i++) {
             const element = elements[i]
             if (element.type === 'text') {
                 if (element.attrs['code'] || element.attrs['span']) {
                     resultElements.push([element])
                     continue
+                } else if (element.attrs['voice'] && voiceRender) {
+                    resultElements.push(await voiceRender(element))
                 }
 
                 const matchArray = splitSentence(
@@ -75,19 +80,19 @@ export function processElements(elements: Element[]) {
                     resultElements.push([h.text(match)])
                 }
             } else if (['em', 'strong', 'del', 'p'].includes(element.type)) {
-                forEachElement(element.children)
+                await forEachElement(element.children)
             } else {
                 resultElements.push([element])
             }
         }
     }
 
-    forEachElement(elements)
+    await forEachElement(elements)
     return resultElements
 }
 
 interface TextMatch {
-    type: 'at' | 'pre' | 'emo'
+    type: 'at' | 'pre' | 'emo' | 'voice' | 'sticker'
     content: string
     start: number
     end: number
@@ -152,6 +157,12 @@ export function processTextMatches(rawMessage: string, useAt: boolean = true) {
             )
 
             currentElements.push(h('message', { span: true, children }))
+        } else if (token.type === 'voice') {
+            currentElements.push(
+                h('text', { voice: true, content: token.content })
+            )
+        } else if (token.type === 'sticker') {
+            currentElements.push(h('message', [h.image(token.content)]))
         }
 
         lastIndex = token.end
@@ -233,7 +244,6 @@ function textMatchLexer(input: string): TextMatch[] {
         }
 
         // 检查 <emo> 标签
-
         if (input.startsWith('<emo>', index)) {
             const endTagIndex = input.indexOf('</emo>', index)
             if (endTagIndex !== -1) {
@@ -249,6 +259,38 @@ function textMatchLexer(input: string): TextMatch[] {
             }
         }
 
+        // 检查 <voice> 标签
+        if (input.startsWith('<voice>', index)) {
+            const endTagIndex = input.indexOf('</voice>', index)
+            if (endTagIndex !== -1) {
+                const content = input.substring(index + 7, endTagIndex) // 获取 <voice> 和 </voice> 之间的内容
+                tokens.push({
+                    type: 'voice',
+                    content,
+                    start: index,
+                    end: endTagIndex + 8 // 结束位置
+                })
+                index = endTagIndex + 8 // 跳过 </voice>
+                continue
+            }
+        }
+
+        // 检查 <sticker> 标签
+        if (input.startsWith('<sticker>', index)) {
+            const endTagIndex = input.indexOf('</sticker>', index)
+            if (endTagIndex !== -1) {
+                const content = input.substring(index + 9, endTagIndex) // 获取 <sticker> 和 </sticker> 之间的内容
+                tokens.push({
+                    type: 'sticker',
+                    content,
+                    start: index,
+                    end: endTagIndex + 10 // 结束位置
+                })
+                index = endTagIndex + 10 // 跳过 </sticker>
+                continue
+            }
+        }
+
         // 普通文本处理
         index++
     }
@@ -256,7 +298,11 @@ function textMatchLexer(input: string): TextMatch[] {
     return tokens
 }
 
-export function parseResponse(response: string, useAt: boolean = true) {
+export async function parseResponse(
+    response: string,
+    useAt: boolean = true,
+    voiceRender?: (element: h) => Promise<h[]>
+) {
     try {
         const { rawMessage, messageType, status, sticker } =
             parseMessageContent(response)
@@ -265,7 +311,10 @@ export function parseResponse(response: string, useAt: boolean = true) {
             rawMessage,
             useAt
         )
-        const resultElements = processElements(currentElements)
+        const resultElements = await processElements(
+            currentElements,
+            voiceRender
+        )
 
         return {
             elements: resultElements,
@@ -830,7 +879,7 @@ export function parseXmlToObject(xml: string) {
         const attrRegex = new RegExp(`${name}=['"]?([^'"]+)['"]?`)
         const attrMatch = attributes.match(attrRegex)
         if (!attrMatch) {
-            logger.warn(`Failed to parse ${name} attribute: ${xml}`)
+            logger.debug(`Failed to parse ${name} attribute: ${xml}`)
             return ''
         }
         return attrMatch[1]

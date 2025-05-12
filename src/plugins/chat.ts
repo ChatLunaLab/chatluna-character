@@ -31,7 +31,7 @@ let logger: Logger
 
 interface ModelResponse {
     responseMessage: BaseMessage
-    parsedResponse: ReturnType<typeof parseResponse>
+    parsedResponse: Awaited<ReturnType<typeof parseResponse>>
 }
 
 async function initializeModel(
@@ -299,6 +299,7 @@ async function prepareMessages(
 }
 
 async function getModelResponse(
+    ctx: Context,
     model: ChatLunaChatModel,
     completionMessages: BaseMessage[],
     isAt: boolean
@@ -307,9 +308,13 @@ async function getModelResponse(
         try {
             const responseMessage = await model.invoke(completionMessages)
             logger.debug('model response: ' + responseMessage.content)
-            const parsedResponse = parseResponse(
+            const parsedResponse = await parseResponse(
                 responseMessage.content as string,
-                isAt
+                isAt,
+                async (element) => {
+                    const content = element.attrs['content']
+                    return [await ctx.vits.say({ input: content })]
+                }
             )
             return { responseMessage, parsedResponse }
         } catch (e) {
@@ -355,7 +360,7 @@ async function handleMessageSending(
     session: Session,
     elements: h[],
     text: string,
-    parsedResponse: ReturnType<typeof parseResponse>,
+    parsedResponse: Awaited<ReturnType<typeof parseResponse>>,
     config: Config,
     ctx: Context,
     maxTime: number,
@@ -410,7 +415,7 @@ async function handleMessageSending(
 async function handleStickerSending(
     session: Session,
     config: Config,
-    parsedResponse: ReturnType<typeof parseResponse>,
+    parsedResponse: Awaited<ReturnType<typeof parseResponse>>,
     stickerService: StickerService
 ): Promise<void> {
     const random = new Random()
@@ -428,7 +433,7 @@ async function handleModelResponse(
     config: Config,
     ctx: Context,
     stickerService: StickerService,
-    parsedResponse: ReturnType<typeof parseResponse>
+    parsedResponse: Awaited<ReturnType<typeof parseResponse>>
 ): Promise<void> {
     let breakSay = false
 
@@ -542,6 +547,7 @@ export async function apply(ctx: Context, config: Config) {
         )
 
         const response = await getModelResponse(
+            ctx,
             model,
             completionMessages,
             copyOfConfig.isAt
