@@ -313,6 +313,18 @@ async function getModelResponse(
                 isAt,
                 async (element) => {
                     const content = element.attrs['content']
+                    const extra = element.attrs['extra']
+                    if (extra) {
+                        const { id } = extra
+                        if (id) {
+                            return [
+                                await ctx.vits.say({
+                                    speaker_id: parseInt(id),
+                                    input: content
+                                })
+                            ]
+                        }
+                    }
                     return [await ctx.vits.say({ input: content })]
                 }
             )

@@ -70,6 +70,7 @@ export async function processElements(
                     continue
                 } else if (element.attrs['voice'] && voiceRender) {
                     resultElements.push(await voiceRender(element))
+                    continue
                 }
 
                 const matchArray = splitSentence(
@@ -94,6 +95,7 @@ export async function processElements(
 interface TextMatch {
     type: 'at' | 'pre' | 'emo' | 'voice' | 'sticker'
     content: string
+    extra?: Record<string, string>
     start: number
     end: number
     children?: TextMatch[]
@@ -159,7 +161,11 @@ export function processTextMatches(rawMessage: string, useAt: boolean = true) {
             currentElements.push(h('message', { span: true, children }))
         } else if (token.type === 'voice') {
             currentElements.push(
-                h('text', { voice: true, content: token.content })
+                h('text', {
+                    voice: true,
+                    content: token.content,
+                    extra: token.extra
+                })
             )
         } else if (token.type === 'sticker') {
             currentElements.push(h('message', [h.image(token.content)]))
@@ -260,13 +266,41 @@ function textMatchLexer(input: string): TextMatch[] {
         }
 
         // 检查 <voice> 标签
-        if (input.startsWith('<voice>', index)) {
-            const endTagIndex = input.indexOf('</voice>', index)
+        if (input.startsWith('<voice', index)) {
+            // Check if it has attributes
+            const hasAttributes = input.charAt(index + 6) === ' '
+            const voiceAttributes: Record<string, string> = {}
+            let contentStartIndex = index + 7
+
+            if (hasAttributes) {
+                // Find closing '>' of opening tag
+                const openTagEndIndex = input.indexOf('>', index)
+                if (openTagEndIndex !== -1) {
+                    // Extract attributes string
+                    const attributesString = input.substring(
+                        index + 6,
+                        openTagEndIndex
+                    )
+                    // Extract id attribute if exists
+                    const idMatch =
+                        attributesString.match(/id=['"]([^'"]+)['"]/)
+                    if (idMatch) {
+                        voiceAttributes['id'] = idMatch[1]
+                    }
+                    contentStartIndex = openTagEndIndex + 1
+                }
+            }
+
+            const endTagIndex = input.indexOf('</voice>', contentStartIndex - 1)
             if (endTagIndex !== -1) {
-                const content = input.substring(index + 7, endTagIndex) // 获取 <voice> 和 </voice> 之间的内容
+                const content = input.substring(contentStartIndex, endTagIndex) // 获取 <voice> 和 </voice> 之间的内容
                 tokens.push({
                     type: 'voice',
                     content,
+                    extra:
+                        Object.keys(voiceAttributes).length > 0
+                            ? voiceAttributes
+                            : undefined,
                     start: index,
                     end: endTagIndex + 8 // 结束位置
                 })
