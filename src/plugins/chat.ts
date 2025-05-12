@@ -146,7 +146,7 @@ async function getConfigAndPresetForGuild(
     let currentPreset = globalPreset
 
     if (currentGuildConfig) {
-        copyOfConfig = { ...copyOfConfig, ...currentGuildConfig }
+        copyOfConfig = Object.assign({}, copyOfConfig, currentGuildConfig)
         currentPreset =
             presetPool[guildId] ??
             (await (async () => {
@@ -156,6 +156,10 @@ async function getConfigAndPresetForGuild(
                 presetPool[guildId] = template
                 return template
             })())
+
+        logger.debug(
+            `override config: ${JSON.stringify(copyOfConfig)} for guild ${guildId}`
+        )
     }
 
     return { copyOfConfig, currentPreset }

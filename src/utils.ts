@@ -38,7 +38,8 @@ function parseMessageContent(response: string) {
     const status = response.match(/<status>(.*?)<\/status>/s)?.[1]
 
     if (rawMessage == null) {
-        rawMessage = response.match(/<message[\s\S]*?<\/message>/)?.[0]
+        const matches = response.match(/<message[\s\S]*?<\/message>/gm)
+        rawMessage = matches ? matches[matches.length - 1] : undefined
     }
 
     if (rawMessage == null) {
