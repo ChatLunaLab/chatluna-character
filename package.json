@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-chatluna-character",
   "description": "Let the large language model play a role, disguise as a group friend",
-  "version": "0.0.122",
+  "version": "0.0.123",
   "type": "module",
   "main": "lib/index.cjs",
   "module": "lib/index.mjs",
