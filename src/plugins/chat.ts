@@ -300,6 +300,7 @@ async function prepareMessages(
 
 async function getModelResponse(
     ctx: Context,
+    session: Session,
     model: ChatLunaChatModel,
     completionMessages: BaseMessage[],
     isAt: boolean
@@ -318,14 +319,23 @@ async function getModelResponse(
                         const { id } = extra
                         if (id) {
                             return [
-                                await ctx.vits.say({
-                                    speaker_id: parseInt(id),
-                                    input: content
-                                })
+                                await ctx.vits.say(
+                                    Object.assign(
+                                        {
+                                            speaker_id: parseInt(id),
+                                            input: content
+                                        },
+                                        { session }
+                                    )
+                                )
                             ]
                         }
                     }
-                    return [await ctx.vits.say({ input: content })]
+                    return [
+                        await ctx.vits.say(
+                            Object.assign({ input: content }, { session })
+                        )
+                    ]
                 }
             )
             return { responseMessage, parsedResponse }
@@ -410,7 +420,11 @@ async function handleMessageSending(
                 await session.send(elements)
                 break
             case 'voice':
-                await session.send(await ctx.vits.say({ input: text }))
+                await session.send(
+                    await ctx.vits.say(
+                        Object.assign({ input: text }, { session })
+                    )
+                )
                 break
             default:
                 await session.send(elements)
@@ -560,6 +574,7 @@ export async function apply(ctx: Context, config: Config) {
 
         const response = await getModelResponse(
             ctx,
+            session,
             model,
             completionMessages,
             copyOfConfig.isAt
