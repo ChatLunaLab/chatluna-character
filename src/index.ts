@@ -298,7 +298,7 @@ JSON Response:`),
                     .default(10)
                     .min(0)
                     .role('slider')
-                    .max(50)
+                    .max(10000)
                     .description('随机发送消息的间隔'),
                 messageActivityScore: Schema.number()
                     .default(0.6)
