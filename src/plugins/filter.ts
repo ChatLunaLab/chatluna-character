@@ -65,7 +65,7 @@ export async function apply(ctx: Context, config: Config) {
         logger.debug(
             `messageCount: ${messageCount}, activityScore: ${activity.score.toFixed(3)}. content: ${JSON.stringify(
                 Object.assign({}, message, { images: undefined })
-            )}, config: ${JSON.stringify(copyOfConfig)}`
+            )}`
         )
 
         // 检查是否在名单里面
@@ -138,8 +138,8 @@ export async function apply(ctx: Context, config: Config) {
         if (
             (messageCount > maxMessages ||
                 appel ||
-                info.lastActivityScore > config.messageActivityScore ||
-                (config.isNickname &&
+                info.lastActivityScore > copyOfConfig.messageActivityScore ||
+                (copyOfConfig.isNickname &&
                     currentPreset.nick_name.some((value) =>
                         message.content.startsWith(value)
                     ))) &&
