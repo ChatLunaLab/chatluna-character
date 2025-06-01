@@ -8,9 +8,10 @@ import {
     ChatLunaErrorCode
 } from 'koishi-plugin-chatluna/utils/error'
 import path from 'path'
-import { PresetTemplate } from './types'
+import { ChatLunaCharacterPromptTemplate, PresetTemplate } from './types'
 import { fileURLToPath } from 'url'
 import { watch } from 'fs'
+import { ChatLunaService } from 'koishi-plugin-chatluna/services/chat'
 
 export class Preset {
     private readonly _presets: PresetTemplate[] = []
@@ -219,11 +220,22 @@ export function loadPreset(text: string): PresetTemplate {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rawPreset = load(text) as any
 
-    let input: PromptTemplate
-    let system: PromptTemplate
+    let input: ChatLunaCharacterPromptTemplate
+    let system: ChatLunaCharacterPromptTemplate
 
     try {
-        input = PromptTemplate.fromTemplate(rawPreset.input)
+        input = {
+            rawString: rawPreset.input,
+            format: async (
+                variables: Record<string, string>,
+                variableService: ChatLunaService['variable']
+            ) => {
+                const firstFormat = await variableService.formatPresetTemplateString(rawPreset.system, variables)
+                return await PromptTemplate.fromTemplate(firstFormat).format(
+                    variables
+                )
+            }
+        }
     } catch (e) {
         throw new ChatLunaError(
             ChatLunaErrorCode.PRESET_LOAD_ERROR,
@@ -232,7 +244,18 @@ export function loadPreset(text: string): PresetTemplate {
     }
 
     try {
-        system = PromptTemplate.fromTemplate(rawPreset.system)
+        system = {
+            rawString: rawPreset.system,
+            format: async (
+                variables: Record<string, string>,
+                variableService: ChatLunaService['variable']
+            ) => {
+                const firstFormat = await variableService.formatPresetTemplateString(rawPreset.system, variables)
+                return await PromptTemplate.fromTemplate(firstFormat).format(
+                    variables
+                )
+            }
+        }
     } catch (e) {
         throw new ChatLunaError(
             ChatLunaErrorCode.PRESET_LOAD_ERROR,

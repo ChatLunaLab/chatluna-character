@@ -180,27 +180,33 @@ async function prepareMessages(
         messages,
         config,
         model,
-        currentPreset.system.template as string,
-        currentPreset.system.template as string
+        currentPreset.system.rawString,
+        currentPreset.input.rawString
     )
 
-    const formattedSystemPrompt = await currentPreset.system.format({
-        time: '',
-        stickers: '',
-        status: ''
-    })
+    const formattedSystemPrompt = await currentPreset.system.format(
+        {
+            time: '',
+            stickers: '',
+            status: ''
+        },
+        session.app.chatluna.variable
+    )
 
     logger.debug('messages_new: ' + JSON.stringify(recentMessage))
     logger.debug('messages_last: ' + JSON.stringify(lastMessage))
 
     const humanMessage = new HumanMessage(
-        await currentPreset.input.format({
-            history_new: recentMessage,
-            history_last: lastMessage,
-            time: formatTimestamp(new Date()),
-            stickers: JSON.stringify(stickerService.getAllStickTypes()),
-            status: temp.status ?? currentPreset.status ?? ''
-        })
+        await currentPreset.input.format(
+            {
+                history_new: recentMessage,
+                history_last: lastMessage,
+                time: formatTimestamp(new Date()),
+                stickers: JSON.stringify(stickerService.getAllStickTypes()),
+                status: temp.status ?? currentPreset.status ?? ''
+            },
+            session.app.chatluna.variable
+        )
     )
 
     // replace {?search xxxx {search} xxx} to xxxx {search} xxx

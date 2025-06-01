@@ -1,5 +1,6 @@
 import { BaseMessage } from '@langchain/core/messages'
 import { PromptTemplate } from '@langchain/core/prompts'
+import { ChatLunaService } from 'koishi-plugin-chatluna/services/chat'
 
 export interface Message {
     content: string
@@ -35,8 +36,8 @@ export interface PresetTemplate {
     name: string
     status?: string
     nick_name: string[]
-    input: PromptTemplate
-    system: PromptTemplate
+    input: ChatLunaCharacterPromptTemplate
+    system: ChatLunaCharacterPromptTemplate
     mute_keyword?: string[]
     path?: string
 }
@@ -58,4 +59,9 @@ export interface SearchAction {
     thought: string
     action: 'url' | 'search' | 'skip'
     content?: string[]
+}
+
+export interface ChatLunaCharacterPromptTemplate {
+    rawString: string
+    format(variables: Record<string, string | number | boolean | string[]>, variableService: ChatLunaService['_variable']): Promise<string>
 }
