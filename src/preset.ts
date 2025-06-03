@@ -230,7 +230,11 @@ export function loadPreset(text: string): PresetTemplate {
                 variables: Record<string, string>,
                 variableService: ChatLunaService['variable']
             ) => {
-                const firstFormat = await variableService.formatPresetTemplateString(rawPreset.system, variables)
+                const firstFormat =
+                    await variableService.formatPresetTemplateString(
+                        rawPreset.input,
+                        variables
+                    )
                 return await PromptTemplate.fromTemplate(firstFormat).format(
                     variables
                 )
@@ -250,7 +254,11 @@ export function loadPreset(text: string): PresetTemplate {
                 variables: Record<string, string>,
                 variableService: ChatLunaService['variable']
             ) => {
-                const firstFormat = await variableService.formatPresetTemplateString(rawPreset.system, variables)
+                const firstFormat =
+                    await variableService.formatPresetTemplateString(
+                        rawPreset.system,
+                        variables
+                    )
                 return await PromptTemplate.fromTemplate(firstFormat).format(
                     variables
                 )
