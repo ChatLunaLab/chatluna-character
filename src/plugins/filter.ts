@@ -136,7 +136,8 @@ export async function apply(ctx: Context, config: Config) {
         const isMute = service.isMute(session)
         // 保底必出
         if (
-            (messageCount > (copyOfConfig.maxMessages ?? maxMessages ?? 0) ||
+            (messageCount >
+                (copyOfConfig.messageInterval ?? maxMessages ?? 0) ||
                 appel ||
                 info.lastActivityScore > copyOfConfig.messageActivityScore ||
                 (copyOfConfig.isNickname &&
