@@ -11,7 +11,6 @@ export async function apply(ctx: Context, config: Config) {
     ctx.plugin({
         apply: (ctx) => {
             ctx.on('ready', async () => {
-                ctx.logger.error('cok')
                 const embeddings = await getEmbeddings(ctx)
                 const model = await getModel(ctx, config)
 
@@ -35,6 +34,13 @@ export async function apply(ctx: Context, config: Config) {
                         )
 
                         ctx.logger.info('Chat pipe completed', { result })
+
+                        // match <output></output>
+                        const outputMatch = result.match(
+                            /<output>(.*?)<\/output>/s
+                        )
+                        const output = outputMatch ? outputMatch[1] : result
+                        await session.send(output)
                     },
                     async (session, message, history) => {
                         const result =

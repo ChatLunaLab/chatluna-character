@@ -76,37 +76,32 @@ export const inject2 = {
 }
 
 export interface Config extends ChatLunaPlugin.Config {
-    model: string
+    applyGroup: string[]
     maxMessages: number
+    disableChatLuna: boolean
 
+    model: string
+    thinkingModel: string
+    topicModel: string
+    eventLoopModel: string
+    maxTokens: number
+    imageInput: boolean
+    imageLimit: number
+
+    isNickname: boolean
+    isForceMute: boolean
+    isAt: boolean
     messageInterval: number
     messageActivityScore: number
-
-    maxTokens: number
-    applyGroup: string[]
-    searchKeywordExtraModel: string
-
-    modelOverride: { groupId: string; model: string }[]
-    configs: Record<string, GuildConfig>
-
-    defaultPreset: string
-    isNickname: boolean
-    search: boolean
-    searchSummayType: string
-    searchPrompt: string
-    isForceMute: boolean
-    sendStickerProbability: number
-    image: boolean
-
     coolDownTime: number
     typingTime: number
     muteTime: number
+    eventLoop: boolean
+    topic: boolean
+    think: boolean
+    defaultPreset: string
 
-    disableChatLuna: boolean
-    whiteListDisableChatLuna: string[]
-
-    splitVoice: boolean
-    isAt: boolean
+    configs: Record<string, GuildConfig>
 }
 
 export const Config = Schema.intersect([
@@ -120,77 +115,37 @@ export const Config = Schema.intersect([
             .max(100),
         disableChatLuna: Schema.boolean()
             .default(true)
-            .description('在使用此插件的群聊里，是否禁用 ChatLuna 主功能'),
-        whiteListDisableChatLuna: Schema.array(Schema.string()).description(
-            '在使用此插件时，不禁用 ChatLuna 主功能的群聊列表'
-        )
+            .description('在使用此插件的群聊里，是否禁用 ChatLuna 主功能')
     }).description('基础配置'),
 
     Schema.object({
-        model: Schema.dynamic('model').default('').description('使用的模型'),
-        modelOverride: Schema.array(
-            Schema.object({
-                groupId: Schema.string().required().description('群组 ID'),
-                model: Schema.dynamic('model').default('').description('模型')
-            })
-        ).description('针对某个群的模型设置，会覆盖上面的配置'),
+        model: Schema.dynamic('model')
+            .default('')
+            .description('使用的主要模型'),
+        thinkingModel: Schema.dynamic('model')
+            .default('')
+            .description('思考时使用的模型'),
+        topicModel: Schema.dynamic('model')
+            .default('')
+            .description('分析话题时使用的模型'),
+        eventLoopModel: Schema.dynamic('model')
+            .default('')
+            .description('事件循环使用的模型'),
         maxTokens: Schema.number()
             .default(5000)
             .min(1024)
             .max(42000)
-            .description('聊天的最大 token 数'),
-        image: Schema.boolean()
+            .description('Agent 单轮输入的最大 token 数'),
+        imageInput: Schema.boolean()
             .description(
                 '是否允许输入图片（注意表情包也会输入，目前仅支持原生多模态的模型）'
             )
             .default(false),
-        search: Schema.boolean()
-            .description('是否启用联网搜索功能')
-            .default(false),
-        searchSummayType: Schema.union([
-            Schema.const('speed').description('性能模式'),
-            Schema.const('balanced').description('平衡模式'),
-            Schema.const('quality').description('质量模式')
-        ])
-            .description('搜索结果的摘要模式')
-            .default('speed'),
-        searchPrompt: Schema.string().description('搜索提示词').role('textarea')
-            .default(`Analyze the follow-up question and return a JSON response based on the given conversation context.
-
-Rules:
-- CRITICAL: Use the exact same language as the input. Do not translate or change the language under any circumstances.
-- Make the question self-contained and clear
-- Optimize for search engine queries
-- Do not add any explanations or additional content
-- Base your response on a comprehensive analysis of the chat history
-- Return your response in the following JSON format ONLY:
-  {{
-    "thought": "your reasoning about what to do with this question. Use the text language as the input",
-    "action": "skip" | "search" | "url",
-    "content": ["string1", "string2", ...] (optional array of strings)
-  }}
-
-Action types explanation:
-1. "skip" - Use when the question doesn't require an internet search (e.g., personal opinions, simple calculations, or information already provided in the chat history)
-   Example: {{ "thought": "This is asking for a personal opinion which doesn't require search", "action": "skip" }}
-
-2. "search" - Use when you need to generate search-engine-friendly questions
-   Example: For "What's the weather like in Tokyo and New York?"
-   {{ "thought": "This requires checking current weather in two different cities", "action": "search", "content": ["Current latest weather in Tokyo", "Current latest weather in New York"] }}
-
-3. "url" - Use when the message contains one or more URLs that should be browsed
-   Example: For "Can you summarize the information from https://example.com/article and https://example.org/data?"
-   {{ "thought": "This requires browsing two specific URLs to gather information", "action": "url", "content": ["https://example.com/article", "https://example.org/data"] }}
-
-IMPORTANT: Your JSON response MUST be in the same language as the follow up input. This is crucial for maintaining context and accuracy.
-
-Chat History:
-{chat_history}
-Follow-up Input: {question}
-JSON Response:`),
-        searchKeywordExtraModel: Schema.dynamic('model')
-            .default('')
-            .description('搜索时使用的模型')
+        imageLimit: Schema.number()
+            .description('输入图片的张数限制')
+            .default(3)
+            .min(1)
+            .max(10)
     }).description('模型配置'),
 
     Schema.object({
@@ -205,15 +160,12 @@ JSON Response:`),
         isAt: Schema.boolean()
             .description('是否允许 bot 艾特他人')
             .default(true),
-        splitVoice: Schema.boolean()
-            .description('是否分段发送语音')
-            .default(false),
         messageInterval: Schema.number()
             .default(14)
             .min(0)
             .role('slider')
             .max(100)
-            .description('随机发送消息的间隔'),
+            .description('发送消息的间隔条速'),
         messageActivityScore: Schema.number()
             .default(0.6)
             .min(0)
@@ -243,31 +195,53 @@ JSON Response:`),
             .max(1000 * 60 * 10 * 10)
             .description('闭嘴时的禁言时间（毫秒）'),
 
-        sendStickerProbability: Schema.number()
-            .default(0.6)
-            .min(0)
-            .max(1)
-            .role('slider')
-            .step(0.01)
-            .description('发送表情的概率'),
+        eventLoop: Schema.boolean()
+            .default(false)
+            .description('是否启用事件循环模块'),
+
+        topic: Schema.boolean()
+            .default(false)
+            .description('是否启用话题分析模块'),
+
+        think: Schema.boolean()
+            .default(false)
+            .description('是否启用全局思考/分群思考模块'),
+
         defaultPreset: Schema.dynamic('character-preset')
-            .description('使用的伪装预设')
+            .description('使用的预设')
             .default('煕')
     }).description('对话设置'),
 
     Schema.object({
         configs: Schema.dict(
             Schema.object({
+                model: Schema.dynamic('model')
+                    .default('')
+                    .description('使用的主要模型'),
+                thinkingModel: Schema.dynamic('model')
+                    .default('')
+                    .description('思考时使用的模型'),
+                topicModel: Schema.dynamic('model')
+                    .default('')
+                    .description('分析话题时使用的模型'),
+                eventLoopModel: Schema.dynamic('model')
+                    .default('')
+                    .description('事件循环使用的模型'),
                 maxTokens: Schema.number()
-                    .default(4000)
+                    .default(5000)
                     .min(1024)
-                    .max(20000)
-                    .description('使用聊天的最大 token 数'),
-
-                isAt: Schema.boolean().description('是否启用@').default(true),
-                splitVoice: Schema.boolean()
-                    .description('是否分段发送语言')
+                    .max(42000)
+                    .description('Agent 单轮输入的最大 token 数'),
+                imageInput: Schema.boolean()
+                    .description(
+                        '是否允许输入图片（注意表情包也会输入，目前仅支持原生多模态的模型）'
+                    )
                     .default(false),
+                imageLimit: Schema.number()
+                    .description('输入图片的张数限制')
+                    .default(3)
+                    .min(1)
+                    .max(10),
 
                 isNickname: Schema.boolean()
                     .description('允许 bot 配置中的昵称引发回复')
@@ -277,12 +251,15 @@ JSON Response:`),
                         '是否启用强制禁言（当聊天涉及到关键词时则会禁言，关键词需要在预设文件里配置）'
                     )
                     .default(true),
+                isAt: Schema.boolean()
+                    .description('是否允许 bot 艾特他人')
+                    .default(true),
                 messageInterval: Schema.number()
-                    .default(10)
+                    .default(14)
                     .min(0)
                     .role('slider')
-                    .max(50)
-                    .description('随机发送消息的间隔'),
+                    .max(100)
+                    .description('发送消息的间隔条速'),
                 messageActivityScore: Schema.number()
                     .default(0.6)
                     .min(0)
@@ -292,25 +269,18 @@ JSON Response:`),
                     .description(
                         '消息活跃度分数的阈值，当活跃度超过这个阈值则会发送消息'
                     ),
-                search: Schema.boolean()
-                    .description('是否启用联网搜索功能')
-                    .default(false),
-                image: Schema.boolean()
-                    .description(
-                        '是否允许输入图片（注意表情包也会输入，目前仅支持原生多模态的模型）'
-                    )
-                    .default(false),
+
                 coolDownTime: Schema.number()
                     .default(10)
                     .min(1)
-                    .max(60 * 24 * 24)
+                    .max(60 * 24)
                     .description('冷却发言时间（秒）'),
 
                 typingTime: Schema.number()
                     .default(440)
                     .min(100)
                     .role('slider')
-                    .max(1700)
+                    .max(1500)
                     .description('模拟打字时的间隔（毫秒）'),
 
                 muteTime: Schema.number()
@@ -319,20 +289,25 @@ JSON Response:`),
                     .max(1000 * 60 * 10 * 10)
                     .description('闭嘴时的禁言时间（毫秒）'),
 
-                sendStickerProbability: Schema.number()
-                    .default(0.2)
-                    .min(0)
-                    .max(1)
-                    .role('slider')
-                    .step(0.01)
-                    .description('发送表情的概率'),
-                preset: Schema.dynamic('character-preset')
-                    .description('使用的伪装预设')
+                eventLoop: Schema.boolean()
+                    .default(false)
+                    .description('是否启用事件循环模块'),
+
+                topic: Schema.boolean()
+                    .default(false)
+                    .description('是否启用话题分析模块'),
+
+                think: Schema.boolean()
+                    .default(false)
+                    .description('是否启用全局思考/分群思考模块'),
+
+                defaultPreset: Schema.dynamic('character-preset')
+                    .description('使用的预设')
                     .default('煕')
             })
+                .role('table')
+                .description('分群配置，会覆盖上面的默认配置（键填写群号）')
         )
-            .role('table')
-            .description('分群配置，会覆盖上面的默认配置（键填写群号）')
     }).description('分群配置')
 ]) as unknown as Schema<Config>
 

@@ -16,19 +16,26 @@ export interface GroupTemp {
 }
 
 export interface GuildConfig {
-    preset: string
-    messageInterval: number
+    model: string
+    thinkingModel: string
+    topicModel: string
+    eventLoopModel: string
     maxTokens: number
+    imageInput: boolean
+    imageLimit: number
+
     isNickname: boolean
     isForceMute: boolean
-    sendStickerProbability: number
-
-    coolDownTime: number
-    splitVoice: boolean
     isAt: boolean
+    messageInterval: number
+    messageActivityScore: number
+    coolDownTime: number
     typingTime: number
-    messageProbability: number
     muteTime: number
+    eventLoop: boolean
+    topic: boolean
+    think: boolean
+    defaultPreset: string
 }
 
 export interface PresetTemplate {

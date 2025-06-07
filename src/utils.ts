@@ -1,3 +1,4 @@
+/* eslint-disable promise/param-names */
 /**
  * 尝试解析 JSON，失败时返回 null
  */
@@ -147,3 +148,130 @@ export function messagesToString(messages: BaseMessage[]): string {
 
     return buffer.join('\n')
 }
+
+/**
+ * 任务等待队列类，用于管理任务间的依赖关系
+ */
+export class TaskQueue {
+    private static _instance: TaskQueue | null = null
+    private taskMap = new Map<
+        string,
+        {
+            promise: Promise<void>
+            resolve: () => void
+            isReleased: boolean
+        }
+    >()
+
+    /**
+     * 获取全局共享实例
+     */
+    static getInstance(): TaskQueue {
+        if (!TaskQueue._instance) {
+            TaskQueue._instance = new TaskQueue()
+        }
+        return TaskQueue._instance
+    }
+
+    /**
+     * 创建一个新的任务标记
+     * @param taskId 任务标识符
+     * @returns 任务标识符
+     */
+    createTask(taskId: string): string {
+        if (this.taskMap.has(taskId)) {
+            console.warn(`Task ${taskId} already exists`)
+            return taskId
+        }
+
+        let resolve: () => void
+        const promise = new Promise<void>((res) => {
+            resolve = res
+        })
+
+        this.taskMap.set(taskId, {
+            promise,
+            resolve: resolve!,
+            isReleased: false
+        })
+
+        return taskId
+    }
+
+    /**
+     * 等待指定任务完成
+     * @param taskId 要等待的任务标识符
+     */
+    async waitFor(taskId: string): Promise<void> {
+        const task = this.taskMap.get(taskId)
+        if (!task) {
+            console.warn(`Task ${taskId} not found, skipping wait`)
+            return
+        }
+
+        if (task.isReleased) {
+            return
+        }
+
+        await task.promise
+    }
+
+    /**
+     * 释放指定任务，允许等待该任务的其他任务继续执行
+     * @param taskId 要释放的任务标识符
+     */
+    releaseTask(taskId: string): void {
+        const task = this.taskMap.get(taskId)
+        if (!task) {
+            console.warn(`Task ${taskId} not found`)
+            return
+        }
+
+        if (task.isReleased) {
+            console.warn(`Task ${taskId} already released`)
+            return
+        }
+
+        task.isReleased = true
+        task.resolve()
+
+        // 可选：清理已完成的任务
+        // this.taskMap.delete(taskId)
+    }
+
+    /**
+     * 检查任务是否已完成
+     * @param taskId 任务标识符
+     */
+    isTaskReleased(taskId: string): boolean {
+        const task = this.taskMap.get(taskId)
+        return task?.isReleased ?? false
+    }
+
+    /**
+     * 清理所有任务
+     */
+    clearAllTasks(): void {
+        // 释放所有未完成的任务
+        for (const task of this.taskMap.values()) {
+            if (!task.isReleased) {
+                task.resolve()
+            }
+        }
+        this.taskMap.clear()
+    }
+
+    /**
+     * 获取等待中的任务数量
+     */
+    getPendingTaskCount(): number {
+        return Array.from(this.taskMap.values()).filter(
+            (task) => !task.isReleased
+        ).length
+    }
+}
+
+/**
+ * 全局任务队列实例
+ */
+export const globalTaskQueue = TaskQueue.getInstance()
