@@ -22,7 +22,7 @@ export class AfterChatAgent extends BaseAgent {
 
     async *_execute(
         chainValues: Record<string, unknown>
-    ): AsyncGenerator<AgentAction<'plan' | 'action' | 'finish'>> {
+    ): AsyncGenerator<AgentAction<'action' | 'finish'>> {
         const date = new Date()
         chainValues['weekday'] = `星期${date.getDay()}`
         chainValues['time'] = date.toLocaleString()

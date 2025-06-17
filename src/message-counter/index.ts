@@ -78,7 +78,7 @@ export class MessageCollector extends Service {
                           id: session.quote?.user?.id
                       }
                     : undefined,
-                images: this.config.image
+                images: this.config.imageInput
                     ? await getMessageImages(this.ctx, session)
                     : undefined
             }

@@ -57,7 +57,7 @@ export function createChatMiddleware(options: {
             }
 
             // Store the result in context for next middleware
-            context.state.chatResult = chatResult
+            context.state.result = chatResult
             context.log('Chat completed', { result: chatResult })
 
             // Continue to next middleware

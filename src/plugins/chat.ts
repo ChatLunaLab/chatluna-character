@@ -48,7 +48,7 @@ export async function apply(ctx: Context, config: Config) {
                             session.isDirect === false &&
                             session.guildId === '391122026'
 
-                        if (result) {
+                        if (result || session.stripped.atSelf) {
                             ctx.logger.error(1, history)
                             return true
                         }

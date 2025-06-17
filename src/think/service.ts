@@ -4,11 +4,13 @@ import { Config } from '..'
 import { ThinkAgent } from './think-agent'
 import { DayEvent } from '../event-loop/type'
 import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
+import { ObjectLock } from 'koishi-plugin-chatluna/utils/lock'
 
 export class ThinkService extends Service {
     private globalThink: Record<string, Think> = {}
     private groupThink: Record<string, Record<string, Think>> = {}
     private privateThink: Record<string, Record<string, Think>> = {}
+    private _locks: Record<string, ObjectLock> = {}
 
     constructor(
         public readonly ctx: Context,
@@ -25,6 +27,12 @@ export class ThinkService extends Service {
         )
     }
 
+    private _getLock(key: string) {
+        const lock = this._locks[key] ?? new ObjectLock()
+        this._locks[key] = lock
+        return lock
+    }
+
     /**
      * Generate think content for a preset
      * @param presetKey Preset key
@@ -36,105 +44,112 @@ export class ThinkService extends Service {
         type: 'global' | 'group' | 'private' = 'global',
         id?: string
     ): Promise<Think> {
-        // Get preset from the preset service
-        const preset =
-            await this.ctx.chatluna_character_preset.getPreset(presetKey)
+        const lockKey = type === 'global' ? presetKey : `${presetKey}:${id}`
+        const lock = this._getLock(lockKey)
+        const unlock = await lock.lock()
+        try {
+            // Get preset from the preset service
+            const preset =
+                await this.ctx.chatluna_character_preset.getPreset(presetKey)
 
-        if (!preset) {
-            throw new Error(`Preset not found: ${presetKey}`)
-        }
+            if (!preset) {
+                throw new Error(`Preset not found: ${presetKey}`)
+            }
 
-        // Get current event
-        const currentEvents =
-            await this.ctx.chatluna_character_event_loop.getRecentEvents(
-                presetKey
+            // Get current event
+            const currentEvents =
+                await this.ctx.chatluna_character_event_loop.getRecentEvents(
+                    presetKey
+                )
+
+            if (!currentEvents) {
+                throw new Error(`No current event for preset: ${presetKey}`)
+            }
+
+            // Get topics from the topic service
+            const topics =
+                await this.ctx.chatluna_character_topic.getRecentTopics(id)
+
+            // Get previous think content
+            let previousThink: Think | undefined
+
+            if (type === 'global') {
+                previousThink = this.globalThink[presetKey]
+            } else if (type === 'group' && id) {
+                previousThink = this.groupThink[presetKey]?.[id]
+            } else if (type === 'private' && id) {
+                previousThink = this.privateThink[presetKey]?.[id]
+            }
+
+            // Create agent based on think type
+            const agent = new ThinkAgent({
+                executeModel: await this.ctx.chatluna.createChatModel(
+                    ...parseRawModelName(this.config.model || 'gpt-3.5-turbo')
+                ),
+                thinkType: type === 'global' ? 'global' : 'group'
+            })
+
+            // Current time and weekday
+            const now = new Date()
+            const weekdays = [
+                'Sunday',
+                'Monday',
+                'Tuesday',
+                'Wednesday',
+                'Thursday',
+                'Friday',
+                'Saturday'
+            ]
+            const weekday = weekdays[now.getDay()]
+
+            // Execute agent
+            let result
+            for await (const action of agent.stream({
+                time: now.toLocaleString(),
+                weekday,
+                event: JSON.stringify(currentEvents),
+                topics: topics.map((t) => t.content).join(', '),
+                think: previousThink?.content || '',
+                preset: preset.name,
+                system: await preset.system.format({}),
+                group: type === 'group' ? id : '',
+                private_id: type === 'private' ? id : ''
+            })) {
+                if (action.type === 'finish') {
+                    result = action.action
+                    break
+                }
+            }
+
+            if (!result || !result.output) {
+                throw new Error('Failed to generate think content')
+            }
+
+            // Parse the output
+            const output = result.output as string
+
+            // Extract content between <output> and </output> tags
+            const outputMatch = output.match(/<output>([\s\S]*?)<\/output>/i)
+            const content = outputMatch ? outputMatch[1].trim() : output.trim()
+
+            // Create think object
+            const think: Think = {
+                content,
+                createdAt: now,
+                updatedAt: now
+            }
+
+            // Save the think content
+            this.saveThink(presetKey, type, id, think)
+
+            this.ctx.logger.info(
+                `Generated think for ${presetKey} ${type} ${id || 'global'} ${output}`
             )
 
-        if (!currentEvents) {
-            throw new Error(`No current event for preset: ${presetKey}`)
+            return think
+        } finally {
+            unlock()
         }
-
-        // Get topics from the topic service
-        const topics =
-            await this.ctx.chatluna_character_topic.getRecentTopics(id)
-
-        // Get previous think content
-        let previousThink: Think | undefined
-
-        if (type === 'global') {
-            previousThink = this.globalThink[presetKey]
-        } else if (type === 'group' && id) {
-            previousThink = this.groupThink[presetKey]?.[id]
-        } else if (type === 'private' && id) {
-            previousThink = this.privateThink[presetKey]?.[id]
-        }
-
-        // Create agent based on think type
-        const agent = new ThinkAgent({
-            executeModel: await this.ctx.chatluna.createChatModel(
-                ...parseRawModelName(this.config.model || 'gpt-3.5-turbo')
-            ),
-            thinkType: type === 'global' ? 'global' : 'group'
-        })
-
-        // Current time and weekday
-        const now = new Date()
-        const weekdays = [
-            'Sunday',
-            'Monday',
-            'Tuesday',
-            'Wednesday',
-            'Thursday',
-            'Friday',
-            'Saturday'
-        ]
-        const weekday = weekdays[now.getDay()]
-
-        // Execute agent
-        let result
-        for await (const action of agent.stream({
-            time: now.toLocaleString(),
-            weekday,
-            event: JSON.stringify(currentEvents),
-            topics: topics.map((t) => t.content).join(', '),
-            think: previousThink?.content || '',
-            preset: preset.name,
-            system: await preset.system.format({}),
-            group: type === 'group' ? id : '',
-            private_id: type === 'private' ? id : ''
-        })) {
-            if (action.type === 'finish') {
-                result = action.action
-                break
-            }
-        }
-
-        if (!result || !result.output) {
-            throw new Error('Failed to generate think content')
-        }
-
-        // Parse the output
-        const output = result.output as string
-
-        // Extract content between <output> and </output> tags
-        const outputMatch = output.match(/<output>([\s\S]*?)<\/output>/i)
-        const content = outputMatch ? outputMatch[1].trim() : output.trim()
-
-        // Create think object
-        const think: Think = {
-            content,
-            createdAt: now,
-            updatedAt: now
-        }
-
-        // Save the think content
-        this.saveThink(presetKey, type, id, think)
-
-        this.ctx.logger.info(
-            `Generated think for ${presetKey} ${type} ${id || 'global'} ${output}`
-        )
-
-        return think
     }
 
     /**
@@ -202,20 +217,31 @@ export class ThinkService extends Service {
         type: 'global' | 'group' | 'private' = 'global',
         id?: string
     ): Promise<Think | null> {
-        // Check caches
-        if (type === 'global' && this.globalThink[presetKey]) {
-            return this.globalThink[presetKey]
-        } else if (type === 'group' && id && this.groupThink[presetKey]?.[id]) {
-            return this.groupThink[presetKey][id]
-        } else if (
-            type === 'private' &&
-            id &&
-            this.privateThink[presetKey]?.[id]
-        ) {
-            return this.privateThink[presetKey][id]
-        }
+        const lockKey = type === 'global' ? presetKey : `${presetKey}:${id}`
+        const lock = this._getLock(lockKey)
+        const unlock = await lock.lock()
+        try {
+            // Check caches
+            if (type === 'global' && this.globalThink[presetKey]) {
+                return this.globalThink[presetKey]
+            } else if (
+                type === 'group' &&
+                id &&
+                this.groupThink[presetKey]?.[id]
+            ) {
+                return this.groupThink[presetKey][id]
+            } else if (
+                type === 'private' &&
+                id &&
+                this.privateThink[presetKey]?.[id]
+            ) {
+                return this.privateThink[presetKey][id]
+            }
 
-        return null
+            return null
+        } finally {
+            unlock()
+        }
     }
 
     static inject = [

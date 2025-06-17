@@ -22,7 +22,7 @@ export class BeforeChatAgent extends BaseAgent {
 
     async *_execute(
         chainValues: Record<string, unknown>
-    ): AsyncGenerator<AgentAction<'plan' | 'action' | 'finish'>> {
+    ): AsyncGenerator<AgentAction<'action' | 'finish'>> {
         const date = new Date()
         chainValues['weekday'] = `星期${date.getDay()}`
         chainValues['time'] = date.toLocaleString()
@@ -35,9 +35,9 @@ export class BeforeChatAgent extends BaseAgent {
                 const output = (step as AgentFinish)['output']
 
                 // match <o> or <s> tags
-                let match = output.match(/<o>(.*)<\/o>/s)
+                let match = output.match(/<output>(.*)<\/output>/s)
                 if (!match) {
-                    match = output.match(/<s>(.*)<\/s>/s)
+                    match = output.match(/<skip>(.*)<\/skip>/s)
                 }
 
                 if (match) {

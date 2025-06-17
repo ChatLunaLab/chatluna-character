@@ -20,7 +20,7 @@ export class ThinkAgent extends BaseAgent {
     private _prompt: CharacterPrompt
     async *_execute(
         chainValues: Record<string, unknown>
-    ): AsyncGenerator<AgentAction<'plan' | 'action' | 'finish'>> {
+    ): AsyncGenerator<AgentAction<'action' | 'finish'>> {
         chainValues['chat_history'] = []
         chainValues['input'] = ''
         chainValues['variables'] = chainValues

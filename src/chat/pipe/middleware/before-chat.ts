@@ -1,7 +1,6 @@
 import { HumanMessage } from '@langchain/core/messages'
 import { Middleware, createMiddleware } from '../middleware'
 import { PipeContext } from '../context'
-import { GENERATE_AGENT_PLAN_PROMPT } from '../../../agent/prompt'
 import { BeforeChatAgent } from '../../before-chat-agent'
 
 export function createBeforeChatMiddleware(options: {
@@ -32,9 +31,7 @@ export function createBeforeChatMiddleware(options: {
             const beforeChatAgent = new BeforeChatAgent({
                 tools,
                 characterPrompt: context.preset,
-                executeModel: context.model,
-                planModel: context.model,
-                planPrompt: GENERATE_AGENT_PLAN_PROMPT
+                executeModel: context.model
             })
 
             // Execute the before-chat agent

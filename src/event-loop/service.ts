@@ -5,6 +5,7 @@ import { EventDelta, EventLoopUpdateAgent } from './update-agent'
 import { EventDescriptionAgent } from './event-description-agent'
 import { PresetTemplate } from '../types'
 import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
+import { ObjectLock } from 'koishi-plugin-chatluna/utils/lock'
 import { Config } from '..'
 export class EventLoopService extends Service {
     private _currentEvent: Record<string, DayEvent | undefined> = {}
@@ -13,6 +14,7 @@ export class EventLoopService extends Service {
     private _eventCache: Record<string, DayEvent[]> = {}
     private _descriptionCache: Record<string, string> = {}
     private _activePresets: Set<string> = new Set()
+    private _locks: Record<string, ObjectLock> = {}
 
     constructor(
         public readonly ctx: Context,
@@ -149,6 +151,12 @@ export class EventLoopService extends Service {
         return this._activePresets.has(presetKey)
     }
 
+    private _getLock(presetKey: string) {
+        const lock = this._locks[presetKey] ?? new ObjectLock()
+        this._locks[presetKey] = lock
+        return lock
+    }
+
     /**
      * 启动事件循环
      */
@@ -263,194 +271,205 @@ export class EventLoopService extends Service {
         presetKey: string,
         characterPrompt: PresetTemplate
     ): Promise<DayEvent[]> {
-        // 检查是否已有事件
-        const existingEvents = await this.getEvents(presetKey)
-        if (existingEvents && existingEvents.length > 0) {
-            // 更新现有事件的状态
-            const now = new Date()
-            const updatedEvents = []
+        const lock = this._getLock(presetKey)
+        const unlock = await lock.lock()
+        try {
+            // 检查是否已有事件
+            const existingEvents = await this.getEvents(presetKey)
+            if (existingEvents && existingEvents.length > 0) {
+                // 更新现有事件的状态
+                const now = new Date()
+                const updatedEvents = []
 
-            for (const event of existingEvents) {
-                let status: 'todo' | 'doing' | 'done' = 'todo'
+                for (const event of existingEvents) {
+                    let status: 'todo' | 'doing' | 'done' = 'todo'
 
-                if (event.timeStart <= now && now <= event.timeEnd) {
-                    status = 'doing'
-                } else if (event.timeEnd < now) {
-                    status = 'done'
-                } else {
-                    status = 'todo'
-                }
-
-                // 查找事件ID
-                const eventRecords = await this.ctx.database.get(
-                    'chatluna_character_event_loop',
-                    {
-                        presetKey,
-                        event: event.event
+                    if (event.timeStart <= now && now <= event.timeEnd) {
+                        status = 'doing'
+                    } else if (event.timeEnd < now) {
+                        status = 'done'
+                    } else {
+                        status = 'todo'
                     }
-                )
 
-                if (eventRecords && eventRecords.length > 0) {
-                    const eventId = eventRecords[0].eventId
-
-                    // 更新状态
-                    await this.ctx.database.set(
+                    // 查找事件ID
+                    const eventRecords = await this.ctx.database.get(
                         'chatluna_character_event_loop',
                         {
                             presetKey,
-                            eventId
-                        },
-                        {
-                            status,
-                            updatedAt: now
+                            event: event.event
                         }
                     )
 
-                    if (status === 'doing') {
-                        this._currentEvent[presetKey] = event
-                        this.ctx.emit(
-                            'chatluna_character_event_loop/current-event-updated',
-                            presetKey,
-                            event
+                    if (eventRecords && eventRecords.length > 0) {
+                        const eventId = eventRecords[0].eventId
+
+                        // 更新状态
+                        await this.ctx.database.set(
+                            'chatluna_character_event_loop',
+                            {
+                                presetKey,
+                                eventId
+                            },
+                            {
+                                status,
+                                updatedAt: now
+                            }
                         )
+
+                        if (status === 'doing') {
+                            this._currentEvent[presetKey] = event
+                            this.ctx.emit(
+                                'chatluna_character_event_loop/current-event-updated',
+                                presetKey,
+                                event
+                            )
+                        }
                     }
+
+                    updatedEvents.push({
+                        ...event,
+                        status
+                    })
                 }
 
-                updatedEvents.push({
-                    ...event,
-                    status
-                })
+                // 清除缓存，下次获取时会重新加载
+                delete this._eventCache[presetKey]
+
+                this.ctx.emit(
+                    'chatluna_character_event_loop/after-update',
+                    presetKey,
+                    existingEvents
+                )
+
+                return existingEvents
             }
 
-            // 清除缓存，下次获取时会重新加载
-            delete this._eventCache[presetKey]
+            // 创建事件生成代理
+            const agent = new EventLoopAgent({
+                executeModel: await this.ctx.chatluna.createChatModel(
+                    ...parseRawModelName(this.config.model || 'gpt-3.5-turbo')
+                ),
+                characterPrompt
+            })
+
+            // 执行代理生成事件
+            let result
+            for await (const action of agent.stream({})) {
+                if (action.type === 'finish') {
+                    result = action.action
+                    break
+                }
+            }
+
+            if (!result || !result.value) {
+                throw new Error('Failed to generate events')
+            }
+
+            // 解析生成的事件
+            const eventsJson = result.value
+            if (!Array.isArray(eventsJson)) {
+                throw new Error('Invalid events format')
+            }
+
+            // 转换为DayEvent对象并保存
+            const now = new Date()
+            const events: DayEvent[] = []
+
+            for (let i = 0; i < eventsJson.length; i++) {
+                const eventData = eventsJson[i]
+                const eventId = `event-${i + 1}`
+
+                // 解析时间
+                const [startHour, startMinute] = eventData.timeStart
+                    .split(':')
+                    .map(Number)
+                const [endHour, endMinute] = eventData.timeEnd
+                    .split(':')
+                    .map(Number)
+
+                const timeStart = new Date(now)
+                timeStart.setHours(startHour, startMinute, 0, 0)
+
+                const timeEnd = new Date(now)
+                timeEnd.setHours(endHour, endMinute, 0, 0)
+
+                // 设置事件状态
+                let eventStatus: 'todo' | 'doing' | 'done' = 'todo'
+
+                if (timeStart <= now && now <= timeEnd) {
+                    eventStatus = 'doing'
+                } else if (timeEnd < now) {
+                    eventStatus = 'done'
+                } else {
+                    eventStatus = 'todo'
+                }
+
+                // 创建事件对象
+                const event: DayEvent = {
+                    timeStart,
+                    timeEnd,
+                    date: new Date(now),
+                    refreshInterval: 24 * 60 * 60 * 1000, // 默认1天刷新一次
+                    event: eventData.event,
+                    eventDescription:
+                        eventData.eventDescription || eventData.event
+                }
+
+                events.push(event)
+
+                // 保存到数据库
+                await this.ctx.database.create(
+                    'chatluna_character_event_loop',
+                    {
+                        presetKey,
+                        eventId,
+                        timeStart: eventData.timeStart,
+                        timeEnd: eventData.timeEnd,
+                        date: now,
+                        refreshInterval: 24 * 60 * 60 * 1000,
+                        event: eventData.event,
+                        eventDescription:
+                            eventData.eventDescription || eventData.event,
+                        status: eventStatus,
+                        createdAt: now,
+                        updatedAt: now
+                    }
+                )
+
+                if (eventStatus === 'doing') {
+                    // 设置当前事件
+                    this._currentEvent[presetKey] = event
+
+                    // 触发当前事件
+                    this.ctx.emit(
+                        'chatluna_character_event_loop/current-event-updated',
+                        presetKey,
+                        event
+                    )
+                }
+            }
+
+            // 更新缓存
+            this._eventCache[presetKey] = events
+
+            // 触发事件创建事件
+            this.ctx.emit(
+                'chatluna_character_event_loop/created',
+                presetKey,
+                events
+            )
 
             this.ctx.emit(
                 'chatluna_character_event_loop/after-update',
                 presetKey,
-                existingEvents
+                events
             )
 
-            return existingEvents
+            return events
+        } finally {
+            unlock()
         }
-
-        // 创建事件生成代理
-        const agent = new EventLoopAgent({
-            executeModel: await this.ctx.chatluna.createChatModel(
-                ...parseRawModelName(this.config.model || 'gpt-3.5-turbo')
-            ),
-            characterPrompt
-        })
-
-        // 执行代理生成事件
-        let result
-        for await (const action of agent.stream({})) {
-            if (action.type === 'finish') {
-                result = action.action
-                break
-            }
-        }
-
-        if (!result || !result.value) {
-            throw new Error('Failed to generate events')
-        }
-
-        // 解析生成的事件
-        const eventsJson = result.value
-        if (!Array.isArray(eventsJson)) {
-            throw new Error('Invalid events format')
-        }
-
-        // 转换为DayEvent对象并保存
-        const now = new Date()
-        const events: DayEvent[] = []
-
-        for (let i = 0; i < eventsJson.length; i++) {
-            const eventData = eventsJson[i]
-            const eventId = `event-${i + 1}`
-
-            // 解析时间
-            const [startHour, startMinute] = eventData.timeStart
-                .split(':')
-                .map(Number)
-            const [endHour, endMinute] = eventData.timeEnd
-                .split(':')
-                .map(Number)
-
-            const timeStart = new Date(now)
-            timeStart.setHours(startHour, startMinute, 0, 0)
-
-            const timeEnd = new Date(now)
-            timeEnd.setHours(endHour, endMinute, 0, 0)
-
-            // 设置事件状态
-            let eventStatus: 'todo' | 'doing' | 'done' = 'todo'
-
-            if (timeStart <= now && now <= timeEnd) {
-                eventStatus = 'doing'
-            } else if (timeEnd < now) {
-                eventStatus = 'done'
-            } else {
-                eventStatus = 'todo'
-            }
-
-            // 创建事件对象
-            const event: DayEvent = {
-                timeStart,
-                timeEnd,
-                date: new Date(now),
-                refreshInterval: 24 * 60 * 60 * 1000, // 默认1天刷新一次
-                event: eventData.event,
-                eventDescription: eventData.eventDescription || eventData.event
-            }
-
-            events.push(event)
-
-            // 保存到数据库
-            await this.ctx.database.create('chatluna_character_event_loop', {
-                presetKey,
-                eventId,
-                timeStart: eventData.timeStart,
-                timeEnd: eventData.timeEnd,
-                date: now,
-                refreshInterval: 24 * 60 * 60 * 1000,
-                event: eventData.event,
-                eventDescription: eventData.eventDescription || eventData.event,
-                status: eventStatus,
-                createdAt: now,
-                updatedAt: now
-            })
-
-            if (eventStatus === 'doing') {
-                // 设置当前事件
-                this._currentEvent[presetKey] = event
-
-                // 触发当前事件
-                this.ctx.emit(
-                    'chatluna_character_event_loop/current-event-updated',
-                    presetKey,
-                    event
-                )
-            }
-        }
-
-        // 更新缓存
-        this._eventCache[presetKey] = events
-
-        // 触发事件创建事件
-        this.ctx.emit(
-            'chatluna_character_event_loop/created',
-            presetKey,
-            events
-        )
-
-        this.ctx.emit(
-            'chatluna_character_event_loop/after-update',
-            presetKey,
-            events
-        )
-
-        return events
     }
 
     /**
@@ -487,155 +506,163 @@ export class EventLoopService extends Service {
         presetKey: string,
         characterPrompt: PresetTemplate
     ): Promise<void> {
-        // 获取预设现有事件
-        const events = await this.getEvents(presetKey)
-        if (!events || events.length === 0) {
-            // 如果没有事件，则生成新事件
-            await this.generateEvents(presetKey, characterPrompt)
-            return
-        }
-
-        // 准备事件数据
-        const eventsJson = events.map((event, index) => ({
-            id: `event-${index + 1}`,
-            timeStart: this._formatTime(event.timeStart),
-            timeEnd: this._formatTime(event.timeEnd),
-            event: event.event,
-            eventDescription: event.eventDescription,
-            status: 'todo' // 默认状态
-        }))
-
-        // 触发更新前事件
-        this.ctx.emit(
-            'chatluna_character_event_loop/before-update',
-            presetKey,
-            events
-        )
-
-        // 创建事件更新代理
-        const agent = new EventLoopUpdateAgent({
-            executeModel: await this.ctx.chatluna.createChatModel(
-                ...parseRawModelName(this.ctx.config.model || 'gpt-3.5-turbo')
-            ),
-            characterPrompt,
-            events: JSON.stringify(eventsJson)
-        })
-
-        // 执行代理更新事件
-        let result
-        for await (const action of agent.stream({})) {
-            if (action.type === 'finish') {
-                result = action.action
-                break
-            }
-        }
-
-        if (!result || !result.value) {
-            throw new Error('Failed to update events')
-        }
-
-        // 解析更新的事件
-        const deltaJson = result.value
-        if (!Array.isArray(deltaJson)) {
-            throw new Error('Invalid event delta format')
-        }
-
-        // 应用更新
-        const now = new Date()
-        const deltas = deltaJson as EventDelta[]
-
-        for (const delta of deltas) {
-            const eventId = delta.id
-
-            if (delta.changeType === 'delete') {
-                // 删除事件
-                await this.ctx.database.remove(
-                    'chatluna_character_event_loop',
-                    {
-                        presetKey,
-                        eventId
-                    }
-                )
-                continue
+        const lock = this._getLock(presetKey)
+        const unlock = await lock.lock()
+        try {
+            // 获取预设现有事件
+            const events = await this.getEvents(presetKey)
+            if (!events || events.length === 0) {
+                // 如果没有事件，则生成新事件
+                await this.generateEvents(presetKey, characterPrompt)
+                return
             }
 
-            if (delta.changeType === 'add') {
-                // 添加新事件
-                if (!delta.timeStart || !delta.timeEnd || !delta.event) {
-                    continue // 跳过无效事件
+            // 准备事件数据
+            const eventsJson = events.map((event, index) => ({
+                id: `event-${index + 1}`,
+                timeStart: this._formatTime(event.timeStart),
+                timeEnd: this._formatTime(event.timeEnd),
+                event: event.event,
+                eventDescription: event.eventDescription,
+                status: 'todo' // 默认状态
+            }))
+
+            // 触发更新前事件
+            this.ctx.emit(
+                'chatluna_character_event_loop/before-update',
+                presetKey,
+                events
+            )
+
+            // 创建事件更新代理
+            const agent = new EventLoopUpdateAgent({
+                executeModel: await this.ctx.chatluna.createChatModel(
+                    ...parseRawModelName(
+                        this.ctx.config.model || 'gpt-3.5-turbo'
+                    )
+                ),
+                characterPrompt,
+                events: JSON.stringify(eventsJson)
+            })
+
+            // 执行代理更新事件
+            let result
+            for await (const action of agent.stream({})) {
+                if (action.type === 'finish') {
+                    result = action.action
+                    break
+                }
+            }
+
+            if (!result || !result.value) {
+                throw new Error('Failed to update events')
+            }
+
+            // 解析更新的事件
+            const deltaJson = result.value
+            if (!Array.isArray(deltaJson)) {
+                throw new Error('Invalid event delta format')
+            }
+
+            // 应用更新
+            const now = new Date()
+            const deltas = deltaJson as EventDelta[]
+
+            for (const delta of deltas) {
+                const eventId = delta.id
+
+                if (delta.changeType === 'delete') {
+                    // 删除事件
+                    await this.ctx.database.remove(
+                        'chatluna_character_event_loop',
+                        {
+                            presetKey,
+                            eventId
+                        }
+                    )
+                    continue
                 }
 
-                // 解析时间
-                const [startHour, startMinute] = delta.timeStart
-                    .split(':')
-                    .map(Number)
-                const [endHour, endMinute] = delta.timeEnd
-                    .split(':')
-                    .map(Number)
+                if (delta.changeType === 'add') {
+                    // 添加新事件
+                    if (!delta.timeStart || !delta.timeEnd || !delta.event) {
+                        continue // 跳过无效事件
+                    }
 
-                const timeStart = new Date(now)
-                timeStart.setHours(startHour, startMinute, 0, 0)
+                    // 解析时间
+                    const [startHour, startMinute] = delta.timeStart
+                        .split(':')
+                        .map(Number)
+                    const [endHour, endMinute] = delta.timeEnd
+                        .split(':')
+                        .map(Number)
 
-                const timeEnd = new Date(now)
-                timeEnd.setHours(endHour, endMinute, 0, 0)
+                    const timeStart = new Date(now)
+                    timeStart.setHours(startHour, startMinute, 0, 0)
 
-                // 创建事件
-                await this.ctx.database.create(
-                    'chatluna_character_event_loop',
-                    {
-                        presetKey,
-                        eventId,
-                        timeStart: delta.timeStart,
-                        timeEnd: delta.timeEnd,
-                        date: now,
-                        refreshInterval: 24 * 60 * 60 * 1000,
-                        event: delta.event,
-                        eventDescription:
-                            delta.eventDescription || delta.event || '',
-                        status: delta.status || 'todo',
-                        createdAt: now,
+                    const timeEnd = new Date(now)
+                    timeEnd.setHours(endHour, endMinute, 0, 0)
+
+                    // 创建事件
+                    await this.ctx.database.create(
+                        'chatluna_character_event_loop',
+                        {
+                            presetKey,
+                            eventId,
+                            timeStart: delta.timeStart,
+                            timeEnd: delta.timeEnd,
+                            date: now,
+                            refreshInterval: 24 * 60 * 60 * 1000,
+                            event: delta.event,
+                            eventDescription:
+                                delta.eventDescription || delta.event || '',
+                            status: delta.status || 'todo',
+                            createdAt: now,
+                            updatedAt: now
+                        }
+                    )
+                } else if (delta.changeType === 'update') {
+                    // 更新现有事件
+                    const updateData: Partial<CharacterEventLoop> = {
                         updatedAt: now
                     }
-                )
-            } else if (delta.changeType === 'update') {
-                // 更新现有事件
-                const updateData: Partial<CharacterEventLoop> = {
-                    updatedAt: now
+
+                    if (delta.timeStart) updateData.timeStart = delta.timeStart
+                    if (delta.timeEnd) updateData.timeEnd = delta.timeEnd
+                    if (delta.event) updateData.event = delta.event
+                    if (delta.eventDescription)
+                        updateData.eventDescription = delta.eventDescription
+                    if (delta.status) updateData.status = delta.status
+
+                    await this.ctx.database.set(
+                        'chatluna_character_event_loop',
+                        {
+                            presetKey,
+                            eventId
+                        },
+                        updateData
+                    )
                 }
-
-                if (delta.timeStart) updateData.timeStart = delta.timeStart
-                if (delta.timeEnd) updateData.timeEnd = delta.timeEnd
-                if (delta.event) updateData.event = delta.event
-                if (delta.eventDescription)
-                    updateData.eventDescription = delta.eventDescription
-                if (delta.status) updateData.status = delta.status
-
-                await this.ctx.database.set(
-                    'chatluna_character_event_loop',
-                    {
-                        presetKey,
-                        eventId
-                    },
-                    updateData
-                )
             }
+
+            // 清除缓存，强制下次重新加载
+            delete this._eventCache[presetKey]
+
+            // 获取更新后的事件
+            const updatedEvents = await this.getEvents(presetKey, true)
+
+            // 触发更新后事件
+            this.ctx.emit(
+                'chatluna_character_event_loop/after-update',
+                presetKey,
+                updatedEvents
+            )
+
+            // 更新当前事件
+            await this._updateCurrentEvent(presetKey)
+        } finally {
+            unlock()
         }
-
-        // 清除缓存，强制下次重新加载
-        delete this._eventCache[presetKey]
-
-        // 获取更新后的事件
-        const updatedEvents = await this.getEvents(presetKey, true)
-
-        // 触发更新后事件
-        this.ctx.emit(
-            'chatluna_character_event_loop/after-update',
-            presetKey,
-            updatedEvents
-        )
-
-        // 更新当前事件
-        await this._updateCurrentEvent(presetKey)
     }
 
     /**
@@ -647,91 +674,102 @@ export class EventLoopService extends Service {
         presetKey: string,
         forceRefresh: boolean = false
     ): Promise<DayEvent[]> {
-        // 检查缓存
-        if (!forceRefresh && this._eventCache[presetKey]) {
-            return this._eventCache[presetKey]
-        }
+        const lock = this._getLock(presetKey)
+        const unlock = await lock.lock()
+        try {
+            // 检查缓存
+            if (!forceRefresh && this._eventCache[presetKey]) {
+                return this._eventCache[presetKey]
+            }
 
-        // 从数据库获取
-        const eventRecords = await this.ctx.database.get(
-            'chatluna_character_event_loop',
-            { presetKey }
-        )
-
-        if (!eventRecords || eventRecords.length === 0) {
-            return []
-        }
-
-        // 检查事件是否为当天的事件
-        const todayDate = new Date()
-        todayDate.setHours(0, 0, 0, 0)
-
-        const firstEventDate = new Date(eventRecords[0].date)
-        firstEventDate.setHours(0, 0, 0, 0)
-
-        // 如果不是当天的事件，清空所有事件并返回空数组
-        if (todayDate.getTime() !== firstEventDate.getTime()) {
-            // 清空该预设的所有事件
-            await this.ctx.database.remove('chatluna_character_event_loop', {
-                presetKey
-            })
-
-            // 清空该预设的所有事件描述
-            await this.ctx.database.remove(
-                'chatluna_character_event_descriptions',
-                {
-                    presetKey
-                }
+            // 从数据库获取
+            const eventRecords = await this.ctx.database.get(
+                'chatluna_character_event_loop',
+                { presetKey }
             )
 
-            // 清除缓存
-            delete this._eventCache[presetKey]
+            if (!eventRecords || eventRecords.length === 0) {
+                return []
+            }
 
-            // 如果预设仍然激活，需要重新生成事件
-            if (this._activePresets.has(presetKey)) {
-                const preset =
-                    await this.ctx.chatluna_character_preset.getPreset(
+            // 检查事件是否为当天的事件
+            const todayDate = new Date()
+            todayDate.setHours(0, 0, 0, 0)
+
+            const firstEventDate = new Date(eventRecords[0].date)
+            firstEventDate.setHours(0, 0, 0, 0)
+
+            // 如果不是当天的事件，清空所有事件并返回空数组
+            if (todayDate.getTime() !== firstEventDate.getTime()) {
+                // 清空该预设的所有事件
+                await this.ctx.database.remove(
+                    'chatluna_character_event_loop',
+                    {
                         presetKey
-                    )
-                if (preset) {
-                    return await this.generateEvents(presetKey, preset)
+                    }
+                )
+
+                // 清空该预设的所有事件描述
+                await this.ctx.database.remove(
+                    'chatluna_character_event_descriptions',
+                    {
+                        presetKey
+                    }
+                )
+
+                // 清除缓存
+                delete this._eventCache[presetKey]
+
+                // 如果预设仍然激活，需要重新生成事件
+                if (this._activePresets.has(presetKey)) {
+                    const preset =
+                        await this.ctx.chatluna_character_preset.getPreset(
+                            presetKey
+                        )
+                    if (preset) {
+                        return await this.generateEvents(presetKey, preset)
+                    }
                 }
+
+                return []
             }
 
-            return []
+            // 转换为DayEvent对象
+            const events: DayEvent[] = eventRecords.map((record) => {
+                // 解析时间
+                const [startHour, startMinute] = record.timeStart
+                    .split(':')
+                    .map(Number)
+                const [endHour, endMinute] = record.timeEnd
+                    .split(':')
+                    .map(Number)
+
+                const timeStart = new Date(record.date)
+                timeStart.setHours(startHour, startMinute, 0, 0)
+
+                const timeEnd = new Date(record.date)
+                timeEnd.setHours(endHour, endMinute, 0, 0)
+
+                return {
+                    timeStart,
+                    timeEnd,
+                    date: new Date(record.date),
+                    refreshInterval: record.refreshInterval,
+                    event: record.event,
+                    eventDescription: record.eventDescription
+                }
+            })
+
+            // 按开始时间排序
+            events.sort((a, b) => a.timeStart.getTime() - b.timeStart.getTime())
+
+            // 更新缓存
+            this._eventCache[presetKey] = events
+
+            return events
+        } finally {
+            unlock()
         }
-
-        // 转换为DayEvent对象
-        const events: DayEvent[] = eventRecords.map((record) => {
-            // 解析时间
-            const [startHour, startMinute] = record.timeStart
-                .split(':')
-                .map(Number)
-            const [endHour, endMinute] = record.timeEnd.split(':').map(Number)
-
-            const timeStart = new Date(record.date)
-            timeStart.setHours(startHour, startMinute, 0, 0)
-
-            const timeEnd = new Date(record.date)
-            timeEnd.setHours(endHour, endMinute, 0, 0)
-
-            return {
-                timeStart,
-                timeEnd,
-                date: new Date(record.date),
-                refreshInterval: record.refreshInterval,
-                event: record.event,
-                eventDescription: record.eventDescription
-            }
-        })
-
-        // 按开始时间排序
-        events.sort((a, b) => a.timeStart.getTime() - b.timeStart.getTime())
-
-        // 更新缓存
-        this._eventCache[presetKey] = events
-
-        return events
     }
 
     async getRecentEvents(
@@ -739,38 +777,44 @@ export class EventLoopService extends Service {
         upperLimit: number = 3,
         lowerLimit: number = 1
     ): Promise<DayEvent[]> {
-        const events = await this.getEvents(presetKey)
-        if (!events || events.length === 0) {
-            return []
+        const lock = this._getLock(presetKey)
+        const unlock = await lock.lock()
+        try {
+            const events = await this.getEvents(presetKey)
+            if (!events || events.length === 0) {
+                return []
+            }
+
+            // 获取当前事件，然后取上限和下限之间的事件
+            const currentEvent = await this.getCurrentEvent(presetKey)
+
+            if (!currentEvent) {
+                return []
+            }
+
+            const currentEventIndex = events.findIndex(
+                (e) => e.timeStart === currentEvent.timeStart
+            )
+
+            const now = new Date()
+
+            const recentEvents = events.slice(
+                currentEventIndex - upperLimit,
+                currentEventIndex + lowerLimit
+            )
+
+            return recentEvents.map((e) => ({
+                ...e,
+                status:
+                    e.timeStart <= now && now <= e.timeEnd
+                        ? 'doing'
+                        : e.timeStart > now
+                          ? 'todo'
+                          : 'done'
+            }))
+        } finally {
+            unlock()
         }
-
-        // 获取当前事件，然后取上限和下限之间的事件
-        const currentEvent = await this.getCurrentEvent(presetKey)
-
-        if (!currentEvent) {
-            return []
-        }
-
-        const currentEventIndex = events.findIndex(
-            (e) => e.timeStart === currentEvent.timeStart
-        )
-
-        const now = new Date()
-
-        const recentEvents = events.slice(
-            currentEventIndex - upperLimit,
-            currentEventIndex + lowerLimit
-        )
-
-        return recentEvents.map((e) => ({
-            ...e,
-            status:
-                e.timeStart <= now && now <= e.timeEnd
-                    ? 'doing'
-                    : e.timeStart > now
-                      ? 'todo'
-                      : 'done'
-        }))
     }
 
     /**
@@ -778,33 +822,39 @@ export class EventLoopService extends Service {
      * @param presetKey 预设关键词
      */
     async getCurrentEvent(presetKey: string): Promise<DayEvent | undefined> {
-        // 检查是否已激活
-        if (!this._activePresets.has(presetKey)) {
-            return undefined
-        }
-
-        const events = await this.getEvents(presetKey)
-        if (!events || events.length === 0) {
-            return undefined
-        }
-
-        const now = new Date()
-
-        // 查找当前时间段的事件
-        for (const event of events) {
-            if (event.timeStart <= now && now <= event.timeEnd) {
-                return event
+        const lock = this._getLock(presetKey)
+        const unlock = await lock.lock()
+        try {
+            // 检查是否已激活
+            if (!this._activePresets.has(presetKey)) {
+                return undefined
             }
-        }
 
-        // 如果没有找到当前事件，返回最近的未来事件
-        const futureEvents = events.filter((e) => e.timeStart > now)
-        if (futureEvents.length > 0) {
-            return futureEvents[0]
-        }
+            const events = await this.getEvents(presetKey)
+            if (!events || events.length === 0) {
+                return undefined
+            }
 
-        // 如果没有未来事件，返回最后一个事件
-        return events[events.length - 1]
+            const now = new Date()
+
+            // 查找当前时间段的事件
+            for (const event of events) {
+                if (event.timeStart <= now && now <= event.timeEnd) {
+                    return event
+                }
+            }
+
+            // 如果没有找到当前事件，返回最近的未来事件
+            const futureEvents = events.filter((e) => e.timeStart > now)
+            if (futureEvents.length > 0) {
+                return futureEvents[0]
+            }
+
+            // 如果没有未来事件，返回最后一个事件
+            return events[events.length - 1]
+        } finally {
+            unlock()
+        }
     }
 
     /**
@@ -1115,51 +1165,57 @@ export class EventLoopService extends Service {
             status: 'done' | 'doing' | 'todo'
         }>
     ): Promise<void> {
-        // 检查是否已激活
-        if (!this._activePresets.has(presetKey)) {
-            throw new Error(`Preset is not active: ${presetKey}`)
-        }
-
-        // 更新数据库
-        await this.ctx.database.set(
-            'chatluna_character_event_loop',
-            {
-                presetKey,
-                eventId
-            },
-            {
-                ...updates,
-                updatedAt: new Date()
+        const lock = this._getLock(presetKey)
+        const unlock = await lock.lock()
+        try {
+            // 检查是否已激活
+            if (!this._activePresets.has(presetKey)) {
+                throw new Error(`Preset is not active: ${presetKey}`)
             }
-        )
 
-        // 清除缓存
-        delete this._eventCache[presetKey]
-
-        // 如果事件内容发生了变化，可能需要重新生成描述
-        if (updates.event || updates.eventDescription) {
-            delete this._descriptionCache[`${presetKey}:${eventId}`]
-
-            // 删除旧的描述记录
-            await this.ctx.database.remove(
-                'chatluna_character_event_descriptions',
+            // 更新数据库
+            await this.ctx.database.set(
+                'chatluna_character_event_loop',
                 {
                     presetKey,
                     eventId
+                },
+                {
+                    ...updates,
+                    updatedAt: new Date()
                 }
             )
+
+            // 清除缓存
+            delete this._eventCache[presetKey]
+
+            // 如果事件内容发生了变化，可能需要重新生成描述
+            if (updates.event || updates.eventDescription) {
+                delete this._descriptionCache[`${presetKey}:${eventId}`]
+
+                // 删除旧的描述记录
+                await this.ctx.database.remove(
+                    'chatluna_character_event_descriptions',
+                    {
+                        presetKey,
+                        eventId
+                    }
+                )
+            }
+
+            // 触发事件自定义事件
+            this.ctx.emit(
+                'chatluna_character_event_loop/event-customized',
+                presetKey,
+                eventId,
+                updates
+            )
+
+            // 更新当前事件
+            await this.updateCurrentEvent()
+        } finally {
+            unlock()
         }
-
-        // 触发事件自定义事件
-        this.ctx.emit(
-            'chatluna_character_event_loop/event-customized',
-            presetKey,
-            eventId,
-            updates
-        )
-
-        // 更新当前事件
-        await this.updateCurrentEvent()
     }
 
     /**
@@ -1168,39 +1224,45 @@ export class EventLoopService extends Service {
      * @param eventId 事件ID
      */
     async deleteEvent(presetKey: string, eventId: string): Promise<void> {
-        // 检查是否已激活
-        if (!this._activePresets.has(presetKey)) {
-            throw new Error(`Preset is not active: ${presetKey}`)
-        }
+        const lock = this._getLock(presetKey)
+        const unlock = await lock.lock()
+        try {
+            // 检查是否已激活
+            if (!this._activePresets.has(presetKey)) {
+                throw new Error(`Preset is not active: ${presetKey}`)
+            }
 
-        // 从数据库删除事件
-        await this.ctx.database.remove('chatluna_character_event_loop', {
-            presetKey,
-            eventId
-        })
-
-        // 从数据库删除描述
-        await this.ctx.database.remove(
-            'chatluna_character_event_descriptions',
-            {
+            // 从数据库删除事件
+            await this.ctx.database.remove('chatluna_character_event_loop', {
                 presetKey,
                 eventId
-            }
-        )
+            })
 
-        // 清除缓存
-        delete this._eventCache[presetKey]
-        delete this._descriptionCache[`${presetKey}:${eventId}`]
+            // 从数据库删除描述
+            await this.ctx.database.remove(
+                'chatluna_character_event_descriptions',
+                {
+                    presetKey,
+                    eventId
+                }
+            )
 
-        // 触发事件删除事件
-        this.ctx.emit(
-            'chatluna_character_event_loop/event-deleted',
-            presetKey,
-            eventId
-        )
+            // 清除缓存
+            delete this._eventCache[presetKey]
+            delete this._descriptionCache[`${presetKey}:${eventId}`]
 
-        // 更新当前事件
-        await this.updateCurrentEvent()
+            // 触发事件删除事件
+            this.ctx.emit(
+                'chatluna_character_event_loop/event-deleted',
+                presetKey,
+                eventId
+            )
+
+            // 更新当前事件
+            await this.updateCurrentEvent()
+        } finally {
+            unlock()
+        }
     }
 
     /**
@@ -1218,50 +1280,56 @@ export class EventLoopService extends Service {
             status?: 'done' | 'doing' | 'todo'
         }
     ): Promise<string> {
-        // 检查是否已激活
-        if (!this._activePresets.has(presetKey)) {
-            throw new Error(`Preset is not active: ${presetKey}`)
+        const lock = this._getLock(presetKey)
+        const unlock = await lock.lock()
+        try {
+            // 检查是否已激活
+            if (!this._activePresets.has(presetKey)) {
+                throw new Error(`Preset is not active: ${presetKey}`)
+            }
+
+            const now = new Date()
+
+            // 生成事件ID
+            const events = await this.ctx.database.get(
+                'chatluna_character_event_loop',
+                { presetKey }
+            )
+            const eventId = `event-${events.length + 1}`
+
+            // 创建事件
+            await this.ctx.database.create('chatluna_character_event_loop', {
+                presetKey,
+                eventId,
+                timeStart: event.timeStart,
+                timeEnd: event.timeEnd,
+                date: now,
+                refreshInterval: 24 * 60 * 60 * 1000,
+                event: event.event,
+                eventDescription: event.eventDescription || event.event,
+                status: event.status || 'todo',
+                createdAt: now,
+                updatedAt: now
+            })
+
+            // 清除缓存
+            delete this._eventCache[presetKey]
+
+            // 触发事件添加事件
+            this.ctx.emit(
+                'chatluna_character_event_loop/event-added',
+                presetKey,
+                eventId,
+                event
+            )
+
+            // 更新当前事件
+            await this.updateCurrentEvent()
+
+            return eventId
+        } finally {
+            unlock()
         }
-
-        const now = new Date()
-
-        // 生成事件ID
-        const events = await this.ctx.database.get(
-            'chatluna_character_event_loop',
-            { presetKey }
-        )
-        const eventId = `event-${events.length + 1}`
-
-        // 创建事件
-        await this.ctx.database.create('chatluna_character_event_loop', {
-            presetKey,
-            eventId,
-            timeStart: event.timeStart,
-            timeEnd: event.timeEnd,
-            date: now,
-            refreshInterval: 24 * 60 * 60 * 1000,
-            event: event.event,
-            eventDescription: event.eventDescription || event.event,
-            status: event.status || 'todo',
-            createdAt: now,
-            updatedAt: now
-        })
-
-        // 清除缓存
-        delete this._eventCache[presetKey]
-
-        // 触发事件添加事件
-        this.ctx.emit(
-            'chatluna_character_event_loop/event-added',
-            presetKey,
-            eventId,
-            event
-        )
-
-        // 更新当前事件
-        await this.updateCurrentEvent()
-
-        return eventId
     }
 
     // 注入依赖

@@ -299,7 +299,7 @@ export const GENERATE_AGENT_PLAN_PROMPT: SystemMessagePromptTemplate =
   }},
   {{
     "id": "plan-2",
-    "title": "在知识库中检索与用户问题相关的技术文档和解决方案",
+    "title": "检索与用户问题相关的技术文档和解决方案",
     "status": "pending",
     "changeType": "add"
   }}
@@ -326,4 +326,4 @@ export const GENERATE_AGENT_PLAN_PROMPT: SystemMessagePromptTemplate =
 - 计划状态必须是以下之一："pending"、"doing"、"done"或"failed"
 - 使用currentPlan: true标记当前正在执行的计划
 
-现在，请根据提供的信息生成或更新计划：`)
+现在，请根据提供的信息生成或更新计划，直接输出JSON格式：`)
