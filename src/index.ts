@@ -97,7 +97,7 @@ export interface Config extends ChatLunaPlugin.Config {
     largeTextSize: number
     largeTextTypingTime: number
 
-    searchSummayType: string
+    searchSummaryType: string
     searchPrompt: string
     isForceMute: boolean
     sendStickerProbability: number
@@ -152,7 +152,7 @@ export const Config = Schema.intersect([
         search: Schema.boolean()
             .description('是否启用联网搜索功能')
             .default(false),
-        searchSummayType: Schema.union([
+        searchSummaryType: Schema.union([
             Schema.const('speed').description('性能模式'),
             Schema.const('balanced').description('平衡模式'),
             Schema.const('quality').description('质量模式')

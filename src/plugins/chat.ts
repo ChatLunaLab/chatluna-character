@@ -125,7 +125,7 @@ async function getTool(
     const tool = await chatlunaTool.createTool({
         model,
         embeddings,
-        summaryType: config.searchSummayType
+        summaryType: config.searchSummaryType
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
 
@@ -174,7 +174,7 @@ async function prepareMessages(
     temp: GroupTemp,
     stickerService: StickerService,
     searchTool?: StructuredTool,
-    webBroswerTool?: StructuredTool
+    webBrowserTool?: StructuredTool
 ): Promise<BaseMessage[]> {
     const [recentMessage, lastMessage] = await formatMessage(
         messages,
@@ -209,6 +209,7 @@ async function prepareMessages(
         )
     )
 
+    // TODO: replace search to pre agent
     // replace {?search xxxx {search} xxx} to xxxx {search} xxx
     // {?search 如果你需要用到这些知识，请使用这些知识 {search} 记住！} -> 如果你需要用到这些知识，请使用这些知识 {xxxx} 记住！
     let baseHumanContent = getMessageContent(humanMessage.content)
@@ -233,7 +234,7 @@ async function prepareMessages(
                 searchResult = await executeSearchAction(
                     searchAction,
                     searchTool,
-                    webBroswerTool
+                    webBrowserTool
                 )
 
                 logger.debug('searchResult: ' + searchResult)
