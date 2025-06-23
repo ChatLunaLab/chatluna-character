@@ -202,7 +202,7 @@ async function prepareMessages(
                 history_new: recentMessage,
                 history_last: lastMessage,
                 time: formatTimestamp(new Date()),
-                stickers: JSON.stringify(stickerService.getAllStickTypes()),
+                stickers: '', // JSON.stringify(stickerService.getAllStickTypes()),
                 status: temp.status ?? currentPreset.status ?? ''
             },
             session.app.chatluna.variable
@@ -481,7 +481,7 @@ async function handleModelResponse(
 
         const maxTime =
             text.length > config.largeTextSize
-                ? text.length * config.largeTextTypingTime + 100
+                ? config.largeTextTypingTime
                 : calculateMessageDelay(text, elements, config.typingTime)
 
         breakSay = await handleMessageSending(

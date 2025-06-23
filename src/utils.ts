@@ -32,17 +32,24 @@ export function isOnlyPunctuation(text: string): boolean {
 }
 
 function parseMessageContent(response: string) {
-    let rawMessage = response.match(
-        /<message_part>\s*(.*?)\s*<\/message_part>/s
-    )?.[1]
     const status = response.match(/<status>(.*?)<\/status>/s)?.[1]
 
-    if (rawMessage == null) {
-        const matches = response.match(/<message[\s\S]*?<\/message>/gm)
-        rawMessage = matches ? matches[matches.length - 1] : undefined
+    const patterns = [
+        /<message_part>\s*(.*?)\s*<\/message_part>/s,
+        /<output>\s*(.*?)\s*<\/output>/s,
+        /<message[\s\S]*?<\/message>/gm
+    ]
+
+    let rawMessage: string | undefined
+    for (const pattern of patterns) {
+        const match = response.match(pattern)
+        if (match) {
+            rawMessage = Array.isArray(match) && pattern.global ? match.pop() : match[1]
+            break
+        }
     }
 
-    if (rawMessage == null) {
+    if (!rawMessage) {
         throw new Error('Failed to parse response: ' + response)
     }
 
@@ -93,7 +100,7 @@ export async function processElements(
 }
 
 interface TextMatch {
-    type: 'at' | 'pre' | 'emo' | 'voice' | 'sticker'
+    type: 'at' | 'pre' | 'emo' | 'voice' | 'sticker' | 'message'
     content: string
     extra?: Record<string, string>
     start: number
@@ -104,78 +111,62 @@ interface TextMatch {
 export function processTextMatches(rawMessage: string, useAt: boolean = true) {
     const currentElements: Element[] = []
     let parsedMessage = ''
-
-    // 使用自定义 lexer 解析文本
-    const tokens: TextMatch[] = textMatchLexer(rawMessage)
+    const tokens = textMatchLexer(rawMessage)
 
     if (tokens.length === 0) {
-        parsedMessage = rawMessage
-        currentElements.push(...transform(rawMessage))
-        return { currentElements, parsedMessage }
+        return {
+            currentElements: transform(rawMessage),
+            parsedMessage: rawMessage
+        }
     }
 
     let lastIndex = 0
     for (const token of tokens) {
         const before = rawMessage.substring(lastIndex, token.start)
-
-        if (before.trim().length > 0) {
+        if (before.trim()) {
             parsedMessage += before
             currentElements.push(...transform(before))
         }
 
-        if (token.type === 'at') {
-            if (useAt) {
-                // Handle special case for leading @mentions
-                currentElements.push(h.text(' '))
-                currentElements.push(h.at(token.content))
-            }
-        } else if (token.type === 'emo') {
-            currentElements.push(
-                h('text', { span: true, content: token.content })
-            )
-        } else if (token.type === 'pre') {
-            parsedMessage += token.content
-            let children: Element[] = []
+        switch (token.type) {
+            case 'at':
+                if (useAt) {
+                    currentElements.push(h.text(' '), h.at(token.content))
+                }
+                break
+            case 'emo':
+                currentElements.push(h('text', { span: true, content: token.content }))
+                break
+            case 'pre':
+            case 'message':
+                parsedMessage += token.content
+                const children = token.children
+                    ? processTextMatches(token.content, useAt).currentElements
+                    : [h('text', { span: true, content: token.content })]
 
-            // 处理 children
-            if (!token.children) {
-                children.push(h('text', { span: true, content: token.content }))
-            } else {
-                const { currentElements } = processTextMatches(
-                    token.content,
-                    useAt
+                const flatChildren = children.reduce((acc, element) =>
+                    acc.concat(element.type === 'p' ? element.children || element : element), []
                 )
-                children.push(...currentElements)
-            }
 
-            children = children.reduce(
-                (acc, element) =>
-                    acc.concat(
-                        element.type === 'p'
-                            ? element.children || element
-                            : element
-                    ),
-                []
-            )
-
-            currentElements.push(h('message', { span: true, children }))
-        } else if (token.type === 'voice') {
-            currentElements.push(
-                h('text', {
+                currentElements.push(h('message', { span: true, children: flatChildren }))
+                break
+            case 'voice':
+                currentElements.push(h('text', {
                     voice: true,
                     content: token.content,
                     extra: token.extra
-                })
-            )
-        } else if (token.type === 'sticker') {
-            currentElements.push(h('message', [h.image(token.content)]))
+                }))
+                break
+            case 'sticker':
+                currentElements.push(h('message', [h.image(token.content)]))
+                break
         }
 
         lastIndex = token.end
     }
 
     const after = rawMessage.substring(lastIndex)
-    if (after.trim().length > 0) {
+    if (after.trim()) {
         parsedMessage += after
         currentElements.push(...transform(after))
     }
@@ -183,150 +174,112 @@ export function processTextMatches(rawMessage: string, useAt: boolean = true) {
     return { currentElements, parsedMessage }
 }
 
-// 自定义 lexer 函数
 function textMatchLexer(input: string): TextMatch[] {
     const tokens: TextMatch[] = []
-    const stack: { type: 'pre'; start: number; children: TextMatch[] }[] = []
+
     let index = 0
-    let inPre = false
+
+    const tagMappings = [
+        { open: '<pre>', close: '</pre>', type: 'pre' as const, nested: true },
+        { open: '<message>', close: '</message>', type: 'message' as const, nested: true },
+        { open: '<emo>', close: '</emo>', type: 'emo' as const, nested: false },
+        { open: '<sticker>', close: '</sticker>', type: 'sticker' as const, nested: false }
+    ]
+
+    const stack: { type: typeof tagMappings[0]['type']; start: number }[] = []
 
     while (index < input.length) {
-        // 检测 <pre> 标签
-        if (input.startsWith('<pre>', index)) {
-            stack.push({ type: 'pre', start: index, children: [] })
-            index += 5 // 跳过 <pre>
-            inPre = true
-            continue
-        }
+        let matched = false
 
-        // 检测 </pre> 标签
-        if (input.startsWith('</pre>', index)) {
-            const { start } = stack.pop() || {}
-            if (start !== undefined) {
-                const content = input.substring(start + 5, index) // 获取 <pre> 内的内容
-                // 将内容分割为文本和 at 元素
-                const innerTokens = textMatchLexer(content)
-                tokens.push({
-                    type: 'pre',
-                    content,
-                    start,
-                    end: index + 6, // 结束位置
-                    children: innerTokens // 添加子元素
-                })
-            }
-            index += 6 // 跳过 </pre>
-            inPre = false
-            continue
-        }
-
-        // 检测 <at> 标签
-        if (!inPre && input.startsWith('<at', index)) {
-            const endTagIndex = input.indexOf('</at>', index)
-            if (endTagIndex !== -1) {
-                // <at name="xx">xxx</at>
-                // get xxx
-                const atTagPattern = /<at\b[^>]*>(.*?)<\/at>/
-                const match = atTagPattern.exec(
-                    input.substring(index, endTagIndex + 5)
-                )
-
-                if (!match) {
-                    throw new Error(
-                        `Invalid <at> tag at position ${index}: missing content`
-                    )
-                }
-
-                const content = match[1] // 获取 <at> 和 </at> 之间的内容
-                tokens.push({
-                    type: 'at',
-                    content,
-                    start: index,
-                    end: endTagIndex + 5 // 结束位置
-                })
-
-                index = endTagIndex + 5 // 跳过 </at>
-                continue
-            }
-        }
-
-        // 检查 <emo> 标签
-        if (input.startsWith('<emo>', index)) {
-            const endTagIndex = input.indexOf('</emo>', index)
-            if (endTagIndex !== -1) {
-                const content = input.substring(index + 5, endTagIndex) // 获取 <emo> 和 </emo> 之间的内容
-                tokens.push({
-                    type: 'emo',
-                    content,
-                    start: index,
-                    end: endTagIndex + 6 // 结束位置
-                })
-                index = endTagIndex + 6 // 跳过 </emo>
-                continue
-            }
-        }
-
-        // 检查 <voice> 标签
-        if (input.startsWith('<voice', index)) {
-            // Check if it has attributes
-            const hasAttributes = input.charAt(index + 6) === ' '
-            const voiceAttributes: Record<string, string> = {}
-            let contentStartIndex = index + 7
-
-            if (hasAttributes) {
-                // Find closing '>' of opening tag
-                const openTagEndIndex = input.indexOf('>', index)
-                if (openTagEndIndex !== -1) {
-                    // Extract attributes string
-                    const attributesString = input.substring(
-                        index + 6,
-                        openTagEndIndex
-                    )
-                    // Extract id attribute if exists
-                    const idMatch =
-                        attributesString.match(/id=['"]([^'"]+)['"]/)
-                    if (idMatch) {
-                        voiceAttributes['id'] = idMatch[1]
+        for (const { open, close, type, nested } of tagMappings) {
+            if (input.startsWith(open, index)) {
+                if (nested) {
+                    stack.push({ type, start: index })
+                    index += open.length
+                    matched = true
+                    break
+                } else if (stack.length === 0) {
+                    const endIndex = input.indexOf(close, index)
+                    if (endIndex !== -1) {
+                        const content = input.substring(index + open.length, endIndex)
+                        tokens.push({
+                            type,
+                            content,
+                            start: index,
+                            end: endIndex + close.length
+                        })
+                        index = endIndex + close.length
+                        matched = true
+                        break
                     }
-                    contentStartIndex = openTagEndIndex + 1
+                }
+            } else if (nested && input.startsWith(close, index)) {
+                const stackItem = stack.pop()
+                if (stackItem?.type === type) {
+                    const content = input.substring(stackItem.start + open.length, index)
+                    const children = textMatchLexer(content)
+                    tokens.push({
+                        type,
+                        content,
+                        start: stackItem.start,
+                        end: index + close.length,
+                        children
+                    })
+                    index += close.length
+                    matched = true
+                    break
                 }
             }
+        }
 
-            const endTagIndex = input.indexOf('</voice>', contentStartIndex - 1)
-            if (endTagIndex !== -1) {
-                const content = input.substring(contentStartIndex, endTagIndex) // 获取 <voice> 和 </voice> 之间的内容
+        if (!matched && stack.length === 0 && input.startsWith('<at', index)) {
+            const endIndex = input.indexOf('</at>', index)
+            if (endIndex !== -1) {
+                const match = /<at\b[^>]*>(.*?)<\/at>/.exec(input.substring(index, endIndex + 5))
+                if (match) {
+                    tokens.push({
+                        type: 'at',
+                        content: match[1],
+                        start: index,
+                        end: endIndex + 5
+                    })
+                    index = endIndex + 5
+                    matched = true
+                }
+            }
+        }
+
+        if (!matched && stack.length === 0 && input.startsWith('<voice', index)) {
+            const openTagEnd = input.indexOf('>', index)
+            const endIndex = input.indexOf('</voice>', index)
+            if (openTagEnd !== -1 && endIndex !== -1) {
+                const hasAttributes = input.charAt(index + 6) === ' '
+                let extra: Record<string, string> | undefined
+
+                if (hasAttributes) {
+                    const attributesString = input.substring(index + 6, openTagEnd)
+                    const idMatch = attributesString.match(/id=['"]([^'"]+)['"]/)
+                    if (idMatch) {
+                        extra = { id: idMatch[1] }
+                    }
+                }
+
+                const content = input.substring(openTagEnd + 1, endIndex)
                 tokens.push({
                     type: 'voice',
                     content,
-                    extra:
-                        Object.keys(voiceAttributes).length > 0
-                            ? voiceAttributes
-                            : undefined,
+                    extra,
                     start: index,
-                    end: endTagIndex + 8 // 结束位置
+                    end: endIndex + 8
                 })
-                index = endTagIndex + 8 // 跳过 </voice>
-                continue
+                index = endIndex + 8
+                matched = true
             }
         }
 
-        // 检查 <sticker> 标签
-        if (input.startsWith('<sticker>', index)) {
-            const endTagIndex = input.indexOf('</sticker>', index)
-            if (endTagIndex !== -1) {
-                const content = input.substring(index + 9, endTagIndex) // 获取 <sticker> 和 </sticker> 之间的内容
-                tokens.push({
-                    type: 'sticker',
-                    content,
-                    start: index,
-                    end: endTagIndex + 10 // 结束位置
-                })
-                index = endTagIndex + 10 // 跳过 </sticker>
-                continue
-            }
+        if (!matched) {
+            index++
         }
-
-        // 普通文本处理
-        index++
     }
 
     return tokens
@@ -897,38 +850,41 @@ export async function formatCompletionMessages(
 }
 
 export function parseXmlToObject(xml: string) {
-    /* <message name='煕' id='0' type='text' sticker='喜欢'><emo>(づ｡◕‿‿◕｡)づ</emo> <emo>(ಡωಡ)hiahiahia</emo></message> */
-    /* <message name='煕' id='0' type='text' sticker='喜欢'></message> */
+    const messageMatches = xml.match(/<message\s+.*?>(.*?)<\/message>/gs)
 
-    const messageRegex = /<message\s+(.*?)>(.*?)<\/message>/s
-    const match = xml.match(messageRegex)
-
-    if (!match) {
+    if (!messageMatches) {
         throw new Error('Failed to parse response: ' + xml)
     }
 
-    const [, attributes, content] = match
+    if (messageMatches.length > 1) {
+        return {
+            name: '',
+            id: '',
+            type: 'text',
+            sticker: '',
+            content: xml
+        }
+    }
+
+    const singleMatch = xml.match(/<message\s+(.*?)>(.*?)<\/message>/s)
+    if (!singleMatch) {
+        throw new Error('Failed to parse response: ' + xml)
+    }
+
+    const [, attributes, content] = singleMatch
 
     const getAttr = (name: string): string => {
-        const attrRegex = new RegExp(`${name}=['"]?([^'"]+)['"]?`)
-        const attrMatch = attributes.match(attrRegex)
-        if (!attrMatch) {
-            logger.debug(`Failed to parse ${name} attribute: ${xml}`)
-            return ''
-        }
-        return attrMatch[1]
+        const attrMatch = attributes.match(new RegExp(`${name}=['"]?([^'"]+)['"]?`))
+        return attrMatch?.[1] || ''
     }
 
-    const name = getAttr('name')
-    const id = getAttr('id')
-    const type = getAttr('type') || 'text'
-    const sticker = getAttr('sticker')
-
-    if (content === undefined) {
-        throw new Error('Failed to parse content: ' + xml)
+    return {
+        name: getAttr('name'),
+        id: getAttr('id'),
+        type: getAttr('type') || 'text',
+        sticker: getAttr('sticker'),
+        content: content || ''
     }
-
-    return { name, id, type, sticker, content }
 }
 
 const tagRegExp = /<(\/?)([^!\s>/]+)([^>]*?)\s*(\/?)>/

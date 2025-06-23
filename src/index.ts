@@ -252,7 +252,7 @@ JSON Response:`),
             .default(100)
             .min(10)
             .max(1500)
-            .description('大文本消息的模拟打字间隔（毫秒）'),
+            .description('大文本消息的固定打字间隔（毫秒）'),
 
         muteTime: Schema.number()
             .default(1000 * 60)

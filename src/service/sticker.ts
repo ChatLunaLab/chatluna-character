@@ -54,6 +54,12 @@ export class StickerService {
                 )
             }
         }
+
+        if (Object.keys(this._stickers).length > 0) {
+            this._ctx.logger.warn(
+                'Sticker Service is deprecated. In future, we will make the new sticker system.'
+            )
+        }
     }
 
     getAllStickTypes() {
