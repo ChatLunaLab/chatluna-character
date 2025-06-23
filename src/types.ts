@@ -28,6 +28,7 @@ export interface GuildConfig {
     image: boolean
     imageInputMaxCount: number
     imageInputMaxSize: number
+    splitSentence: boolean
 
     coolDownTime: number
     splitVoice: boolean

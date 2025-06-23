@@ -290,7 +290,7 @@ async function getModelResponse(
     session: Session,
     model: ChatLunaChatModel,
     completionMessages: BaseMessage[],
-    isAt: boolean
+    config: Config
 ): Promise<ModelResponse | null> {
     for (let retryCount = 0; retryCount < 2; retryCount++) {
         try {
@@ -298,7 +298,7 @@ async function getModelResponse(
             logger.debug('model response: ' + responseMessage.content)
             const parsedResponse = await parseResponse(
                 responseMessage.content as string,
-                isAt,
+                config.isAt,
                 async (element) => {
                     const content = element.attrs['content']
                     const extra = element.attrs['extra']
@@ -323,7 +323,8 @@ async function getModelResponse(
                             Object.assign({ input: content }, { session })
                         )
                     ]
-                }
+                },
+                config
             )
             return { responseMessage, parsedResponse }
         } catch (e) {
@@ -564,7 +565,7 @@ export async function apply(ctx: Context, config: Config) {
             session,
             model,
             completionMessages,
-            copyOfConfig.isAt
+            copyOfConfig
         )
         if (!response) {
             // clear the completion messages

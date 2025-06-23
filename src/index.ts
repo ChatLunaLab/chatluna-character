@@ -113,6 +113,7 @@ export interface Config extends ChatLunaPlugin.Config {
     whiteListDisableChatLuna: string[]
 
     splitVoice: boolean
+    splitSentence: boolean
     isAt: boolean
 }
 
@@ -226,6 +227,11 @@ JSON Response:`),
         splitVoice: Schema.boolean()
             .description('是否分段发送语音')
             .default(false),
+        splitSentence: Schema.boolean()
+            .description(
+                '是否启用自分割发送消息 **注意请确保你的预设和模型在使用时支持自分割消息，否则请不要关闭**'
+            )
+            .default(true),
         messageInterval: Schema.number()
             .default(14)
             .min(0)
@@ -296,9 +302,13 @@ JSON Response:`),
 
                 isAt: Schema.boolean().description('是否启用@').default(true),
                 splitVoice: Schema.boolean()
-                    .description('是否分段发送语言')
+                    .description('是否分段发送语音')
                     .default(false),
-
+                splitSentence: Schema.boolean()
+                    .description(
+                        '是否启用自分割发送消息 **注意请确保你的预设和模型在使用时支持自分割消息，否则请不要关闭**'
+                    )
+                    .default(true),
                 isNickname: Schema.boolean()
                     .description('允许 bot 配置中的昵称引发回复')
                     .default(true),

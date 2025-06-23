@@ -67,7 +67,8 @@ function parseMessageContent(response: string) {
 
 export async function processElements(
     elements: Element[],
-    voiceRender?: (element: h) => Promise<h[]>
+    voiceRender?: (element: h) => Promise<h[]>,
+    config?: Config
 ) {
     const resultElements: Element[][] = []
 
@@ -83,6 +84,10 @@ export async function processElements(
                     continue
                 }
 
+                if (config?.splitSentence !== true) {
+                    resultElements.push([element])
+                    continue
+                }
                 const matchArray = splitSentence(
                     he.decode(element.attrs.content as string)
                 ).filter((x) => x.length > 0)
@@ -330,7 +335,8 @@ function textMatchLexer(input: string): TextMatch[] {
 export async function parseResponse(
     response: string,
     useAt: boolean = true,
-    voiceRender?: (element: h) => Promise<h[]>
+    voiceRender?: (element: h) => Promise<h[]>,
+    config?: Config
 ) {
     try {
         const { rawMessage, messageType, status, sticker } =
@@ -342,7 +348,8 @@ export async function parseResponse(
         )
         const resultElements = await processElements(
             currentElements,
-            voiceRender
+            voiceRender,
+            config
         )
 
         return {
@@ -505,7 +512,7 @@ export function formatTimestamp(timestamp: number | Date): string {
 }
 
 function formatMessageString(message: Message) {
-    let xmlMessage = `<message type='text' name='${message.name}' id='${message.id}'`
+    let xmlMessage = `<message name='${message.name}' id='${message.id}'`
 
     if (message.timestamp) {
         const timestampString = formatTimestamp(message.timestamp)
