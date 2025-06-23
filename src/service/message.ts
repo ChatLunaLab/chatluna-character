@@ -100,6 +100,14 @@ export class MessageCollector extends Service {
         return this._groupLocks[groupId]
     }
 
+    private _getGroupConfig(groupId: string) {
+        const config = this._config
+        if (!config.configs[groupId]) {
+            return config
+        }
+        return Object.assign({}, config, config.configs[groupId])
+    }
+
     private _lock(session: Session) {
         const groupLock = this._getGroupLocks(session.guildId)
         return new Promise<void>((resolve) => {
@@ -191,6 +199,12 @@ export class MessageCollector extends Service {
             ? session.elements
             : [h.text(session.content)]
 
+        const config = this._getGroupConfig(groupId)
+
+        const images = config.image
+            ? await getImages(this.ctx, session)
+            : undefined
+
         const content = mapElementToString(session, session.content, elements)
 
         if (content.length < 1) {
@@ -221,9 +235,7 @@ export class MessageCollector extends Service {
                       id: session.quote?.user?.id
                   }
                 : undefined,
-            images: this._config.image
-                ? await getImages(this.ctx, session)
-                : undefined
+            images
         }
 
         groupArray.push(message)
@@ -242,18 +254,7 @@ export class MessageCollector extends Service {
             )
         })
 
-        // delete the message after 10
-        let foundImage = false
-        const maxIndex = groupArray.length - 1 - 10
-        for (let index = groupArray.length - 1; index >= 0; index--) {
-            const message = groupArray[index]
-            if (!foundImage && message.images) {
-                foundImage = true
-                continue
-            } else if ((foundImage && message.images) || index <= maxIndex) {
-                delete message['images']
-            }
-        }
+        this._processImages(groupArray, config)
 
         this._messages[groupId] = groupArray
 
@@ -270,6 +271,66 @@ export class MessageCollector extends Service {
             // 命令是不会受到影响的
             // 现在感觉
             return this.isMute(session)
+        }
+    }
+
+    private _processImages(groupArray: Message[], config: Config) {
+        if (!config.image) return
+
+        const maxCount = config.imageInputMaxCount || 3
+        const maxSize =
+            config.imageInputMaxSize * 1024 * 1024 || 1024 * 1024 * 10
+
+        let currentCount = 0
+        let currentSize = 0
+
+        for (let i = groupArray.length - 1; i >= 0; i--) {
+            const message = groupArray[i]
+            if (!message.images || message.images.length === 0) continue
+
+            const validImages: Awaited<ReturnType<typeof getImages>> = []
+
+            for (const image of message.images) {
+                const imageSize = this._getImageSize(image.url)
+
+                if (
+                    currentCount < maxCount &&
+                    currentSize + imageSize <= maxSize
+                ) {
+                    validImages.push(image)
+                    currentCount++
+                    currentSize += imageSize
+                } else {
+                    break
+                }
+            }
+
+            if (validImages.length === 0) {
+                delete message.images
+            } else {
+                message.images = validImages
+            }
+
+            if (currentCount >= maxCount || currentSize >= maxSize) {
+                for (let j = i - 1; j >= 0; j--) {
+                    if (groupArray[j].images) {
+                        delete groupArray[j].images
+                    }
+                }
+                break
+            }
+        }
+    }
+
+    private _getImageSize(base64Image: string): number {
+        try {
+            const base64Data = base64Image.replace(
+                /^data:image\/[a-z]+;base64,/,
+                ''
+            )
+            return Math.ceil((base64Data.length * 3) / 4)
+        } catch {
+            return 0
         }
     }
 }
@@ -295,7 +356,10 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
 
             filteredBuffer.push(`<at name='${name}'>${element.attrs.id}</at>`)
         } else if (element.type === 'img') {
-            filteredBuffer.push(`[image]`)
+            const imageHash = element.attrs.imageHash as string | undefined
+            filteredBuffer.push(
+                `[image` + (imageHash ? `:${imageHash}` : '') + ']'
+            )
         }
     }
 
@@ -306,13 +370,25 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
     return filteredBuffer.join('')
 }
 
+// 返回 base64 的图片编码
 async function getImages(ctx: Context, session: Session) {
     const mergedMessage = await ctx.chatluna.messageTransformer.transform(
         session,
         session.elements
     )
 
-    return mergedMessage.additional_kwargs['images'] as string[]
+    const images = mergedMessage.additional_kwargs['images'] as string[]
+
+    if (!images || images.length < 1) {
+        return undefined
+    }
+
+    const imageHashs = mergedMessage.additional_kwargs['imageHashs'] as string[]
+
+    return images.map((image, index) => ({
+        url: image,
+        hash: imageHashs[index]
+    }))
 }
 
 type MessageCollectorFilter = (session: Session, message: Message) => boolean

@@ -217,8 +217,7 @@ async function prepareMessages(
     const searchPattern = /{\?search\s*(.+){search}\s*(.+)}/gms
     const searchMatch = searchPattern.exec(baseHumanContent)
 
-    const imagePattern = /{\?image(.+)}/gms
-    const imageMatch = imagePattern.exec(baseHumanContent)
+    const imageMessages: BaseMessage[] = []
 
     if (searchMatch && searchMatch.length > 0) {
         let searchResult = ''
@@ -260,38 +259,18 @@ async function prepareMessages(
     }
 
     if (config.image) {
-        // search the image
-        for (let index = messages.length - 1; index >= 0; index--) {
-            const message = messages[index]
+        for (const message of messages) {
             if (message.images && message.images.length > 0) {
-                humanMessage.additional_kwargs = {
-                    images: message.images
+                for (const image of message.images) {
+                    const imageMessage = new HumanMessage(
+                        `[image:${image.hash}]`
+                    )
+                    imageMessage.additional_kwargs = {
+                        images: [image.url]
+                    }
+                    imageMessages.push(imageMessage)
                 }
-                break
             }
-        }
-
-        // remove the image in old compleation messages
-
-        for (const message of temp.completionMessages) {
-            if (message.additional_kwargs?.images) {
-                delete message.additional_kwargs.images
-            }
-        }
-
-        // replace {?image xxx} => xxx
-        if (imageMatch && imageMatch.length > 0) {
-            const matchedContent = imageMatch[0] // 获取完整匹配
-            const content = imageMatch[1] // 获取第一个捕获组
-            baseHumanContent = baseHumanContent.replace(matchedContent, content)
-            humanMessage.content = baseHumanContent
-        }
-    } else {
-        // replace {?image xxx} => ''
-        if (imageMatch && imageMatch.length > 0) {
-            const matchedContent = imageMatch[0] // 获取完整匹配
-            baseHumanContent = baseHumanContent.replace(matchedContent, '')
-            humanMessage.content = baseHumanContent
         }
     }
 
@@ -299,6 +278,7 @@ async function prepareMessages(
         [new SystemMessage(formattedSystemPrompt)].concat(
             temp.completionMessages
         ),
+        imageMessages,
         humanMessage,
         config,
         model

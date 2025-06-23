@@ -44,7 +44,8 @@ function parseMessageContent(response: string) {
     for (const pattern of patterns) {
         const match = response.match(pattern)
         if (match) {
-            rawMessage = Array.isArray(match) && pattern.global ? match.pop() : match[1]
+            rawMessage =
+                Array.isArray(match) && pattern.global ? match.pop() : match[1]
             break
         }
     }
@@ -52,6 +53,8 @@ function parseMessageContent(response: string) {
     if (!rawMessage) {
         throw new Error('Failed to parse response: ' + response)
     }
+
+    console.log(response)
 
     const tempJson = parseXmlToObject(rawMessage)
     return {
@@ -135,27 +138,40 @@ export function processTextMatches(rawMessage: string, useAt: boolean = true) {
                 }
                 break
             case 'emo':
-                currentElements.push(h('text', { span: true, content: token.content }))
+                currentElements.push(
+                    h('text', { span: true, content: token.content })
+                )
                 break
             case 'pre':
-            case 'message':
+            case 'message': {
                 parsedMessage += token.content
                 const children = token.children
                     ? processTextMatches(token.content, useAt).currentElements
                     : [h('text', { span: true, content: token.content })]
 
-                const flatChildren = children.reduce((acc, element) =>
-                    acc.concat(element.type === 'p' ? element.children || element : element), []
+                const flatChildren = children.reduce(
+                    (acc, element) =>
+                        acc.concat(
+                            element.type === 'p'
+                                ? element.children || element
+                                : element
+                        ),
+                    []
                 )
 
-                currentElements.push(h('message', { span: true, children: flatChildren }))
+                currentElements.push(
+                    h('message', { span: true, children: flatChildren })
+                )
                 break
+            }
             case 'voice':
-                currentElements.push(h('text', {
-                    voice: true,
-                    content: token.content,
-                    extra: token.extra
-                }))
+                currentElements.push(
+                    h('text', {
+                        voice: true,
+                        content: token.content,
+                        extra: token.extra
+                    })
+                )
                 break
             case 'sticker':
                 currentElements.push(h('message', [h.image(token.content)]))
@@ -181,12 +197,22 @@ function textMatchLexer(input: string): TextMatch[] {
 
     const tagMappings = [
         { open: '<pre>', close: '</pre>', type: 'pre' as const, nested: true },
-        { open: '<message>', close: '</message>', type: 'message' as const, nested: true },
+        {
+            open: '<message>',
+            close: '</message>',
+            type: 'message' as const,
+            nested: true
+        },
         { open: '<emo>', close: '</emo>', type: 'emo' as const, nested: false },
-        { open: '<sticker>', close: '</sticker>', type: 'sticker' as const, nested: false }
+        {
+            open: '<sticker>',
+            close: '</sticker>',
+            type: 'sticker' as const,
+            nested: false
+        }
     ]
 
-    const stack: { type: typeof tagMappings[0]['type']; start: number }[] = []
+    const stack: { type: (typeof tagMappings)[0]['type']; start: number }[] = []
 
     while (index < input.length) {
         let matched = false
@@ -201,7 +227,10 @@ function textMatchLexer(input: string): TextMatch[] {
                 } else if (stack.length === 0) {
                     const endIndex = input.indexOf(close, index)
                     if (endIndex !== -1) {
-                        const content = input.substring(index + open.length, endIndex)
+                        const content = input.substring(
+                            index + open.length,
+                            endIndex
+                        )
                         tokens.push({
                             type,
                             content,
@@ -216,7 +245,10 @@ function textMatchLexer(input: string): TextMatch[] {
             } else if (nested && input.startsWith(close, index)) {
                 const stackItem = stack.pop()
                 if (stackItem?.type === type) {
-                    const content = input.substring(stackItem.start + open.length, index)
+                    const content = input.substring(
+                        stackItem.start + open.length,
+                        index
+                    )
                     const children = textMatchLexer(content)
                     tokens.push({
                         type,
@@ -235,7 +267,9 @@ function textMatchLexer(input: string): TextMatch[] {
         if (!matched && stack.length === 0 && input.startsWith('<at', index)) {
             const endIndex = input.indexOf('</at>', index)
             if (endIndex !== -1) {
-                const match = /<at\b[^>]*>(.*?)<\/at>/.exec(input.substring(index, endIndex + 5))
+                const match = /<at\b[^>]*>(.*?)<\/at>/.exec(
+                    input.substring(index, endIndex + 5)
+                )
                 if (match) {
                     tokens.push({
                         type: 'at',
@@ -249,7 +283,11 @@ function textMatchLexer(input: string): TextMatch[] {
             }
         }
 
-        if (!matched && stack.length === 0 && input.startsWith('<voice', index)) {
+        if (
+            !matched &&
+            stack.length === 0 &&
+            input.startsWith('<voice', index)
+        ) {
             const openTagEnd = input.indexOf('>', index)
             const endIndex = input.indexOf('</voice>', index)
             if (openTagEnd !== -1 && endIndex !== -1) {
@@ -257,8 +295,12 @@ function textMatchLexer(input: string): TextMatch[] {
                 let extra: Record<string, string> | undefined
 
                 if (hasAttributes) {
-                    const attributesString = input.substring(index + 6, openTagEnd)
-                    const idMatch = attributesString.match(/id=['"]([^'"]+)['"]/)
+                    const attributesString = input.substring(
+                        index + 6,
+                        openTagEnd
+                    )
+                    const idMatch =
+                        attributesString.match(/id=['"]([^'"]+)['"]/)
                     if (idMatch) {
                         extra = { id: idMatch[1] }
                     }
@@ -812,6 +854,7 @@ export async function formatMessage(
 
 export async function formatCompletionMessages(
     messages: BaseMessage[],
+    imageMessages: BaseMessage[],
     humanMessage: BaseMessage,
     config: Config,
     model: ChatLunaChatModel
@@ -820,12 +863,28 @@ export async function formatCompletionMessages(
     const systemMessage = messages.shift()
     let currentTokens = 0
 
-    currentTokens += await model.getNumTokens(systemMessage.content as string)
-    currentTokens += await model.getNumTokens(humanMessage.content as string)
+    currentTokens += await model.getNumTokens(
+        getMessageContent(systemMessage.content)
+    )
+    currentTokens += await model.getNumTokens(
+        getMessageContent(humanMessage.content)
+    )
 
     const result: BaseMessage[] = []
 
     result.unshift(humanMessage)
+
+    for (const imageMessage of imageMessages) {
+        // Only calculate the text content
+        const imageTokens = await model.getNumTokens(
+            getMessageContent(imageMessage.content)
+        )
+        result.unshift(imageMessage)
+        if (currentTokens + imageTokens > maxTokens) {
+            break
+        }
+        currentTokens += imageTokens
+    }
 
     for (let index = messages.length - 1; index >= 0; index--) {
         const message = messages[index]
@@ -850,7 +909,7 @@ export async function formatCompletionMessages(
 }
 
 export function parseXmlToObject(xml: string) {
-    const messageMatches = xml.match(/<message\s+.*?>(.*?)<\/message>/gs)
+    const messageMatches = xml.match(/<message(?:\s+.*?)?>(.*?)<\/message>/gs)
 
     if (!messageMatches) {
         throw new Error('Failed to parse response: ' + xml)
@@ -866,15 +925,18 @@ export function parseXmlToObject(xml: string) {
         }
     }
 
-    const singleMatch = xml.match(/<message\s+(.*?)>(.*?)<\/message>/s)
+    const singleMatch = xml.match(/<message(?:\s+(.*?))?>(.+?)<\/message>/s)
     if (!singleMatch) {
         throw new Error('Failed to parse response: ' + xml)
     }
 
-    const [, attributes, content] = singleMatch
+    const [, attributes = '', content = ''] = singleMatch
 
     const getAttr = (name: string): string => {
-        const attrMatch = attributes.match(new RegExp(`${name}=['"]?([^'"]+)['"]?`))
+        if (!attributes) return ''
+        const attrMatch = attributes.match(
+            new RegExp(`${name}=['"]?([^'"]+)['"]?`)
+        )
         return attrMatch?.[1] || ''
     }
 
@@ -883,7 +945,7 @@ export function parseXmlToObject(xml: string) {
         id: getAttr('id'),
         type: getAttr('type') || 'text',
         sticker: getAttr('sticker'),
-        content: content || ''
+        content
     }
 }
 

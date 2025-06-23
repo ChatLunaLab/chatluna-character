@@ -102,6 +102,8 @@ export interface Config extends ChatLunaPlugin.Config {
     isForceMute: boolean
     sendStickerProbability: number
     image: boolean
+    imageInputMaxCount: number
+    imageInputMaxSize: number
 
     coolDownTime: number
     typingTime: number
@@ -149,6 +151,17 @@ export const Config = Schema.intersect([
                 '是否允许输入图片（注意表情包也会输入，目前仅支持原生多模态的模型）'
             )
             .default(false),
+        imageInputMaxCount: Schema.number()
+            .default(3)
+            .min(1)
+            .max(15)
+            .description('最大的输入图片数量'),
+
+        imageInputMaxSize: Schema.number()
+            .default(3)
+            .min(1)
+            .max(20)
+            .description('最大的输入图片大小（MB）'),
         search: Schema.boolean()
             .description('是否启用联网搜索功能')
             .default(false),
@@ -266,7 +279,7 @@ JSON Response:`),
             .max(1)
             .role('slider')
             .step(0.01)
-            .description('发送表情的概率'),
+            .description('发送表情的概率（即将废弃，将制作新的表情系统插件）'),
         defaultPreset: Schema.dynamic('character-preset')
             .description('使用的伪装预设')
             .default('煕')
@@ -317,6 +330,18 @@ JSON Response:`),
                         '是否允许输入图片（注意表情包也会输入，目前仅支持原生多模态的模型）'
                     )
                     .default(false),
+
+                imageInputMaxCount: Schema.number()
+                    .default(3)
+                    .min(1)
+                    .max(15)
+                    .description('最大的输入图片数量'),
+
+                imageInputMaxSize: Schema.number()
+                    .default(1024 * 1024 * 10)
+                    .min(1024 * 1024 * 1)
+                    .max(1024 * 1024 * 20)
+                    .description('最大的输入图片大小（KB）'),
                 coolDownTime: Schema.number()
                     .default(10)
                     .min(1)

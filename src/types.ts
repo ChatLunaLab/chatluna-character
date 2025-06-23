@@ -7,7 +7,10 @@ export interface Message {
     id: string
     timestamp?: number
     quote?: Message
-    images?: string[]
+    images?: {
+        url: string
+        hash: string
+    }[]
 }
 
 export interface GroupTemp {
@@ -22,6 +25,9 @@ export interface GuildConfig {
     isNickname: boolean
     isForceMute: boolean
     sendStickerProbability: number
+    image: boolean
+    imageInputMaxCount: number
+    imageInputMaxSize: number
 
     coolDownTime: number
     splitVoice: boolean
