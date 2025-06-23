@@ -35,7 +35,10 @@ export class TopicService extends Service {
                 },
                 // Filter function - only process when we reach the threshold
                 async (session, message, history) => {
-                    //  console.log(message)
+                    if (!config.applyGroup.includes(session.guildId)) {
+                        return false
+                    }
+
                     return history.length % this.messageThreshold === 0
                 }
             )

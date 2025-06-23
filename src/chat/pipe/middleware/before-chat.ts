@@ -34,24 +34,24 @@ export function createBeforeChatMiddleware(options: {
                 executeModel: context.model
             })
 
+            const think = await context.ctx.chatluna_character_think.getThink(
+                context.preset.name,
+                'group',
+                context.session.guildId
+            )
+
+            const topics =
+                await context.ctx.chatluna_character_topic.getRecentTopics(
+                    context.session.guildId
+                )
             // Execute the before-chat agent
             let beforeChatResult = ''
             for await (const action of beforeChatAgent.stream({
                 chat_history: [],
                 history: JSON.stringify(context.history),
                 input: new HumanMessage(context.message.content),
-                think: JSON.stringify(
-                    await context.ctx.chatluna_character_think.getThink(
-                        context.preset.name,
-                        'group',
-                        context.session.guildId
-                    )
-                ),
-                related_topics: JSON.stringify(
-                    await context.ctx.chatluna_character_topic.getRecentTopics(
-                        context.session.guildId
-                    )
-                )
+                think: JSON.stringify(think),
+                related_topics: JSON.stringify(topics)
             })) {
                 if (action.type === 'finish') {
                     beforeChatResult += action.action['output']

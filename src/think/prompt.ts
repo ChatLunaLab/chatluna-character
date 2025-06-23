@@ -53,7 +53,7 @@ export const GROUP_OR_PRIVATE_THINK_PROMPT = `<context>
 相关事件: {event}
 相关话题: {topics}
 之前的思考内容: {think}
-全局思考内容: {global_think}
+全局思考内容: {think_global}
 当前预设: {preset}
 当前群聊ID(如果存在): {group}
 当前私聊ID(如果存在): {private_id}

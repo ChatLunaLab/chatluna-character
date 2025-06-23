@@ -38,17 +38,19 @@ export function createChatMiddleware(options: {
                     context.state.beforeChatResult || ''
                 ),
                 think_group: JSON.stringify(
-                    await context.ctx.chatluna_character_think.getThink(
-                        context.preset.name,
-                        'group',
-                        context.session.guildId
-                    )
+                    await context.ctx.chatluna_character_think
+                        .getThink(
+                            context.preset.name,
+                            'group',
+                            context.session.guildId
+                        )
+                        .then((think) => think || '')
                 ),
                 history_last: JSON.stringify(context.message.content),
                 related_topics: JSON.stringify(
-                    await context.ctx.chatluna_character_topic.getRecentTopics(
-                        context.session.guildId
-                    )
+                    await context.ctx.chatluna_character_topic
+                        .getRecentTopics(context.session.guildId)
+                        .then((topics) => topics || [])
                 )
             })) {
                 if (action.type === 'finish') {
