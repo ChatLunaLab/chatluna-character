@@ -585,8 +585,12 @@ export async function apply(ctx: Context, config: Config) {
             completionMessages[completionMessages.length - 1]
         )
         temp.completionMessages.push(responseMessage)
-        if (temp.completionMessages.length > 6) {
-            temp.completionMessages.length = 2
+
+        if (temp.completionMessages.length > config.modelCompletionCount * 2) {
+            temp.completionMessages.length = Math.max(
+                0,
+                config.modelCompletionCount * 2 - 2
+            )
         }
 
         await handleModelResponse(

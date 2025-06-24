@@ -54,8 +54,6 @@ function parseMessageContent(response: string) {
         throw new Error('Failed to parse response: ' + response)
     }
 
-    console.log(response)
-
     const tempJson = parseXmlToObject(rawMessage)
     return {
         rawMessage: tempJson.content,
@@ -98,6 +96,8 @@ export async function processElements(
                 last()
                     ? last().push(h.text(' '), el)
                     : result.push([h.text(' '), el])
+            } else if (el.type === 'img' && !el.attrs.sticker) {
+                last() ? last().push(el) : result.push([el])
             } else {
                 result.push([el])
             }
@@ -180,7 +180,11 @@ export function processTextMatches(rawMessage: string, useAt: boolean = true) {
                 currentElements.push(h('message', [h.image(token.content)]))
                 break
             case 'img':
-                currentElements.push(h.image(token.content))
+                currentElements.push(
+                    h.image(token.content, {
+                        sticker: false
+                    })
+                )
                 break
         }
 

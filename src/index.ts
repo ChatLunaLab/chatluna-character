@@ -5,7 +5,6 @@ import { ChatLunaPlugin } from 'koishi-plugin-chatluna/services/chat'
 import { plugins } from './plugin'
 import { MessageCollector } from './service/message'
 import { GuildConfig } from './types'
-import { parseResponse } from './utils'
 
 export function apply(ctx: Context, config: Config) {
     const disposables: Disposable[] = []
@@ -28,15 +27,6 @@ export function apply(ctx: Context, config: Config) {
                 name: 'chatluna_character_entry_point'
             },
             config
-        )
-
-        console.log(
-            await parseResponse(
-                `<message><at>11</at> Msg</message>`,
-                true,
-                (element) => Promise.resolve([element]),
-                config
-            ).then((res) => res.elements)
         )
 
         disposables.push(
@@ -114,6 +104,7 @@ export interface Config extends ChatLunaPlugin.Config {
     image: boolean
     imageInputMaxCount: number
     imageInputMaxSize: number
+    modelCompletionCount: number
 
     coolDownTime: number
     typingTime: number
@@ -289,8 +280,14 @@ JSON Response:`),
             .max(1000 * 60 * 10 * 10)
             .description('闭嘴时的禁言时间（毫秒）'),
 
+        modelCompletionCount: Schema.number()
+            .default(3)
+            .min(0)
+            .max(6)
+            .description('模型历史消息轮数，为 0 不发送之前的历史轮次'),
+
         sendStickerProbability: Schema.number()
-            .default(0.6)
+            .default(0.0)
             .min(0)
             .max(1)
             .role('slider')
@@ -392,8 +389,14 @@ JSON Response:`),
                     .max(1000 * 60 * 10 * 10)
                     .description('闭嘴时的禁言时间（毫秒）'),
 
+                modelCompletionCount: Schema.number()
+                    .default(3)
+                    .min(0)
+                    .max(6)
+                    .description('模型历史消息轮数，为 0 不发送之前的历史轮次'),
+
                 sendStickerProbability: Schema.number()
-                    .default(0.2)
+                    .default(0)
                     .min(0)
                     .max(1)
                     .role('slider')
