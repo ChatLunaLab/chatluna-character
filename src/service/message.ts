@@ -168,8 +168,11 @@ export class MessageCollector extends Service {
         const message: Message = {
             content,
             name: session.bot.user.name,
-            id: session.bot.selfId ?? '0'
+            id: session.bot.selfId ?? '0',
+            timestamp: session.event.timestamp
         }
+
+        console.log(222, message)
 
         groupArray.push(message)
 

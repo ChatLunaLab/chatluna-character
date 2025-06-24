@@ -70,45 +70,46 @@ export async function processElements(
     voiceRender?: (element: h) => Promise<h[]>,
     config?: Config
 ) {
-    const resultElements: Element[][] = []
+    const result: Element[][] = []
+    const last = () => result[result.length - 1]
+    const canAppendAt = () => last()?.length === 2 && last()[1].type === 'at'
 
-    const forEachElement = async (elements: Element[]) => {
-        for (let i = 0; i < elements.length; i++) {
-            const element = elements[i]
-            if (element.type === 'text') {
-                if (element.attrs['code'] || element.attrs['span']) {
-                    resultElements.push([element])
-                    continue
-                } else if (element.attrs['voice'] && voiceRender) {
-                    resultElements.push(await voiceRender(element))
-                    continue
+    const process = async (els: Element[]) => {
+        for (const el of els) {
+            if (el.type === 'text') {
+                if (el.attrs.code || el.attrs.span) {
+                    result.push([el])
+                } else if (el.attrs.voice && voiceRender) {
+                    result.push(await voiceRender(el))
+                } else if (config?.splitSentence) {
+                    for (const text of splitSentence(
+                        he.decode(el.attrs.content)
+                    ).filter(Boolean)) {
+                        canAppendAt()
+                            ? last().push(h.text(text))
+                            : result.push([h.text(text)])
+                    }
+                } else {
+                    canAppendAt() ? last().push(el) : result.push([el])
                 }
-
-                if (config?.splitSentence !== true) {
-                    resultElements.push([element])
-                    continue
-                }
-                const matchArray = splitSentence(
-                    he.decode(element.attrs.content as string)
-                ).filter((x) => x.length > 0)
-
-                for (const match of matchArray) {
-                    resultElements.push([h.text(match)])
-                }
-            } else if (['em', 'strong', 'del', 'p'].includes(element.type)) {
-                await forEachElement(element.children)
+            } else if (['em', 'strong', 'del', 'p'].includes(el.type)) {
+                await process(el.children)
+            } else if (el.type === 'at') {
+                last()
+                    ? last().push(h.text(' '), el)
+                    : result.push([h.text(' '), el])
             } else {
-                resultElements.push([element])
+                result.push([el])
             }
         }
     }
 
-    await forEachElement(elements)
-    return resultElements
+    await process(elements)
+    return result
 }
 
 interface TextMatch {
-    type: 'at' | 'pre' | 'emo' | 'voice' | 'sticker' | 'message'
+    type: 'at' | 'pre' | 'emo' | 'voice' | 'sticker' | 'message' | 'img'
     content: string
     extra?: Record<string, string>
     start: number
@@ -139,7 +140,7 @@ export function processTextMatches(rawMessage: string, useAt: boolean = true) {
         switch (token.type) {
             case 'at':
                 if (useAt) {
-                    currentElements.push(h.text(' '), h.at(token.content))
+                    currentElements.push(h.at(token.content))
                 }
                 break
             case 'emo':
@@ -155,12 +156,7 @@ export function processTextMatches(rawMessage: string, useAt: boolean = true) {
                     : [h('text', { span: true, content: token.content })]
 
                 const flatChildren = children.reduce(
-                    (acc, element) =>
-                        acc.concat(
-                            element.type === 'p'
-                                ? element.children || element
-                                : element
-                        ),
+                    (acc, element) => acc.concat(element.children || element),
                     []
                 )
 
@@ -171,15 +167,20 @@ export function processTextMatches(rawMessage: string, useAt: boolean = true) {
             }
             case 'voice':
                 currentElements.push(
-                    h('text', {
-                        voice: true,
-                        content: token.content,
-                        extra: token.extra
-                    })
+                    h('message', [
+                        h('text', {
+                            voice: true,
+                            content: token.content,
+                            extra: token.extra
+                        })
+                    ])
                 )
                 break
             case 'sticker':
                 currentElements.push(h('message', [h.image(token.content)]))
+                break
+            case 'img':
+                currentElements.push(h.image(token.content))
                 break
         }
 
@@ -213,6 +214,12 @@ function textMatchLexer(input: string): TextMatch[] {
             open: '<sticker>',
             close: '</sticker>',
             type: 'sticker' as const,
+            nested: false
+        },
+        {
+            open: '<img>',
+            close: '</img>',
+            type: 'img' as const,
             nested: false
         }
     ]
@@ -366,25 +373,23 @@ export async function parseResponse(
 }
 
 export function splitSentence(text: string): string[] {
-    if (isOnlyPunctuation(text)) {
-        return [text]
-    }
+    if (isOnlyPunctuation(text)) return [text]
 
-    const result: string[] = []
+    const scorePattern = /\d+[:：]\d+/g
+    const scoreMatches = [...text.matchAll(scorePattern)]
+    const protectedRanges = scoreMatches.map((m) => [
+        m.index,
+        m.index + m[0].length
+    ])
+
+    const isProtected = (index: number) =>
+        protectedRanges.some(([start, end]) => index >= start && index < end)
 
     const lines = text
         .split('\n')
-        .filter((line) => line.trim().length > 0)
+        .filter((l) => l.trim())
         .join(' ')
-
-    const state = {
-        bracket: 0,
-        text: 0
-    }
-
-    let current = ''
-
-    const punctuations = [
+    const punct = [
         '，',
         '。',
         '？',
@@ -401,74 +406,78 @@ export function splitSentence(text: string): string[] {
         '—',
         '\r'
     ]
+    const retain = new Set(['?', '!', '？', '！', '~'])
+    const mustSplit = new Set(['。', '?', '！', '!', ':', '：'])
+    const brackets = [
+        '【',
+        '】',
+        '《',
+        '》',
+        '(',
+        ')',
+        '（',
+        '）',
+        '“',
+        '”',
+        '‘',
+        '’',
+        "'",
+        "'",
+        '"',
+        '"'
+    ]
 
-    const retainPunctuations = ['?', '!', '？', '！', '~']
+    const result = []
+    let current = ''
+    let bracketLevel = 0
 
-    const mustPunctuations = ['。', '?', '！', '?', '！', ':', '：']
+    for (let i = 0; i < lines.length; i++) {
+        const char = lines[i]
+        const next = lines[i + 1]
 
-    const brackets = ['【', '】', '《', '》', '(', ')', '（', '）']
-
-    for (let index = 0; index < lines.length; index++) {
-        const char = lines[index]
-        const nextChar = lines?.[index + 1]
-
-        const indexOfBrackets = brackets.indexOf(char)
-
-        if (indexOfBrackets > -1) {
-            state.bracket += indexOfBrackets % 2 === 0 ? 1 : -1
+        if (isProtected(i)) {
+            current += char
+            continue
         }
 
-        if (indexOfBrackets > -1 && state.bracket === 0 && state.text > 0) {
+        const bracketIdx = brackets.indexOf(char)
+        if (bracketIdx > -1) {
+            bracketLevel += bracketIdx % 2 === 0 ? 1 : -1
             current += char
+
+            if (bracketLevel === 0 && current.length > 1) {
+                result.push(current)
+                current = ''
+            } else if (bracketLevel === 1 && bracketIdx % 2 === 0) {
+                if (current.length > 1) result.push(current)
+                current = char
+            }
+            continue
+        }
+
+        if (bracketLevel > 0) {
+            current += char
+            continue
+        }
+
+        if (!punct.includes(char)) {
+            current += char
+            continue
+        }
+
+        if (retain.has(char)) current += char
+        if (retain.has(next) && retain.has(char) && next !== char) i++
+
+        if (current.length > 0 && (current.length > 2 || mustSplit.has(char))) {
             result.push(current)
-            state.text = 0
             current = ''
-            continue
-        } else if (indexOfBrackets % 2 === 0 && state.bracket === 1) {
-            result.push(current)
-            state.text = 0
-            current = char
-            continue
-        } else if (state.bracket > 0) {
-            current += char
-            state.text++
-            continue
-        }
-
-        if (!punctuations.includes(char)) {
-            current += char
-            continue
-        }
-
-        if (retainPunctuations.includes(char)) {
-            current += char
-        }
-
-        if (
-            retainPunctuations.indexOf(nextChar) % 2 === 0 &&
-            retainPunctuations.indexOf(char) % 2 === 1
-        ) {
-            index += 1
-        }
-
-        if (current.length < 1) {
-            continue
-        }
-
-        if (current.length > 2 || mustPunctuations.includes(char)) {
-            result.push(current)
-
-            current = ''
-        } else if (!retainPunctuations.includes(char)) {
+        } else if (!retain.has(char) && current.length > 0) {
             current += char
         }
     }
 
-    if (current.length > 0) {
-        result.push(current)
-    }
-
-    return result.filter((item) => punctuations.indexOf(item) === -1)
+    if (current) result.push(current)
+    return result.filter((item) => !punct.includes(item))
 }
 
 export function matchAt(str: string) {

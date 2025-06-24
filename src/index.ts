@@ -5,6 +5,7 @@ import { ChatLunaPlugin } from 'koishi-plugin-chatluna/services/chat'
 import { plugins } from './plugin'
 import { MessageCollector } from './service/message'
 import { GuildConfig } from './types'
+import { parseResponse } from './utils'
 
 export function apply(ctx: Context, config: Config) {
     const disposables: Disposable[] = []
@@ -27,6 +28,15 @@ export function apply(ctx: Context, config: Config) {
                 name: 'chatluna_character_entry_point'
             },
             config
+        )
+
+        console.log(
+            await parseResponse(
+                `<message><at>11</at> Msg</message>`,
+                true,
+                (element) => Promise.resolve([element]),
+                config
+            ).then((res) => res.elements)
         )
 
         disposables.push(
