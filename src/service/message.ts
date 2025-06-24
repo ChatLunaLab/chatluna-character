@@ -172,14 +172,10 @@ export class MessageCollector extends Service {
             timestamp: session.event.timestamp
         }
 
-        console.log(222, message)
-
         groupArray.push(message)
 
-        if (groupArray.length > maxMessageSize) {
-            while (groupArray.length > maxMessageSize) {
-                groupArray.shift()
-            }
+        while (groupArray.length > maxMessageSize) {
+            groupArray.shift()
         }
 
         this._messages[groupId] = groupArray
@@ -243,10 +239,8 @@ export class MessageCollector extends Service {
 
         groupArray.push(message)
 
-        if (groupArray.length > maxMessageSize) {
-            while (groupArray.length > maxMessageSize) {
-                groupArray.shift()
-            }
+        while (groupArray.length > maxMessageSize) {
+            groupArray.shift()
         }
 
         const now = Date.now()
