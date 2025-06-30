@@ -98,7 +98,7 @@ export async function processElements(
                     : result.push([h.text(' '), el])
             } else if (el.type === 'img' && !el.attrs.sticker) {
                 last() ? last().push(el) : result.push([el])
-            } else if (el.type === 'message') {
+            } else if (el.type === 'message' && el.attrs.span) {
                 await process(el.children)
             } else {
                 result.push([el])
