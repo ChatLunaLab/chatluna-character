@@ -98,6 +98,8 @@ export async function processElements(
                     : result.push([h.text(' '), el])
             } else if (el.type === 'img' && !el.attrs.sticker) {
                 last() ? last().push(el) : result.push([el])
+            } else if (el.type === 'message') {
+                await process(el.children)
             } else {
                 result.push([el])
             }
@@ -155,14 +157,7 @@ export function processTextMatches(rawMessage: string, useAt: boolean = true) {
                     ? processTextMatches(token.content, useAt).currentElements
                     : [h('text', { span: true, content: token.content })]
 
-                const flatChildren = children.reduce(
-                    (acc, element) => acc.concat(element.children || element),
-                    []
-                )
-
-                currentElements.push(
-                    h('message', { span: true, children: flatChildren })
-                )
+                currentElements.push(h('message', { span: true }, ...children))
                 break
             }
             case 'voice':
@@ -266,6 +261,7 @@ function textMatchLexer(input: string): TextMatch[] {
                         index
                     )
                     const children = textMatchLexer(content)
+
                     tokens.push({
                         type,
                         content,
