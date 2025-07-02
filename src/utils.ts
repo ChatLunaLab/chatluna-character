@@ -44,8 +44,14 @@ function parseMessageContent(response: string) {
     for (const pattern of patterns) {
         const match = response.match(pattern)
         if (match) {
-            rawMessage =
-                Array.isArray(match) && pattern.global ? match.pop() : match[1]
+            if (Array.isArray(match) && pattern.global && match.length > 1) {
+                rawMessage = response
+            } else {
+                rawMessage =
+                    Array.isArray(match) && pattern.global
+                        ? match.pop()
+                        : match[1]
+            }
             break
         }
     }
@@ -91,7 +97,7 @@ export async function processElements(
                     canAppendAt() ? last().push(el) : result.push([el])
                 }
             } else if (['em', 'strong', 'del', 'p'].includes(el.type)) {
-                await process(el.children)
+                result.push(el.children || [el])
             } else if (el.type === 'at') {
                 last()
                     ? last().push(h.text(' '), el)
@@ -119,14 +125,20 @@ interface TextMatch {
     children?: TextMatch[]
 }
 
-export function processTextMatches(rawMessage: string, useAt: boolean = true) {
+export function processTextMatches(
+    rawMessage: string,
+    useAt: boolean = true,
+    markdownRender: boolean = true
+) {
     const currentElements: Element[] = []
     let parsedMessage = ''
     const tokens = textMatchLexer(rawMessage)
 
     if (tokens.length === 0) {
         return {
-            currentElements: transform(rawMessage),
+            currentElements: markdownRender
+                ? transform(rawMessage)
+                : [h('text', { content: rawMessage })],
             parsedMessage: rawMessage
         }
     }
@@ -136,7 +148,11 @@ export function processTextMatches(rawMessage: string, useAt: boolean = true) {
         const before = rawMessage.substring(lastIndex, token.start)
         if (before.trim()) {
             parsedMessage += before
-            currentElements.push(...transform(before))
+            if (markdownRender) {
+                currentElements.push(...transform(before))
+            } else {
+                currentElements.push(h('text', { content: before }))
+            }
         }
 
         switch (token.type) {
@@ -154,7 +170,8 @@ export function processTextMatches(rawMessage: string, useAt: boolean = true) {
             case 'message': {
                 parsedMessage += token.content
                 const children = token.children
-                    ? processTextMatches(token.content, useAt).currentElements
+                    ? processTextMatches(token.content, useAt, markdownRender)
+                          .currentElements
                     : [h('text', { span: true, content: token.content })]
 
                 currentElements.push(h('message', { span: true }, ...children))
@@ -162,7 +179,7 @@ export function processTextMatches(rawMessage: string, useAt: boolean = true) {
             }
             case 'voice':
                 currentElements.push(
-                    h('message', [
+                    h('message', { span: true }, [
                         h('text', {
                             voice: true,
                             content: token.content,
@@ -189,7 +206,11 @@ export function processTextMatches(rawMessage: string, useAt: boolean = true) {
     const after = rawMessage.substring(lastIndex)
     if (after.trim()) {
         parsedMessage += after
-        currentElements.push(...transform(after))
+        if (markdownRender) {
+            currentElements.push(...transform(after))
+        } else {
+            currentElements.push(h('text', { content: after }))
+        }
     }
 
     return { currentElements, parsedMessage }
@@ -351,7 +372,8 @@ export async function parseResponse(
 
         const { currentElements, parsedMessage } = processTextMatches(
             rawMessage,
-            useAt
+            useAt,
+            config?.markdownRender ?? true
         )
         const resultElements = await processElements(
             currentElements,
@@ -968,6 +990,11 @@ export function parseXmlToObject(xml: string) {
 const tagRegExp = /<(\/?)([^!\s>/]+)([^>]*?)\s*(\/?)>/
 
 function renderToken(token: Token): h {
+    // remove \n \t
+    if (token.raw.trim().length < 1) {
+        return undefined
+    }
+
     if (token.type === 'code') {
         return h('text', { code: true, content: token.text + '\n' })
     } else if (token.type === 'paragraph') {

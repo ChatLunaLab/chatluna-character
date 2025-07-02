@@ -300,29 +300,37 @@ async function getModelResponse(
                 responseMessage.content as string,
                 config.isAt,
                 async (element) => {
-                    const content = element.attrs['content']
-                    const extra = element.attrs['extra']
-                    if (extra) {
-                        const { id } = extra
-                        if (id) {
-                            return [
-                                await ctx.vits.say(
-                                    Object.assign(
-                                        {
-                                            speaker_id: parseInt(id),
-                                            input: content
-                                        },
-                                        { session }
+                    logger.debug(
+                        'voice render element: ' + JSON.stringify(element)
+                    )
+                    try {
+                        const content = element.attrs['content']
+                        const extra = element.attrs['extra']
+                        if (extra) {
+                            const { id } = extra
+                            if (id) {
+                                return [
+                                    await ctx.vits.say(
+                                        Object.assign(
+                                            {
+                                                speaker_id: parseInt(id),
+                                                input: content
+                                            },
+                                            { session }
+                                        )
                                     )
-                                )
-                            ]
+                                ]
+                            }
                         }
+                        return [
+                            await ctx.vits.say(
+                                Object.assign({ input: content }, { session })
+                            )
+                        ]
+                    } catch (e) {
+                        logger.error('voice render failed', e)
+                        return [element]
                     }
-                    return [
-                        await ctx.vits.say(
-                            Object.assign({ input: content }, { session })
-                        )
-                    ]
                 },
                 config
             )

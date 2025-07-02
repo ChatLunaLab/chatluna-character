@@ -96,6 +96,7 @@ export interface Config extends ChatLunaPlugin.Config {
     search: boolean
     largeTextSize: number
     largeTextTypingTime: number
+    markdownRender: boolean
 
     searchSummaryType: string
     searchPrompt: string
@@ -233,6 +234,11 @@ JSON Response:`),
                 '是否启用自分割发送消息 **注意请确保你的预设和模型在使用时支持自分割消息，否则请不要关闭**'
             )
             .default(true),
+        markdownRender: Schema.boolean()
+            .description(
+                '是否启用 Markdown 渲染。关闭后可能会损失分割消息的精度'
+            )
+            .default(true),
         messageInterval: Schema.number()
             .default(14)
             .min(0)
@@ -314,6 +320,11 @@ JSON Response:`),
                 splitSentence: Schema.boolean()
                     .description(
                         '是否启用自分割发送消息 **注意请确保你的预设和模型在使用时支持自分割消息，否则请不要关闭**'
+                    )
+                    .default(true),
+                markdownRender: Schema.boolean()
+                    .description(
+                        '是否启用 Markdown 渲染。关闭后可能会损失分割消息的精度'
                     )
                     .default(true),
                 isNickname: Schema.boolean()
