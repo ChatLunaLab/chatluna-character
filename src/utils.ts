@@ -887,7 +887,7 @@ export async function formatMessage(
         )
     }
 
-    return [calculatedMessages, lastMessage]
+    return [calculatedMessages, lastMessage] as const
 }
 
 export async function formatCompletionMessages(

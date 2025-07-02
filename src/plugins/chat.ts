@@ -199,8 +199,13 @@ async function prepareMessages(
     const humanMessage = new HumanMessage(
         await currentPreset.input.format(
             {
-                history_new: recentMessage,
-                history_last: lastMessage,
+                history_new: recentMessage
+                    .join('\n\n')
+                    .replaceAll('{', '{{')
+                    .replaceAll('}', '}}'),
+                history_last: lastMessage
+                    .replaceAll('{', '{{')
+                    .replaceAll('}', '}}'),
                 time: formatTimestamp(new Date()),
                 stickers: '', // JSON.stringify(stickerService.getAllStickTypes()),
                 status: temp.status ?? currentPreset.status ?? ''
