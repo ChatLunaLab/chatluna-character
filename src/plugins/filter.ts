@@ -143,6 +143,10 @@ export async function apply(ctx: Context, config: Config) {
                 (copyOfConfig.isNickname &&
                     currentPreset.nick_name.some((value) =>
                         message.content.startsWith(value)
+                    )) ||
+                (copyOfConfig.isNickNameWithContent &&
+                    currentPreset.nick_name.some((value) =>
+                        message.content.includes(value)
                     ))) &&
             !isMute
         ) {

@@ -94,6 +94,7 @@ export interface Config extends ChatLunaPlugin.Config {
 
     defaultPreset: string
     isNickname: boolean
+    isNickNameWithContent: boolean
     search: boolean
     largeTextSize: number
     largeTextTypingTime: number
@@ -219,6 +220,9 @@ JSON Response:`),
         isNickname: Schema.boolean()
             .description('允许 bot 配置中的昵称引发回复')
             .default(true),
+        isNickNameWithContent: Schema.boolean()
+            .description('是否允许在对话内容里任意匹配 bot 配置中的昵称来触发对话')
+            .default(false),
         isForceMute: Schema.boolean()
             .description(
                 '是否启用强制禁言（当聊天涉及到关键词时则会禁言，关键词需要在预设文件里配置）'
@@ -331,6 +335,9 @@ JSON Response:`),
                 isNickname: Schema.boolean()
                     .description('允许 bot 配置中的昵称引发回复')
                     .default(true),
+                isNickNameWithContent: Schema.boolean()
+                    .description('是否允许在对话内容里任意匹配 bot 配置中的昵称来触发对话')
+                    .default(false),
                 isForceMute: Schema.boolean()
                     .description(
                         '是否启用强制禁言（当聊天涉及到关键词时则会禁言，关键词需要在预设文件里配置）'
