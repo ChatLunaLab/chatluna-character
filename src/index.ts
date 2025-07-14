@@ -1,10 +1,11 @@
 /* eslint-disable max-len */
-import { Context, Disposable, Schema } from 'koishi'
+import { Context, Disposable, h, Schema } from 'koishi'
 
 import { ChatLunaPlugin } from 'koishi-plugin-chatluna/services/chat'
 import { plugins } from './plugin'
 import { MessageCollector } from './service/message'
 import { GuildConfig } from './types'
+import { parseResponse } from './utils'
 
 export function apply(ctx: Context, config: Config) {
     const disposables: Disposable[] = []

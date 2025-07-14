@@ -10,6 +10,7 @@ import { getMessageContent } from 'koishi-plugin-chatluna/utils/string'
 import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
 import { EmptyEmbeddings } from 'koishi-plugin-chatluna/llm-core/model/in_memory'
 import { StructuredTool } from '@langchain/core/tools'
+import type {} from 'koishi-plugin-chatluna/services/chat'
 
 export function isEmoticonStatement(
     text: string,
@@ -75,8 +76,8 @@ export async function processElements(
     config?: Config
 ) {
     const result: Element[][] = []
-    const last = () => result[result.length - 1]
-    const canAppendAt = () => last()?.length === 2 && last()[1].type === 'at'
+    const last = () => result.at(-1)
+    const canAppendAt = () => last()?.at(-1)?.type === 'at'
 
     const process = async (els: Element[]) => {
         for (const el of els) {
@@ -97,7 +98,7 @@ export async function processElements(
                     canAppendAt() ? last().push(el) : result.push([el])
                 }
             } else if (['em', 'strong', 'del', 'p'].includes(el.type)) {
-                result.push(el.children || [el])
+                el.children ? await process(el.children) : result.push([el])
             } else if (el.type === 'at') {
                 last()
                     ? last().push(h.text(' '), el)
@@ -107,7 +108,7 @@ export async function processElements(
             } else if (el.type === 'message' && el.attrs.span) {
                 await process(el.children)
             } else {
-                result.push([el])
+                canAppendAt() ? last().push(el) : result.push([el])
             }
         }
     }
@@ -375,12 +376,14 @@ export async function parseResponse(
             useAt,
             config?.markdownRender ?? true
         )
+        console.log(currentElements)
         const resultElements = await processElements(
             currentElements,
             voiceRender,
             config
         )
 
+        console.log(resultElements)
         return {
             elements: resultElements,
             rawMessage: parsedMessage,

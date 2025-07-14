@@ -26,6 +26,7 @@ import { Preset } from '../preset'
 import { StickerService } from '../service/sticker'
 import { StructuredTool } from '@langchain/core/tools'
 import { getMessageContent } from 'koishi-plugin-chatluna/utils/string'
+import type {} from 'koishi-plugin-chatluna/services/chat'
 
 let logger: Logger
 
