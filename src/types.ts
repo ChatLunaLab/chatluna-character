@@ -1,5 +1,7 @@
-import { BaseMessage } from '@langchain/core/messages'
+import { AIMessageChunk, BaseMessage } from '@langchain/core/messages'
+import { Runnable, RunnableConfig } from '@langchain/core/runnables'
 import { ChatLunaService } from 'koishi-plugin-chatluna/services/chat'
+import { ChatLunaChatPromptFormat } from 'koishi-plugin-chatluna/llm-core/chain/prompt'
 
 export interface Message {
     content: string
@@ -62,12 +64,12 @@ export interface ActivityScore {
     timestamp: number
 }
 
-export interface SearchAction {
-    thought: string
-    action: 'url' | 'search' | 'skip'
-    content?: string[]
-}
-
+export type ChatLunaChain = Runnable<
+    ChatLunaChatPromptFormat,
+    AIMessageChunk,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    RunnableConfig<Record<string, any>>
+>
 export interface ChatLunaCharacterPromptTemplate {
     rawString: string
     format(

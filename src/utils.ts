@@ -1,16 +1,27 @@
 import { ChatLunaChatModel } from 'koishi-plugin-chatluna/llm-core/platform/model'
 import { Config } from '.'
-import { Message, SearchAction } from './types'
-import { BaseMessage } from '@langchain/core/messages'
+import { ChatLunaChain, Message } from './types'
+import {
+    AIMessageChunk,
+    BaseMessage,
+    SystemMessage,
+    HumanMessage
+} from '@langchain/core/messages'
 import { Context, Element, h, Logger, Session } from 'koishi'
 import { marked, Token } from 'marked'
 import he from 'he'
-import { PromptTemplate } from '@langchain/core/prompts'
 import { getMessageContent } from 'koishi-plugin-chatluna/utils/string'
 import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
 import { EmptyEmbeddings } from 'koishi-plugin-chatluna/llm-core/model/in_memory'
-import { StructuredTool } from '@langchain/core/tools'
 import type {} from 'koishi-plugin-chatluna/services/chat'
+import { PresetTemplate } from 'koishi-plugin-chatluna/llm-core/prompt'
+import { ChatLunaChatPrompt } from 'koishi-plugin-chatluna/llm-core/chain/prompt'
+import {
+    AgentExecutor,
+    createOpenAIAgent,
+    createReactAgent
+} from 'koishi-plugin-chatluna/llm-core/agent'
+import { RunnableLambda } from '@langchain/core/runnables'
 
 export function isEmoticonStatement(
     text: string,
@@ -376,14 +387,13 @@ export async function parseResponse(
             useAt,
             config?.markdownRender ?? true
         )
-        console.log(currentElements)
+
         const resultElements = await processElements(
             currentElements,
             voiceRender,
             config
         )
 
-        console.log(resultElements)
         return {
             elements: resultElements,
             rawMessage: parsedMessage,
@@ -562,126 +572,11 @@ function formatMessageString(message: Message) {
     return xmlMessage
 }
 
-/**
- * 预处理内容，移除可能的 markdown 代码块标记
- */
-export function preprocessContent(content: string): string {
-    // 移除 markdown 代码块标记 (```json 和 ```)
-    content = content.replace(
-        /```(?:json|javascript|js)?\s*([\s\S]*?)```/g,
-        '$1'
-    )
-
-    // 移除前后可能的空白字符
-    content = content.trim()
-
-    return content
-}
-
-/**
- * 尝试解析 JSON，失败时返回 null
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function tryParseJSON(content: string): any {
-    return JSON.parse(content)
-}
-
-/**
- * 尝试修复常见的 JSON 格式错误
- */
-export function attemptToFixJSON(content: string): string {
-    let fixedContent = content
-
-    // 修复缺少引号的键名
-    fixedContent = fixedContent.replace(
-        /(\{|\,)\s*([a-zA-Z0-9_]+)\s*\:/g,
-        '$1"$2":'
-    )
-
-    // 修复使用单引号而非双引号的情况
-    fixedContent = fixedContent.replace(/(\{|\,)\s*'([^']+)'\s*\:/g, '$1"$2":')
-    fixedContent = fixedContent.replace(/\:\s*'([^']+)'/g, ':"$1"')
-
-    // 修复缺少逗号的情况
-    fixedContent = fixedContent.replace(/"\s*\}\s*"/g, '","')
-    fixedContent = fixedContent.replace(/"\s*\{\s*"/g, '",{"')
-
-    // 修复多余的逗号
-    fixedContent = fixedContent.replace(/,\s*\}/g, '}')
-    fixedContent = fixedContent.replace(/,\s*\]/g, ']')
-
-    // 修复不完整的数组
-    if (fixedContent.includes('[') && !fixedContent.includes(']')) {
-        fixedContent += ']'
-    }
-
-    // 修复不完整的对象
-    if (fixedContent.includes('{') && !fixedContent.includes('}')) {
-        fixedContent += '}'
-    }
-
-    // 如果内容不是以 [ 开头但包含 [ 字符，尝试提取数组部分
-    if (!fixedContent.trim().startsWith('[') && fixedContent.includes('[')) {
-        const arrayMatch = fixedContent.match(/\[([\s\S]*)\]/)
-        if (arrayMatch && arrayMatch[0]) {
-            fixedContent = arrayMatch[0]
-        }
-    }
-
-    return fixedContent
-}
-
-export function parseSearchAction(action: string): SearchAction {
-    action = preprocessContent(action)
-
-    try {
-        return tryParseJSON(action) as SearchAction
-    } catch (e) {
-        action = attemptToFixJSON(action)
-
-        try {
-            return tryParseJSON(action) as SearchAction
-        } catch (e) {
-            logger?.error(`parse search action failed: ${e}`)
-        }
-    }
-
-    if (action.includes('[skip]')) {
-        return {
-            action: 'skip',
-            thought: 'skip the search'
-        }
-    }
-
-    return {
-        action: 'skip',
-        thought: 'skip the search'
-    }
-}
-
-export async function getSearchKeyword(
-    config: Config,
+export async function executeToolCalling(
     session: Session,
     messages: Message[],
-    model: ChatLunaChatModel
+    chain: ChatLunaChain
 ) {
-    if (
-        config.searchKeywordExtraModel != null &&
-        config.searchKeywordExtraModel.length > 0
-    ) {
-        const [platform, modelName] = parseRawModelName(
-            config.searchKeywordExtraModel
-        )
-        try {
-            model = await session.app.chatluna.createChatModel(
-                platform,
-                modelName
-            )
-        } catch (e) {
-            logger.error(e)
-        }
-    }
-
     const userNames: Record<string, string> = {
         [session.bot.selfId]: 'bot'
     }
@@ -717,128 +612,99 @@ export async function getSearchKeyword(
         return `${getUserName(message.id)}: ${content}`
     })
 
-    // logger.debug('formattedMessages: ', formattedMessages)
-
-    const promptTemplate = PromptTemplate.fromTemplate(config.searchPrompt)
-
-    const prompt = await promptTemplate.invoke({
-        chat_history: formattedMessages.join('\n'),
-        // xx: -> ""
-        question: formattedMessages[formattedMessages.length - 1],
-        time: formatTimestamp(new Date())
+    const aiMessage = await chain.invoke({
+        chat_history: [],
+        variables: {
+            chat_history: formattedMessages.join('\n'),
+            question: formattedMessages[formattedMessages.length - 1],
+            time: formatTimestamp(new Date())
+        },
+        input: new HumanMessage(formattedMessages[formattedMessages.length - 1])
     })
 
-    const modelResult = getMessageContent(
-        await model
-            .invoke(prompt, {
-                temperature: 0
-            })
-            .then((message) => message.content)
+    const modelResult = getMessageContent(aiMessage.content)
+
+    if (modelResult.trim().includes('[skip]')) {
+        return null
+    }
+
+    logger.debug('Tool Calling Model Result', modelResult)
+
+    return new AIMessageChunk(
+        `There are some context use for your reply reference:\n\n${modelResult}`
+    )
+}
+
+export async function createChatLunaChain(
+    ctx: Context,
+    model: string,
+    systemPrompt: string,
+    session: Session
+): Promise<ChatLunaChain> {
+    const currentPreset = async () =>
+        ({
+            triggerKeyword: [''],
+            rawText: systemPrompt,
+            messages: [new SystemMessage(systemPrompt)],
+            config: {}
+        }) satisfies PresetTemplate
+
+    const [platform, currentModelName] = parseRawModelName(model)
+    const llm = await ctx.chatluna.createChatModel(platform, currentModelName)
+
+    const chatPrompt = new ChatLunaChatPrompt({
+        preset: currentPreset,
+        tokenCounter: (text) => llm.getNumTokens(text),
+        sendTokenLimit:
+            llm.invocationParams().maxTokenLimit ??
+            llm.getModelMaxContextSize(),
+        variableService: ctx.chatluna.variable
+    })
+
+    const embeddings = await createEmbeddingsModel(ctx)
+    const tools = await Promise.all(
+        ctx.chatluna.platform
+            .getTools()
+            .map((tool) =>
+                ctx.chatluna.platform
+                    .getTool(tool)
+                    .createTool({ model: llm, embeddings }, session)
+            )
     )
 
-    const searchAction = parseSearchAction(modelResult)
+    const executor = AgentExecutor.fromAgentAndTools({
+        tags: ['react-agent'],
+        agent:
+            llm.modelInfo.functionCall === true
+                ? createOpenAIAgent({
+                      llm,
+                      tools,
+                      prompt: chatPrompt
+                  })
+                : await createReactAgent({
+                      llm,
+                      tools,
+                      prompt: chatPrompt
+                  }),
+        tools,
+        memory: undefined,
+        verbose: false
+    })
 
-    logger.debug('Search Action', modelResult)
-
-    return searchAction
-}
-
-export async function executeSearchAction(
-    action: SearchAction,
-    searchTool: StructuredTool,
-    webBrowserTool: StructuredTool
-) {
-    const searchResults: {
-        title: string
-        description: string
-        url: string
-    }[] = []
-
-    if (!Array.isArray(action.content)) {
-        logger?.error(
-            `search action content is not an array: ${JSON.stringify(action)}`
-        )
-        return
-    }
-
-    const searchByQuestion = async (question: string) => {
-        // Use the rephrased question for search
-        const rawSearchResults = await searchTool.invoke(question)
-
-        const parsedSearchResults =
-            (JSON.parse(rawSearchResults as string) as unknown as {
-                title: string
-                description: string
-                url: string
-            }[]) ?? []
-
-        searchResults.push(...parsedSearchResults)
-    }
-
-    const searchByUrl = async (url: string) => {
-        const text = (await webBrowserTool.invoke({
-            action: 'text',
-            url
-        })) as string
-
-        searchResults.push({
-            title: url,
-            description: text,
-            url
+    return RunnableLambda.from(async (input) => {
+        const output = await executor.invoke(input, {
+            callbacks: [
+                {
+                    handleAgentAction(action) {
+                        logger.debug('Agent Action:', action)
+                    }
+                }
+            ]
         })
-    }
-
-    if (action.action === 'url') {
-        await Promise.all(action.content.map((url) => searchByUrl(url)))
-    } else if (action.action === 'search') {
-        await Promise.all(
-            action.content.map((question) => searchByQuestion(question))
-        )
-    }
-
-    // format questions
-
-    const formattedSearchResults = searchResults.map((result) => {
-        // sort like json style
-        // title: xx, xx: xx like
-        let resultString = ''
-
-        for (const key in result) {
-            resultString += `${key}: ${result[key]}, `
-        }
-
-        resultString = resultString.slice(0, -2)
-
-        return resultString
+        return new AIMessageChunk({
+            content: output.output
+        })
     })
-
-    return formattedSearchResults.join('\n\n')
-}
-
-export function formatSearchResult(searchResult: string) {
-    const parsedSearchResult = JSON.parse(searchResult) as {
-        title: string
-        description: string
-        url: string
-    }[]
-
-    const formattedSearchResults = parsedSearchResult.map((result) => {
-        // sort like json style
-        // title: xx, xx: xx like
-        let resultString = ''
-
-        for (const key in result) {
-            if (key === 'title' || key === 'description') {
-                resultString += `${key}: ${result[key]}, `
-            }
-        }
-
-        resultString = resultString.slice(0, -2)
-
-        return resultString
-    })
-
-    return formattedSearchResults.join('\n')
 }
 
 export function createEmbeddingsModel(ctx: Context) {
@@ -895,7 +761,7 @@ export async function formatMessage(
 
 export async function formatCompletionMessages(
     messages: BaseMessage[],
-    imageMessages: BaseMessage[],
+    tempMessages: BaseMessage[],
     humanMessage: BaseMessage,
     config: Config,
     model: ChatLunaChatModel
@@ -915,7 +781,7 @@ export async function formatCompletionMessages(
 
     result.unshift(humanMessage)
 
-    for (const imageMessage of imageMessages) {
+    for (const imageMessage of tempMessages) {
         // Only calculate the text content
         const imageTokens = await model.getNumTokens(
             getMessageContent(imageMessage.content)

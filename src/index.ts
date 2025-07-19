@@ -1,11 +1,10 @@
 /* eslint-disable max-len */
-import { Context, Disposable, h, Schema } from 'koishi'
+import { Context, Disposable, Schema } from 'koishi'
 
 import { ChatLunaPlugin } from 'koishi-plugin-chatluna/services/chat'
 import { plugins } from './plugin'
 import { MessageCollector } from './service/message'
 import { GuildConfig } from './types'
-import { parseResponse } from './utils'
 
 export function apply(ctx: Context, config: Config) {
     const disposables: Disposable[] = []
@@ -95,13 +94,14 @@ export interface Config extends ChatLunaPlugin.Config {
     defaultPreset: string
     isNickname: boolean
     isNickNameWithContent: boolean
-    search: boolean
+
     largeTextSize: number
     largeTextTypingTime: number
     markdownRender: boolean
 
-    searchSummaryType: string
-    searchPrompt: string
+    toolCalling: boolean
+    toolCallingPrompt: string
+    toolCallingModel: string
     isForceMute: boolean
     sendStickerProbability: number
     image: boolean
@@ -167,53 +167,37 @@ export const Config = Schema.intersect([
             .min(1)
             .max(20)
             .description('最大的输入图片大小（MB）'),
-        search: Schema.boolean()
-            .description('是否启用联网搜索功能')
+        toolCalling: Schema.boolean()
+            .description('是否启用工具调用功能')
             .default(false),
-        searchSummaryType: Schema.union([
-            Schema.const('speed').description('性能模式'),
-            Schema.const('balanced').description('平衡模式'),
-            Schema.const('quality').description('质量模式')
-        ])
-            .description('搜索结果的摘要模式')
-            .default('speed'),
-        searchPrompt: Schema.string().description('搜索提示词').role('textarea')
-            .default(`Analyze the follow-up question and return a JSON response based on the given conversation context.
+        toolCallingPrompt: Schema.string()
+            .description('工具调用的提示词')
+            .role('textarea')
+            .default(`你是一个智能助手，能够根据用户的意图调用相应的工具来提供帮助。并输出合理的 markdown 文档。
 
-Rules:
-- CRITICAL: Use the exact same language as the input. Do not translate or change the language under any circumstances.
-- Make the question self-contained and clear
-- Optimize for search engine queries
-- Do not add any explanations or additional content
-- Base your response on a comprehensive analysis of the chat history
-- Return your response in the following JSON format ONLY:
-  {{
-    "thought": "your reasoning about what to do with this question. Use the text language as the input",
-    "action": "skip" | "search" | "url",
-    "content": ["string1", "string2", ...] (optional array of strings)
-  }}
+  指令说明
 
-Action types explanation:
-1. "skip" - Use when the question doesn't require an internet search (e.g., personal opinions, simple calculations, or information already provided in the chat history)
-   Example: {{ "thought": "This is asking for a personal opinion which doesn't require search", "action": "skip" }}
+  - 当用户表达明确意图时（如搜索资料、发起聊天、观看视频、拍照等），你应该分析其需求并调用相应的工具
+  - 如果用户只是进行普通对话或没有明确的工具使用意图，则直接回复，不要调用工具
+  - 优先根据上下文和用户的具体需求选择最合适的工具
 
-2. "search" - Use when you need to generate search-engine-friendly questions
-   Example: For "What's the weather like in Tokyo and New York?"
-   {{ "thought": "This requires checking current weather in two different cities", "action": "search", "content": ["Current latest weather in Tokyo", "Current latest weather in New York"] }}
+  上下文信息
 
-3. "url" - Use when the message contains one or more URLs that should be browsed
-   Example: For "Can you summarize the information from https://example.com/article and https://example.org/data?"
-   {{ "thought": "This requires browsing two specific URLs to gather information", "action": "url", "content": ["https://example.com/article", "https://example.org/data"] }}
+  当前时间：{time}
 
-IMPORTANT: Your JSON response MUST be in the same language as the follow up input. This is crucial for maintaining context and accuracy.
+  历史消息：
+  {chat_history}
 
-Chat History:
-{chat_history}
-Follow-up Input: {question}
-JSON Response:`),
-        searchKeywordExtraModel: Schema.dynamic('model')
+  用户当前问题:
+  {question}
+
+
+  请根据用户问题的具体内容和意图，决定是否需要调用工具以及调用哪个工具。
+  如果不需要调用工具，请直接回复 [skip]。否则在调用了工具后，请输出基于上下文和工具调用结果的 markdown 文档回复。
+  `),
+        toolCallingModel: Schema.dynamic('model')
             .default('')
-            .description('搜索时使用的模型')
+            .description('工具调用使用的模型')
     }).description('模型配置'),
 
     Schema.object({
@@ -221,7 +205,9 @@ JSON Response:`),
             .description('允许 bot 配置中的昵称引发回复')
             .default(true),
         isNickNameWithContent: Schema.boolean()
-            .description('是否允许在对话内容里任意匹配 bot 配置中的昵称来触发对话')
+            .description(
+                '是否允许在对话内容里任意匹配 bot 配置中的昵称来触发对话'
+            )
             .default(false),
         isForceMute: Schema.boolean()
             .description(
@@ -336,7 +322,9 @@ JSON Response:`),
                     .description('允许 bot 配置中的昵称引发回复')
                     .default(true),
                 isNickNameWithContent: Schema.boolean()
-                    .description('是否允许在对话内容里任意匹配 bot 配置中的昵称来触发对话')
+                    .description(
+                        '是否允许在对话内容里任意匹配 bot 配置中的昵称来触发对话'
+                    )
                     .default(false),
                 isForceMute: Schema.boolean()
                     .description(
@@ -358,8 +346,8 @@ JSON Response:`),
                     .description(
                         '消息活跃度分数的阈值，当活跃度超过这个阈值则会发送消息'
                     ),
-                search: Schema.boolean()
-                    .description('是否启用联网搜索功能')
+                toolCalling: Schema.boolean()
+                    .description('是否启用工具调用功能')
                     .default(false),
                 image: Schema.boolean()
                     .description(

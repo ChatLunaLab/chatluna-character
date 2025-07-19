@@ -10,22 +10,20 @@ import { Context, h, Logger, Random, Session, sleep } from 'koishi'
 import { ChatLunaChatModel } from 'koishi-plugin-chatluna/llm-core/platform/model'
 import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
 import { Config } from '..'
-import { GroupTemp, Message, PresetTemplate } from '../types'
+import { ChatLunaChain, GroupTemp, Message, PresetTemplate } from '../types'
 import {
-    createEmbeddingsModel,
-    executeSearchAction,
+    createChatLunaChain,
+    executeToolCalling,
     formatCompletionMessages,
     formatMessage,
     formatTimestamp,
-    getSearchKeyword,
     isEmoticonStatement,
     parseResponse,
     setLogger
 } from '../utils'
 import { Preset } from '../preset'
 import { StickerService } from '../service/sticker'
-import { StructuredTool } from '@langchain/core/tools'
-import { getMessageContent } from 'koishi-plugin-chatluna/utils/string'
+
 import type {} from 'koishi-plugin-chatluna/services/chat'
 
 let logger: Logger
@@ -93,48 +91,6 @@ async function getModelForGuild(
     return await (modelPool[guildId] ?? Promise.resolve(globalModel))
 }
 
-async function getTool(
-    ctx: Context,
-    config: Config,
-    guildId: string,
-    model: ChatLunaChatModel,
-    name: string,
-    toolsPool: Record<string, Record<string, StructuredTool>>
-): Promise<StructuredTool | undefined> {
-    let isSearchEnabled = config.search
-
-    if (config.configs[guildId]) {
-        isSearchEnabled = config.configs[guildId]['search'] || isSearchEnabled
-    }
-
-    if (!isSearchEnabled) {
-        return undefined
-    }
-
-    if (toolsPool[guildId]?.[name]) {
-        return toolsPool[guildId][name]
-    }
-
-    toolsPool[guildId] = toolsPool[guildId] ?? {}
-
-    const embeddings = await createEmbeddingsModel(ctx)
-
-    const chatlunaTool = ctx.chatluna.platform.getTool(name)
-
-    if (!chatlunaTool) return undefined
-
-    const tool = await chatlunaTool.createTool({
-        model,
-        embeddings,
-        summaryType: config.searchSummaryType
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any)
-
-    toolsPool[guildId][name] = tool
-
-    return tool
-}
-
 async function getConfigAndPresetForGuild(
     guildId: string,
     config: Config,
@@ -174,8 +130,7 @@ async function prepareMessages(
     currentPreset: PresetTemplate,
     temp: GroupTemp,
     stickerService: StickerService,
-    searchTool?: StructuredTool,
-    webBrowserTool?: StructuredTool
+    chain?: ChatLunaChain
 ): Promise<BaseMessage[]> {
     const [recentMessage, lastMessage] = await formatMessage(
         messages,
@@ -215,54 +170,7 @@ async function prepareMessages(
         )
     )
 
-    // TODO: replace search to pre agent
-    // replace {?search xxxx {search} xxx} to xxxx {search} xxx
-    // {?search 如果你需要用到这些知识，请使用这些知识 {search} 记住！} -> 如果你需要用到这些知识，请使用这些知识 {xxxx} 记住！
-    let baseHumanContent = getMessageContent(humanMessage.content)
-
-    const searchPattern = /{\?search\s*(.+){search}\s*(.+)}/gms
-    const searchMatch = searchPattern.exec(baseHumanContent)
-
-    const imageMessages: BaseMessage[] = []
-
-    if (searchMatch && searchMatch.length > 0) {
-        let searchResult = ''
-        if (searchTool) {
-            const searchAction = await getSearchKeyword(
-                config,
-                session,
-                messages,
-                model
-            )
-
-            if (searchAction.action !== 'skip') {
-                searchResult = await executeSearchAction(
-                    searchAction,
-                    searchTool,
-                    webBrowserTool
-                )
-
-                logger.debug('searchResult: ' + searchResult)
-            }
-        }
-
-        const matchedContent = searchMatch[0] // 获取完整匹配
-        const leftContent = searchMatch[1] // 获取第一个捕获组
-        const rightContent = searchMatch[2] // 获取第二个捕获组
-
-        if (searchResult.length > 0) {
-            baseHumanContent = baseHumanContent.replace(
-                matchedContent,
-                `{${leftContent} ${searchResult} ${rightContent}}`
-            )
-        } else {
-            baseHumanContent = baseHumanContent.replace(matchedContent, '')
-        }
-
-        humanMessage.content = baseHumanContent
-
-        // logger.debug('humanMessage: ' + humanMessage.content)
-    }
+    const tempMessages: BaseMessage[] = []
 
     if (config.image) {
         for (const message of messages) {
@@ -274,9 +182,20 @@ async function prepareMessages(
                     imageMessage.additional_kwargs = {
                         images: [image.url]
                     }
-                    imageMessages.push(imageMessage)
+                    tempMessages.push(imageMessage)
                 }
             }
+        }
+    }
+
+    if (chain) {
+        const toolCallingResult = await executeToolCalling(
+            session,
+            messages,
+            chain
+        )
+        if (toolCallingResult) {
+            tempMessages.push(toolCallingResult)
         }
     }
 
@@ -284,7 +203,7 @@ async function prepareMessages(
         [new SystemMessage(formattedSystemPrompt)].concat(
             temp.completionMessages
         ),
-        imageMessages,
+        tempMessages,
         humanMessage,
         config,
         model
@@ -518,7 +437,7 @@ export async function apply(ctx: Context, config: Config) {
     let globalPreset = preset.getPresetForCache(config.defaultPreset)
     let presetPool: Record<string, PresetTemplate> = {}
 
-    const toolsPool: Record<string, Record<string, StructuredTool>> = {}
+    const chainPool: Record<string, ChatLunaChain> = {}
 
     ctx.on('chatluna_character/preset_updated', () => {
         globalPreset = preset.getPresetForCache(config.defaultPreset)
@@ -529,24 +448,6 @@ export async function apply(ctx: Context, config: Config) {
         const guildId = session.event.guild?.id ?? session.guildId
         const model = await getModelForGuild(guildId, globalModel, modelPool)
 
-        const searchTool = await getTool(
-            ctx,
-            config,
-            guildId,
-            model,
-            'web-search',
-            toolsPool
-        )
-
-        const webBrowserTool = await getTool(
-            ctx,
-            config,
-            guildId,
-            model,
-            'web-browser',
-            toolsPool
-        )
-
         const { copyOfConfig, currentPreset } =
             await getConfigAndPresetForGuild(
                 guildId,
@@ -555,6 +456,17 @@ export async function apply(ctx: Context, config: Config) {
                 presetPool,
                 preset
             )
+
+        if (copyOfConfig.toolCalling) {
+            chainPool[guildId] =
+                chainPool[guildId] ??
+                (await createChatLunaChain(
+                    ctx,
+                    copyOfConfig.toolCallingModel ?? copyOfConfig.model,
+                    copyOfConfig.toolCallingPrompt,
+                    session
+                ))
+        }
 
         const temp = await service.getTemp(session)
         const completionMessages = await prepareMessages(
@@ -565,8 +477,7 @@ export async function apply(ctx: Context, config: Config) {
             currentPreset,
             temp,
             stickerService,
-            searchTool,
-            webBrowserTool
+            chainPool[guildId]
         )
 
         logger.debug(
