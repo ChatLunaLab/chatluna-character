@@ -111,9 +111,7 @@ export async function processElements(
             } else if (['em', 'strong', 'del', 'p'].includes(el.type)) {
                 el.children ? await process(el.children) : result.push([el])
             } else if (el.type === 'at') {
-                last()
-                    ? last().push(h.text(' '), el)
-                    : result.push([h.text(' '), el])
+                last() ? last().push(el) : result.push([el])
             } else if (el.type === 'img' && !el.attrs.sticker) {
                 last() ? last().push(el) : result.push([el])
             } else if (el.type === 'message' && el.attrs.span) {
@@ -170,7 +168,11 @@ export function processTextMatches(
         switch (token.type) {
             case 'at':
                 if (useAt) {
-                    currentElements.push(h.at(token.content))
+                    currentElements.push(
+                        h.text(' '),
+                        h.at(token.content),
+                        h.text(' ')
+                    )
                 }
                 break
             case 'emo':
@@ -577,23 +579,6 @@ export async function executeToolCalling(
     messages: Message[],
     chain: ChatLunaChain
 ) {
-    const userNames: Record<string, string> = {
-        [session.bot.selfId]: 'bot'
-    }
-
-    let currentUser = 0
-
-    function getUserName(id: string): string {
-        const name = userNames[id]
-
-        if (name) {
-            return name
-        }
-
-        userNames[id] = `user${currentUser++}`
-        return userNames[id]
-    }
-
     const formattedMessages = messages.map((message) => {
         let content = message.content
 
@@ -601,15 +586,14 @@ export async function executeToolCalling(
         const atMatch = /<at\s+name='([^']*)'>.*?<\/at>/g
 
         content = content.replace(atMatch, (match, id) => {
-            const name = getUserName(id)
-            return ` @${name} `
+            return ` @${id} `
         })
 
         if (message.id === session.bot.userId) {
             return `bot: ${content}`
         }
 
-        return `${getUserName(message.id)}: ${content}`
+        return `${message.name}: ${content}`
     })
 
     const aiMessage = await chain.invoke({
