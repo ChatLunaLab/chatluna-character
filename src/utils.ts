@@ -111,7 +111,9 @@ export async function processElements(
             } else if (['em', 'strong', 'del', 'p'].includes(el.type)) {
                 el.children ? await process(el.children) : result.push([el])
             } else if (el.type === 'at') {
-                last() ? last().push(el) : result.push([el])
+                last()
+                    ? last().push(h.text(' '), el, h.text(' '))
+                    : result.push([h.text(' '), el, h.text(' ')])
             } else if (el.type === 'img' && !el.attrs.sticker) {
                 last() ? last().push(el) : result.push([el])
             } else if (el.type === 'message' && el.attrs.span) {
@@ -168,11 +170,7 @@ export function processTextMatches(
         switch (token.type) {
             case 'at':
                 if (useAt) {
-                    currentElements.push(
-                        h.text(' '),
-                        h.at(token.content),
-                        h.text(' ')
-                    )
+                    currentElements.push(h.at(token.content))
                 }
                 break
             case 'emo':
