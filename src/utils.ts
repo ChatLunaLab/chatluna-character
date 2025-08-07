@@ -613,7 +613,7 @@ export async function executeToolCalling(
     logger.debug('Tool Calling Model Result', modelResult)
 
     return new AIMessageChunk(
-        `There are some context use for your reply reference:\n\n${modelResult}`
+        `There are some context use for your reply reference: \n\n${modelResult}`
     )
 }
 
