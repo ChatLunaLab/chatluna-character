@@ -814,7 +814,7 @@ export function parseXmlToObject(xml: string) {
         }
     }
 
-    const singleMatch = xml.match(/<message(?:\s+(.*?))?>(.+?)<\/message>/s)
+    const singleMatch = xml.match(/<message(?:\s+(.*?))?>(.*?)<\/message>/s)
     if (!singleMatch) {
         throw new Error('Failed to parse response: ' + xml)
     }
