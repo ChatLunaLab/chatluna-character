@@ -13,7 +13,6 @@ import { Config } from '..'
 import { ChatLunaChain, GroupTemp, Message, PresetTemplate } from '../types'
 import {
     createChatLunaChain,
-    executeToolCalling,
     formatCompletionMessages,
     formatMessage,
     formatTimestamp,
@@ -129,7 +128,6 @@ async function prepareMessages(
     model: ChatLunaChatModel,
     currentPreset: PresetTemplate,
     temp: GroupTemp,
-    stickerService: StickerService,
     chain?: ChatLunaChain
 ): Promise<BaseMessage[]> {
     const [recentMessage, lastMessage] = await formatMessage(
@@ -149,8 +147,10 @@ async function prepareMessages(
         session.app.chatluna.variable
     )
 
-    logger.debug('messages_new: ' + JSON.stringify(recentMessage))
-    logger.debug('messages_last: ' + JSON.stringify(lastMessage))
+    if (!chain) {
+        logger.debug('messages_new: ' + JSON.stringify(recentMessage))
+        logger.debug('messages_last: ' + JSON.stringify(lastMessage))
+    }
 
     const humanMessage = new HumanMessage(
         await currentPreset.input.format(
@@ -188,17 +188,6 @@ async function prepareMessages(
         }
     }
 
-    if (chain) {
-        const toolCallingResult = await executeToolCalling(
-            session,
-            messages,
-            chain
-        )
-        if (toolCallingResult) {
-            tempMessages.push(toolCallingResult)
-        }
-    }
-
     return formatCompletionMessages(
         [new SystemMessage(formattedSystemPrompt)].concat(
             temp.completionMessages
@@ -215,11 +204,21 @@ async function getModelResponse(
     session: Session,
     model: ChatLunaChatModel,
     completionMessages: BaseMessage[],
-    config: Config
+    config: Config,
+    chain?: ChatLunaChain
 ): Promise<ModelResponse | null> {
     for (let retryCount = 0; retryCount < 2; retryCount++) {
         try {
-            const responseMessage = await model.invoke(completionMessages)
+            const lastMessage =
+                completionMessages[completionMessages.length - 1]
+            const historyMessages = completionMessages.slice(0, -1)
+
+            const responseMessage = chain
+                ? await chain.invoke({
+                      chat_history: historyMessages,
+                      input: lastMessage
+                  })
+                : await model.invoke(completionMessages)
             logger.debug('model response: ' + responseMessage.content)
             const parsedResponse = await parseResponse(
                 responseMessage.content as string,
@@ -460,12 +459,7 @@ export async function apply(ctx: Context, config: Config) {
         if (copyOfConfig.toolCalling) {
             chainPool[guildId] =
                 chainPool[guildId] ??
-                (await createChatLunaChain(
-                    ctx,
-                    copyOfConfig.toolCallingModel ?? copyOfConfig.model,
-                    copyOfConfig.toolCallingPrompt,
-                    session
-                ))
+                (await createChatLunaChain(ctx, model, session))
         }
 
         const temp = await service.getTemp(session)
@@ -476,21 +470,23 @@ export async function apply(ctx: Context, config: Config) {
             model,
             currentPreset,
             temp,
-            stickerService,
             chainPool[guildId]
         )
 
-        logger.debug(
-            'completion message: ' +
-                JSON.stringify(completionMessages.map((it) => it.content))
-        )
+        if (!chainPool[guildId]) {
+            logger.debug(
+                'completion message: ' +
+                    JSON.stringify(completionMessages.map((it) => it.content))
+            )
+        }
 
         const response = await getModelResponse(
             ctx,
             session,
             model,
             completionMessages,
-            copyOfConfig
+            copyOfConfig,
+            chainPool[guildId]
         )
         if (!response) {
             // clear the completion messages

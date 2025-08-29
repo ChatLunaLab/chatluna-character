@@ -1,12 +1,7 @@
 import { ChatLunaChatModel } from 'koishi-plugin-chatluna/llm-core/platform/model'
 import { Config } from '.'
 import { ChatLunaChain, Message } from './types'
-import {
-    AIMessageChunk,
-    BaseMessage,
-    SystemMessage,
-    HumanMessage
-} from '@langchain/core/messages'
+import { AIMessageChunk, BaseMessage } from '@langchain/core/messages'
 import { Context, Element, h, Logger, Session } from 'koishi'
 import { marked, Token } from 'marked'
 import he from 'he'
@@ -22,6 +17,7 @@ import {
     createReactAgent
 } from 'koishi-plugin-chatluna/llm-core/agent'
 import { RunnableLambda } from '@langchain/core/runnables'
+import { console } from 'inspector'
 
 export function isEmoticonStatement(
     text: string,
@@ -572,67 +568,18 @@ function formatMessageString(message: Message) {
     return xmlMessage
 }
 
-export async function executeToolCalling(
-    session: Session,
-    messages: Message[],
-    chain: ChatLunaChain
-) {
-    const formattedMessages = messages.map((message) => {
-        let content = message.content
-
-        // match <at name='xx'>xxx</at>
-        const atMatch = /<at\s+name='([^']*)'>.*?<\/at>/g
-
-        content = content.replace(atMatch, (match, id) => {
-            return ` @${id} `
-        })
-
-        if (message.id === session.bot.userId) {
-            return `bot: ${content}`
-        }
-
-        return `${message.name}: ${content}`
-    })
-
-    const aiMessage = await chain.invoke({
-        chat_history: [],
-        variables: {
-            chat_history: formattedMessages.join('\n'),
-            question: formattedMessages[formattedMessages.length - 1],
-            time: formatTimestamp(new Date())
-        },
-        input: new HumanMessage(formattedMessages[formattedMessages.length - 1])
-    })
-
-    const modelResult = getMessageContent(aiMessage.content)
-
-    if (modelResult.trim().includes('[skip]')) {
-        return null
-    }
-
-    logger.debug('Tool Calling Model Result', modelResult)
-
-    return new AIMessageChunk(
-        `There are some context use for your reply reference: \n\n${modelResult}`
-    )
-}
-
 export async function createChatLunaChain(
     ctx: Context,
-    model: string,
-    systemPrompt: string,
+    llm: ChatLunaChatModel,
     session: Session
 ): Promise<ChatLunaChain> {
     const currentPreset = async () =>
         ({
             triggerKeyword: [''],
-            rawText: systemPrompt,
-            messages: [new SystemMessage(systemPrompt)],
+            rawText: '',
+            messages: [],
             config: {}
         }) satisfies PresetTemplate
-
-    const [platform, currentModelName] = parseRawModelName(model)
-    const llm = await ctx.chatluna.createChatModel(platform, currentModelName)
 
     const chatPrompt = new ChatLunaChatPrompt({
         preset: currentPreset,
@@ -653,6 +600,8 @@ export async function createChatLunaChain(
                     .createTool({ model: llm, embeddings }, session)
             )
     )
+
+    console.log(tools)
 
     const executor = AgentExecutor.fromAgentAndTools({
         tags: ['react-agent'],

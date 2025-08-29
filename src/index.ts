@@ -100,8 +100,6 @@ export interface Config extends ChatLunaPlugin.Config {
     markdownRender: boolean
 
     toolCalling: boolean
-    toolCallingPrompt: string
-    toolCallingModel: string
     isForceMute: boolean
     sendStickerProbability: number
     image: boolean
@@ -169,35 +167,7 @@ export const Config = Schema.intersect([
             .description('最大的输入图片大小（MB）'),
         toolCalling: Schema.boolean()
             .description('是否启用工具调用功能')
-            .default(false),
-        toolCallingPrompt: Schema.string()
-            .description('工具调用的提示词')
-            .role('textarea')
-            .default(`你是一个智能助手，能够根据用户的意图调用相应的工具来提供帮助。并输出合理的 markdown 文档。
-
-  指令说明
-
-  - 当用户表达明确意图时（如搜索资料、发起聊天、观看视频、拍照等），你应该分析其需求并调用相应的工具
-  - 如果用户只是进行普通对话或没有明确的工具使用意图，则直接回复，不要调用工具
-  - 优先根据上下文和用户的具体需求选择最合适的工具
-
-  上下文信息
-
-  当前时间：{time}
-
-  历史消息：
-  {chat_history}
-
-  用户当前问题:
-  {question}
-
-
-  请根据用户问题的具体内容和意图，决定是否需要调用工具以及调用哪个工具。
-  如果不需要调用工具，请直接回复 [skip]。否则在调用了工具后，请输出基于上下文和工具调用结果的 markdown 文档回复。
-  `),
-        toolCallingModel: Schema.dynamic('model')
-            .default('')
-            .description('工具调用使用的模型')
+            .default(false)
     }).description('模型配置'),
 
     Schema.object({
