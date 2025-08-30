@@ -17,7 +17,7 @@ import {
     createReactAgent
 } from 'koishi-plugin-chatluna/llm-core/agent'
 import { RunnableLambda } from '@langchain/core/runnables'
-import { console } from 'inspector'
+import { ModelCapabilities } from 'koishi-plugin-chatluna/llm-core/platform/types'
 
 export function isEmoticonStatement(
     text: string,
@@ -601,12 +601,11 @@ export async function createChatLunaChain(
             )
     )
 
-    console.log(tools)
-
     const executor = AgentExecutor.fromAgentAndTools({
         tags: ['react-agent'],
         agent:
-            llm.modelInfo.functionCall === true
+            llm.modelInfo.capabilities.includes(ModelCapabilities.ToolCall) ===
+            true
                 ? createOpenAIAgent({
                       llm,
                       tools,
