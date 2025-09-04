@@ -377,30 +377,7 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
         return ''
     }
 
-    const buffer = filteredBuffer.join('')
-
-    if (buffer.includes('<message') && buffer.includes('</message>')) {
-        // xml 转义
-        return buffer
-            .replaceAll('<', '&lt;')
-            .replaceAll('>', '&gt;')
-            .replaceAll('"', '&quot;')
-            .replaceAll("'", '&apos;')
-            .replaceAll('&', '&amp;')
-            .replaceAll('\n', '&#10;')
-            .replaceAll('id', '')
-            .replaceAll('name', '')
-            .replaceAll('timestamp', '&amp;')
-            .replaceAll('>', '&gt;')
-            .replaceAll('=', '&amp;')
-            .replaceAll('\b', '')
-            .replaceAll('\r', '')
-            .replaceAll('\t', '    ')
-            .replaceAll('\v', '')
-            .replaceAll('\f', '')
-    }
-
-    return buffer
+    return filteredBuffer.join('')
 }
 
 // 返回 base64 的图片编码
