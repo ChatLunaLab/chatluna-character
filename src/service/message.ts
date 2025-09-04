@@ -379,16 +379,21 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
 
     const buffer = filteredBuffer.join('')
 
-    if (buffer.includes('<message')) {
+    if (buffer.includes('<message') && buffer.includes('</message>')) {
         // xml 转义
         return buffer
-            .replaceAll('<', '&amp;')
             .replaceAll('<', '&lt;')
             .replaceAll('>', '&gt;')
             .replaceAll('"', '&quot;')
             .replaceAll("'", '&apos;')
             .replaceAll('&', '&amp;')
-            .replaceAll('\n', '<br/>')
+            .replaceAll('\n', '&#10;')
+            .replaceAll('id', '')
+            .replaceAll('name', '')
+            .replaceAll('timestamp', '&amp;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('=', '&amp;')
+            .replaceAll('\b', '')
             .replaceAll('\r', '')
             .replaceAll('\t', '    ')
             .replaceAll('\v', '')
