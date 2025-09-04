@@ -84,7 +84,7 @@ export async function processElements(
 ) {
     const result: Element[][] = []
     const last = () => result.at(-1)
-    const canAppendAt = () => last()?.at(-1)?.type === 'at'
+    const canAppendAt = () => last()?.at(-2)?.type === 'at'
 
     const process = async (els: Element[]) => {
         for (const el of els) {
