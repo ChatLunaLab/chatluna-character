@@ -22,7 +22,6 @@ import {
 } from '../utils'
 import { Preset } from '../preset'
 import { StickerService } from '../service/sticker'
-
 import type {} from 'koishi-plugin-chatluna/services/chat'
 
 let logger: Logger
@@ -175,15 +174,24 @@ async function prepareMessages(
     if (config.image) {
         for (const message of messages) {
             if (message.images && message.images.length > 0) {
-                for (const image of message.images) {
+                /*    for (const image of message.images) {
                     const imageMessage = new HumanMessage(
                         `[image:${image.hash}]`
                     )
                     imageMessage.additional_kwargs = {
                         images: [image.url]
                     }
-                    tempMessages.push(imageMessage)
-                }
+
+                } */
+
+                const imageMessage = new HumanMessage({
+                    content: message.images.flatMap((image) => [
+                        { type: 'text', text: image.formatted },
+                        { type: 'image_url', image_url: image.url }
+                    ])
+                })
+
+                tempMessages.push(imageMessage)
             }
         }
     }

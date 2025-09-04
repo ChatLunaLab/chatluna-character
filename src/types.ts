@@ -12,6 +12,7 @@ export interface Message {
     images?: {
         url: string
         hash: string
+        formatted: string
     }[]
 }
 

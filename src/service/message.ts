@@ -6,6 +6,7 @@ import { Config } from '..'
 import { Preset } from '../preset'
 import { GroupTemp, Message } from '../types'
 import { StickerService } from './sticker'
+import { isMessageContentImageUrl } from 'koishi-plugin-chatluna/utils/string'
 
 export class MessageCollector extends Service {
     private _messages: Record<string, Message[]> = {}
@@ -201,7 +202,7 @@ export class MessageCollector extends Service {
         const config = this._getGroupConfig(groupId)
 
         const images = config.image
-            ? await getImages(this.ctx, session)
+            ? await getImages(this.ctx, config.model, session)
             : undefined
 
         const content = mapElementToString(session, session.content, elements)
@@ -251,7 +252,7 @@ export class MessageCollector extends Service {
             )
         })
 
-        this._processImages(groupArray, config)
+        await this._processImages(groupArray, config)
 
         this._messages[groupId] = groupArray
 
@@ -271,7 +272,7 @@ export class MessageCollector extends Service {
         }
     }
 
-    private _processImages(groupArray: Message[], config: Config) {
+    private async _processImages(groupArray: Message[], config: Config) {
         if (!config.image) return
 
         const maxCount = config.imageInputMaxCount || 3
@@ -288,7 +289,7 @@ export class MessageCollector extends Service {
             const validImages: Awaited<ReturnType<typeof getImages>> = []
 
             for (const image of message.images) {
-                const imageSize = this._getImageSize(image.url)
+                const imageSize = await this._getImageSize(image.url)
 
                 if (
                     currentCount < maxCount &&
@@ -319,7 +320,13 @@ export class MessageCollector extends Service {
         }
     }
 
-    private _getImageSize(base64Image: string): number {
+    private async _getImageSize(base64Image: string): Promise<number> {
+        if (!base64Image.startsWith('data:')) {
+            const resp = await this.ctx.http.get(base64Image, {
+                responseType: 'arraybuffer'
+            })
+            return resp.byteLength
+        }
         try {
             const base64Data = base64Image.replace(
                 /^data:image\/[a-z]+;base64,/,
@@ -354,9 +361,15 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
             filteredBuffer.push(`<at name='${name}'>${element.attrs.id}</at>`)
         } else if (element.type === 'img') {
             const imageHash = element.attrs.imageHash as string | undefined
-            filteredBuffer.push(
-                `[image` + (imageHash ? `:${imageHash}` : '') + ']'
-            )
+            const imageUrl = element.attrs.imageUrl as string | undefined
+
+            if (imageUrl) {
+                filteredBuffer.push(`<sticker>${imageUrl}</sticker>`)
+            } else {
+                filteredBuffer.push(
+                    `[image` + (imageHash ? `:${imageHash}` : '') + `]`
+                )
+            }
         }
     }
 
@@ -368,24 +381,38 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
 }
 
 // 返回 base64 的图片编码
-async function getImages(ctx: Context, session: Session) {
+async function getImages(ctx: Context, model: string, session: Session) {
     const mergedMessage = await ctx.chatluna.messageTransformer.transform(
         session,
-        session.elements
+        session.elements,
+        model
     )
 
-    const images = mergedMessage.additional_kwargs['images'] as string[]
+    if (typeof mergedMessage.content === 'string') {
+        return undefined
+    }
+
+    const images = mergedMessage.content.filter(isMessageContentImageUrl)
 
     if (!images || images.length < 1) {
         return undefined
     }
 
-    const imageHashs = mergedMessage.additional_kwargs['imageHashs'] as string[]
+    return images.map((image) => {
+        const url =
+            typeof image.image_url === 'string'
+                ? image.image_url
+                : image.image_url.url
 
-    return images.map((image, index) => ({
-        url: image,
-        hash: imageHashs[index]
-    }))
+        const hash =
+            typeof image.image_url !== 'string'
+                ? (image.image_url['hash'] ?? url)
+                : image.image_url
+
+        const formatted = url ? `<sticker>${url}</sticker>` : `[image:${hash}]`
+
+        return { url, hash, formatted }
+    })
 }
 
 type MessageCollectorFilter = (session: Session, message: Message) => boolean
