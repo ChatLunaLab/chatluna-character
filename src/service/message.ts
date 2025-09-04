@@ -379,7 +379,7 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
 
     const buffer = filteredBuffer.join('')
 
-    if (buffer.includes('<message>')) {
+    if (buffer.includes('<message')) {
         // xml 转义
         return buffer
             .replaceAll('<', '&amp;')
