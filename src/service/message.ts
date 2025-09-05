@@ -370,6 +370,10 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
                     `[image` + (imageHash ? `:${imageHash}` : '') + `]`
                 )
             }
+        } else if (element.type === 'face') {
+            filteredBuffer.push(
+                `[face:${element.attrs.id}:${element.attrs.name}]`
+            )
         }
     }
 
