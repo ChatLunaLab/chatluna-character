@@ -595,9 +595,7 @@ export async function createChatLunaChain(
         ctx.chatluna.platform
             .getTools()
             .map((tool) =>
-                ctx.chatluna.platform
-                    .getTool(tool)
-                    .createTool({ model: llm, embeddings }, session)
+                ctx.chatluna.platform.getTool(tool).createTool({ embeddings })
             )
     )
 
