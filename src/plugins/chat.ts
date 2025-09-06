@@ -226,11 +226,22 @@ async function getModelResponse(
                 chain != null ? historyMessages.shift() : undefined
 
             const responseMessage = chain
-                ? await chain.invoke({
-                      instructions: getMessageContent(systemMessage.content),
-                      chat_history: historyMessages,
-                      input: lastMessage
-                  })
+                ? await chain.invoke(
+                      {
+                          instructions: getMessageContent(
+                              systemMessage.content
+                          ),
+                          chat_history: historyMessages,
+                          input: lastMessage
+                      },
+                      {
+                          metadata: {
+                              session,
+                              model,
+                              userId: session.userId
+                          }
+                      }
+                  )
                 : await model.invoke(completionMessages)
             logger.debug('model response: ' + responseMessage.content)
             const parsedResponse = await parseResponse(
