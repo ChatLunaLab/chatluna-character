@@ -41,7 +41,7 @@
   },
   "homepage": "https://github.com/ChatLunaLab/chatluna-character#readme",
   "dependencies": {
-    "@langchain/core": "^0.3.18",
+    "@langchain/core": "0.3.62",
     "he": "^1.2.0",
     "js-yaml": "^4.1.0",
     "marked": "^15.0.1"
@@ -84,16 +84,16 @@
     "lint-fix": "yarn eslint src --ext=ts --fix"
   },
   "resolutions": {
-    "@langchain/core": "0.3.18",
+    "@langchain/core": "0.3.62",
     "js-tiktoken": "npm:@dingyi222666/js-tiktoken@^1.0.15"
   },
   "overrides": {
-    "@langchain/core": "0.3.18",
+    "@langchain/core": "0.3.62",
     "js-tiktoken": "npm:@dingyi222666/js-tiktoken@^1.0.15"
   },
   "pnpm": {
     "overrides": {
-      "@langchain/core": "0.3.18",
+      "@langchain/core": "0.3.62",
       "js-tiktoken": "npm:@dingyi222666/js-tiktoken@^1.0.15"
     }
   },
