@@ -604,8 +604,9 @@ export async function createChatLunaChain(
     const executor = AgentExecutor.fromAgentAndTools({
         tags: ['react-agent'],
         agent:
-            llm.modelInfo.capabilities.includes(ModelCapabilities.ToolCall) ===
-            true
+            llm.modelInfo?.capabilities?.includes(
+                ModelCapabilities.ToolCall
+            ) === true
                 ? createOpenAIAgent({
                       llm,
                       tools,

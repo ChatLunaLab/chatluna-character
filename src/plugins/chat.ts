@@ -23,6 +23,7 @@ import {
 import { Preset } from '../preset'
 import { StickerService } from '../service/sticker'
 import type {} from 'koishi-plugin-chatluna/services/chat'
+import { getMessageContent } from 'koishi-plugin-chatluna/utils/string'
 
 let logger: Logger
 
@@ -221,8 +222,12 @@ async function getModelResponse(
                 completionMessages[completionMessages.length - 1]
             const historyMessages = completionMessages.slice(0, -1)
 
+            const systemMessage =
+                chain != null ? historyMessages.shift() : undefined
+
             const responseMessage = chain
                 ? await chain.invoke({
+                      instructions: getMessageContent(systemMessage.content),
                       chat_history: historyMessages,
                       input: lastMessage
                   })
