@@ -617,7 +617,7 @@ export async function createChatLunaChain(
         verbose: false
     })
 
-    return RunnableLambda.from(async (input) => {
+    return RunnableLambda.from(async (input, options) => {
         const output = await executor.invoke(input, {
             callbacks: [
                 {
@@ -625,7 +625,8 @@ export async function createChatLunaChain(
                         logger.debug('Agent Action:', action)
                     }
                 }
-            ]
+            ],
+            ...(options ?? {})
         })
         return new AIMessageChunk({
             content: output.output
