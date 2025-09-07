@@ -43,20 +43,19 @@ function parseMessageContent(response: string) {
     const status = response.match(/<status>(.*?)<\/status>/s)?.[1]
 
     const patterns = [
-        /<output>\s*(.*?)\s*<\/output>/gm,
-        /<message_part>\s*(.*?)\s*<\/message_part>/gm,
+        /<output>(.*?)<\/output>/gs,
+        /<message_part>(.*?)<\/message_part>/gs,
         /<message[\s\S]*?<\/message>/gm
     ]
 
     let rawMessage: string | undefined
     for (const pattern of patterns) {
-        const match = response.match(pattern)
-        if (match) {
-            if (pattern === patterns[2]) {
-                rawMessage = match[0]
-            } else {
-                rawMessage = Array.isArray(match) ? match.pop() : match[1]
-            }
+        const matches = Array.from(response.matchAll(pattern))
+        if (matches.length > 0) {
+            rawMessage =
+                pattern === patterns[2]
+                    ? matches[matches.length - 1][0]
+                    : matches[matches.length - 1][1]
             break
         }
     }
