@@ -235,7 +235,7 @@ async function getModelResponse(
                           input: lastMessage
                       },
                       {
-                          metadata: {
+                          configurable: {
                               session,
                               model,
                               userId: session.userId
