@@ -622,6 +622,9 @@ export async function createChatLunaChain(
                 {
                     handleAgentAction(action) {
                         logger.debug('Agent Action:', action)
+                    },
+                    handleToolEnd(output, runId, parentRunId, tags) {
+                        logger.debug(`tool end: `, output)
                     }
                 }
             ],
