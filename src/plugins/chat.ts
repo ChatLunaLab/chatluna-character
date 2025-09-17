@@ -24,6 +24,7 @@ import { Preset } from '../preset'
 import { StickerService } from '../service/sticker'
 import type {} from 'koishi-plugin-chatluna/services/chat'
 import { getMessageContent } from 'koishi-plugin-chatluna/utils/string'
+import { ComputedRef } from 'koishi-plugin-chatluna'
 
 let logger: Logger
 
@@ -36,26 +37,25 @@ async function initializeModel(
     ctx: Context,
     platform: string,
     modelName: string
-): Promise<ChatLunaChatModel> {
-    await ctx.chatluna.awaitLoadPlatform(platform)
-    return (await ctx.chatluna.createChatModel(
-        platform,
-        modelName
-    )) as ChatLunaChatModel
+) {
+    return await ctx.chatluna.createChatModel(platform, modelName)
 }
 
 async function setupModelPool(
     ctx: Context,
     config: Config
 ): Promise<{
-    globalModel: ChatLunaChatModel
-    modelPool: Record<string, Promise<ChatLunaChatModel>>
+    globalModel: ComputedRef<ChatLunaChatModel>
+    modelPool: Record<string, Promise<ComputedRef<ChatLunaChatModel>>>
 }> {
     const [platform, modelName] = parseRawModelName(config.model)
     const globalModel = await initializeModel(ctx, platform, modelName)
     logger.info('global model loaded %c', config.model)
 
-    const modelPool: Record<string, Promise<ChatLunaChatModel>> = {}
+    const modelPool: Record<
+        string,
+        Promise<ComputedRef<ChatLunaChatModel>>
+    > = {}
 
     if (config.modelOverride?.length > 0) {
         for (const override of config.modelOverride) {
@@ -84,9 +84,9 @@ async function setupModelPool(
 
 async function getModelForGuild(
     guildId: string,
-    globalModel: ChatLunaChatModel,
-    modelPool: Record<string, Promise<ChatLunaChatModel>>
-): Promise<ChatLunaChatModel> {
+    globalModel: ComputedRef<ChatLunaChatModel>,
+    modelPool: Record<string, Promise<ComputedRef<ChatLunaChatModel>>>
+): Promise<ComputedRef<ChatLunaChatModel>> {
     return await (modelPool[guildId] ?? Promise.resolve(globalModel))
 }
 
@@ -238,7 +238,8 @@ async function getModelResponse(
                           configurable: {
                               session,
                               model,
-                              userId: session.userId
+                              userId: session.userId,
+                              conversationId: session.guildId
                           }
                       }
                   )
@@ -460,7 +461,7 @@ export async function apply(ctx: Context, config: Config) {
     let globalPreset = preset.getPresetForCache(config.defaultPreset)
     let presetPool: Record<string, PresetTemplate> = {}
 
-    const chainPool: Record<string, ChatLunaChain> = {}
+    const chainPool: Record<string, ComputedRef<ChatLunaChain>> = {}
 
     ctx.on('chatluna_character/preset_updated', () => {
         globalPreset = preset.getPresetForCache(config.defaultPreset)
@@ -480,6 +481,13 @@ export async function apply(ctx: Context, config: Config) {
                 preset
             )
 
+        if (model.value == null) {
+            logger.warn(
+                `Model ${copyOfConfig.model} load not successful. Please check your logs output.`
+            )
+            return
+        }
+
         if (copyOfConfig.toolCalling) {
             chainPool[guildId] =
                 chainPool[guildId] ??
@@ -491,10 +499,10 @@ export async function apply(ctx: Context, config: Config) {
             messages,
             copyOfConfig,
             session,
-            model,
+            model.value,
             currentPreset,
             temp,
-            chainPool[guildId]
+            chainPool[guildId]?.value
         )
 
         if (!chainPool[guildId]) {
@@ -507,10 +515,10 @@ export async function apply(ctx: Context, config: Config) {
         const response = await getModelResponse(
             ctx,
             session,
-            model,
+            model.value,
             completionMessages,
             copyOfConfig,
-            chainPool[guildId]
+            chainPool[guildId]?.value
         )
         if (!response) {
             // clear the completion messages

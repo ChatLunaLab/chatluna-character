@@ -7,7 +7,6 @@ import { marked, Token } from 'marked'
 import he from 'he'
 import { getMessageContent } from 'koishi-plugin-chatluna/utils/string'
 import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
-import { EmptyEmbeddings } from 'koishi-plugin-chatluna/llm-core/model/in_memory'
 import type {} from 'koishi-plugin-chatluna/services/chat'
 import { PresetTemplate } from 'koishi-plugin-chatluna/llm-core/prompt'
 import { ChatLunaChatPrompt } from 'koishi-plugin-chatluna/llm-core/chain/prompt'
@@ -18,6 +17,7 @@ import {
 } from 'koishi-plugin-chatluna/llm-core/agent'
 import { RunnableLambda } from '@langchain/core/runnables'
 import { ModelCapabilities } from 'koishi-plugin-chatluna/llm-core/platform/types'
+import { computed, ComputedRef } from 'koishi-plugin-chatluna'
 
 export function isEmoticonStatement(
     text: string,
@@ -566,9 +566,9 @@ function formatMessageString(message: Message) {
 
 export async function createChatLunaChain(
     ctx: Context,
-    llm: ChatLunaChatModel,
+    llmRef: ComputedRef<ChatLunaChatModel>,
     session: Session
-): Promise<ChatLunaChain> {
+): Promise<ComputedRef<ChatLunaChain>> {
     const currentPreset = async () =>
         ({
             triggerKeyword: [''],
@@ -577,76 +577,85 @@ export async function createChatLunaChain(
             config: {}
         }) satisfies PresetTemplate
 
-    const chatPrompt = new ChatLunaChatPrompt({
-        preset: currentPreset,
-        tokenCounter: (text) => llm.getNumTokens(text),
-        sendTokenLimit:
-            llm.invocationParams().maxTokenLimit ??
-            llm.getModelMaxContextSize(),
-        variableService: ctx.chatluna.variable
-    })
-
-    const embeddings = await createEmbeddingsModel(ctx)
-    const tools = await Promise.all(
-        ctx.chatluna.platform
-            .getTools()
-            .map((tool) =>
-                ctx.chatluna.platform.getTool(tool).createTool({ embeddings })
-            )
-    )
-
-    const executor = AgentExecutor.fromAgentAndTools({
-        tags: ['react-agent'],
-        agent:
-            llm.modelInfo?.capabilities?.includes(
-                ModelCapabilities.ToolCall
-            ) === true
-                ? createOpenAIAgent({
-                      llm,
-                      tools,
-                      prompt: chatPrompt
-                  })
-                : await createReactAgent({
-                      llm,
-                      tools,
-                      prompt: chatPrompt
-                  }),
-        tools,
-        memory: undefined,
-        verbose: false
-    })
-
-    return RunnableLambda.from(async (input, options) => {
-        const output = await executor.invoke(input, {
-            callbacks: [
-                {
-                    handleAgentAction(action) {
-                        logger.debug('Agent Action:', action)
-                    },
-                    handleToolEnd(output, runId, parentRunId, tags) {
-                        logger.debug(`tool end: `, output)
-                    }
-                }
-            ],
-            ...(options ?? {})
+    const chatPrompt = computed(() => {
+        const llm = llmRef.value
+        return new ChatLunaChatPrompt({
+            preset: currentPreset,
+            tokenCounter: (text) => llm.getNumTokens(text),
+            sendTokenLimit:
+                llm.invocationParams().maxTokenLimit ??
+                llm.getModelMaxContextSize(),
+            variableService: ctx.chatluna.variable
         })
-        return new AIMessageChunk({
-            content: output.output
+    })
+
+    const embeddingsRef = await createEmbeddingsModel(ctx)
+    const toolListRef = ctx.chatluna.platform.getTools()
+    const toolsRef = computed(() => {
+        const embeddings = embeddingsRef.value
+        return toolListRef.value.map((tool) =>
+            ctx.chatluna.platform.getTool(tool).createTool({ embeddings })
+        )
+    })
+
+    const executorRef = computed(() => {
+        const tools = toolsRef.value
+        const llm = llmRef.value
+        const prompt = chatPrompt.value
+
+        return async () =>
+            AgentExecutor.fromAgentAndTools({
+                tags: ['react-agent'],
+                agent:
+                    llm.modelInfo?.capabilities?.includes(
+                        ModelCapabilities.ToolCall
+                    ) === true
+                        ? createOpenAIAgent({
+                              llm,
+                              tools,
+                              prompt
+                          })
+                        : await createReactAgent({
+                              llm,
+                              tools,
+                              prompt
+                          }),
+                tools,
+                memory: undefined,
+                verbose: false
+            })
+    })
+
+    return computed(() => {
+        const executorFn = executorRef.value
+        return RunnableLambda.from(async (input, options) => {
+            const executor = await executorFn()
+            const output = await executor.invoke(input, {
+                callbacks: [
+                    {
+                        handleAgentAction(action) {
+                            logger.debug('Agent Action:', action)
+                        },
+                        handleToolEnd(output, runId, parentRunId, tags) {
+                            logger.debug(`tool end: `, output)
+                        }
+                    }
+                ],
+                ...(options ?? {})
+            })
+            return new AIMessageChunk({
+                content: output.output
+            })
         })
     })
 }
 
 export function createEmbeddingsModel(ctx: Context) {
-    try {
-        const modelName = ctx.chatluna.config.defaultEmbeddings
+    const modelName = ctx.chatluna.config.defaultEmbeddings
 
-        const [platform, model] = parseRawModelName(modelName)
+    const [platform, model] = parseRawModelName(modelName)
 
-        return ctx.chatluna.createEmbeddings(platform, model)
-    } catch (e) {
-        logger.error(e)
-        return new EmptyEmbeddings()
-    }
+    return ctx.chatluna.createEmbeddings(platform, model)
 }
 
 export async function formatMessage(
