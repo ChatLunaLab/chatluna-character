@@ -142,9 +142,9 @@ async function prepareMessages(
         {
             time: '',
             stickers: '',
-            status: ''
+            status: '',
         },
-        session.app.chatluna.variable
+        session.app.chatluna.promptRenderer
     )
 
     if (!chain) {
@@ -166,7 +166,7 @@ async function prepareMessages(
                 stickers: '', // JSON.stringify(stickerService.getAllStickTypes()),
                 status: temp.status ?? currentPreset.status ?? ''
             },
-            session.app.chatluna.variable
+            session.app.chatluna.promptRenderer
         )
     )
 

@@ -136,7 +136,7 @@ export class Preset {
 
         if (throwError) {
             throw new ChatLunaError(
-                ChatLunaErrorCode.PREST_NOT_FOUND,
+                ChatLunaErrorCode.PRESET_NOT_FOUND,
                 new Error(`No preset found for keyword ${triggerKeyword}`)
             )
         }
@@ -228,16 +228,12 @@ export function loadPreset(text: string): PresetTemplate {
             rawString: rawPreset.input,
             format: async (
                 variables: Record<string, string>,
-                variableService: ChatLunaService['variable']
+                variableService: ChatLunaService['promptRenderer']
             ) => {
-                const firstFormat =
-                    await variableService.formatPresetTemplateString(
-                        rawPreset.input,
-                        variables
-                    )
-                return await PromptTemplate.fromTemplate(firstFormat).format(
+                return await variableService.renderTemplate(
+                    rawPreset.input,
                     variables
-                )
+                ).then((result) => result.text)
             }
         }
     } catch (e) {
@@ -252,16 +248,12 @@ export function loadPreset(text: string): PresetTemplate {
             rawString: rawPreset.system,
             format: async (
                 variables: Record<string, string>,
-                variableService: ChatLunaService['variable']
+                variableService: ChatLunaService['promptRenderer']
             ) => {
-                const firstFormat =
-                    await variableService.formatPresetTemplateString(
-                        rawPreset.system,
-                        variables
-                    )
-                return await PromptTemplate.fromTemplate(firstFormat).format(
+                 return await variableService.renderTemplate(
+                    rawPreset.system,
                     variables
-                )
+                ).then((result) => result.text)
             }
         }
     } catch (e) {

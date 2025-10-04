@@ -75,6 +75,6 @@ export interface ChatLunaCharacterPromptTemplate {
     rawString: string
     format(
         variables: Record<string, string | number | boolean | string[]>,
-        variableService: ChatLunaService['_variable']
+        variableService: ChatLunaService['promptRenderer']
     ): Promise<string>
 }

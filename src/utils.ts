@@ -569,13 +569,13 @@ export async function createChatLunaChain(
     llmRef: ComputedRef<ChatLunaChatModel>,
     session: Session
 ): Promise<ComputedRef<ChatLunaChain>> {
-    const currentPreset = async () =>
+    const currentPreset = computed(()=>
         ({
             triggerKeyword: [''],
             rawText: '',
             messages: [],
             config: {}
-        }) satisfies PresetTemplate
+        }) satisfies PresetTemplate)
 
     const chatPrompt = computed(() => {
         const llm = llmRef.value
@@ -585,7 +585,7 @@ export async function createChatLunaChain(
             sendTokenLimit:
                 llm.invocationParams().maxTokenLimit ??
                 llm.getModelMaxContextSize(),
-            variableService: ctx.chatluna.variable
+            promptRenderService: ctx.chatluna.promptRenderer
         })
     })
 
