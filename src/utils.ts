@@ -668,7 +668,10 @@ export async function createChatLunaChain(
         const executor = executorRef.value
         return RunnableLambda.from(async (input, options) => {
             // Update tools before execution
-            if (options?.configurable?.session && options?.configurable?.messages) {
+            if (
+                options?.configurable?.session &&
+                options?.configurable?.messages
+            ) {
                 toolsRef.update(
                     options.configurable.session,
                     options.configurable.messages

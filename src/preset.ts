@@ -230,10 +230,9 @@ export function loadPreset(text: string): PresetTemplate {
                 variables: Record<string, string>,
                 variableService: ChatLunaService['promptRenderer']
             ) => {
-                return await variableService.renderTemplate(
-                    rawPreset.input,
-                    variables
-                ).then((result) => result.text)
+                return await variableService
+                    .renderTemplate(rawPreset.input, variables)
+                    .then((result) => result.text)
             }
         }
     } catch (e) {
@@ -250,10 +249,9 @@ export function loadPreset(text: string): PresetTemplate {
                 variables: Record<string, string>,
                 variableService: ChatLunaService['promptRenderer']
             ) => {
-                 return await variableService.renderTemplate(
-                    rawPreset.system,
-                    variables
-                ).then((result) => result.text)
+                return await variableService
+                    .renderTemplate(rawPreset.system, variables)
+                    .then((result) => result.text)
             }
         }
     } catch (e) {

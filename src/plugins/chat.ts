@@ -142,7 +142,7 @@ async function prepareMessages(
         {
             time: '',
             stickers: '',
-            status: '',
+            status: ''
         },
         session.app.chatluna.promptRenderer
     )

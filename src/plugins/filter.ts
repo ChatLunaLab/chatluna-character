@@ -9,7 +9,7 @@ const RECENT_WINDOW = Time.minute * 10
 const SHORT_BURST_WINDOW = Time.minute * 1
 const MIN_COOLDOWN_TIME = Time.second * 15
 const COOLDOWN_PENALTY = 0.3
-const LOW_FREQUENCY_THRESHOLD = 2
+// const LOW_FREQUENCY_THRESHOLD = 2
 const HIGH_FREQUENCY_THRESHOLD = 15
 const BURST_MESSAGE_COUNT = 8
 
@@ -152,7 +152,10 @@ export async function apply(ctx: Context, config: Config) {
 
         if (shouldRespond && !isMute) {
             info.messageCount = 0
-            info.lastActivityScore = Math.max(0, info.lastActivityScore - COOLDOWN_PENALTY)
+            info.lastActivityScore = Math.max(
+                0,
+                info.lastActivityScore - COOLDOWN_PENALTY
+            )
             info.lastResponseTime = now
             groupInfos[session.guildId] = info
             return true
@@ -165,18 +168,16 @@ export async function apply(ctx: Context, config: Config) {
     })
 }
 
-
 function calculateFrequencyScore(timestamps: number[]): number {
     const now = Date.now()
-    const recentMessages = timestamps.filter(
-        (ts) => now - ts <= RECENT_WINDOW
-    )
+    const recentMessages = timestamps.filter((ts) => now - ts <= RECENT_WINDOW)
 
     if (recentMessages.length === 0) return 0
 
     const messagesPerMinute =
         (recentMessages.length / RECENT_WINDOW) * Time.minute
-    const normalized = Math.log(messagesPerMinute + 1) / Math.log(HIGH_FREQUENCY_THRESHOLD + 1)
+    const normalized =
+        Math.log(messagesPerMinute + 1) / Math.log(HIGH_FREQUENCY_THRESHOLD + 1)
 
     return Math.min(normalized, 1.5)
 }
@@ -243,7 +244,8 @@ function calculateActivityScore(
     const burstScore = calculateBurstScore(timestamps)
     const freshnessFactor = calculateFreshnessFactor(timestamps)
 
-    let rawScore = frequencyScore + Math.max(0, accelerationScore) + burstScore
+    const rawScore =
+        frequencyScore + Math.max(0, accelerationScore) + burstScore
     let score = rawScore * freshnessFactor
 
     if (timestamps.length >= 8) {
