@@ -11,12 +11,10 @@ import type {} from 'koishi-plugin-chatluna/services/chat'
 import { PresetTemplate } from 'koishi-plugin-chatluna/llm-core/prompt'
 import { ChatLunaChatPrompt } from 'koishi-plugin-chatluna/llm-core/chain/prompt'
 import {
-    AgentExecutor,
-    createOpenAIAgent,
-    createReactAgent
+    createAgentExecutor,
+    createToolsRef
 } from 'koishi-plugin-chatluna/llm-core/agent'
 import { RunnableLambda } from '@langchain/core/runnables'
-import { ModelCapabilities } from 'koishi-plugin-chatluna/llm-core/platform/types'
 import { computed, ComputedRef } from 'koishi-plugin-chatluna'
 
 export function isEmoticonStatement(
@@ -121,7 +119,15 @@ export async function processElements(
 }
 
 interface TextMatch {
-    type: 'at' | 'pre' | 'emo' | 'voice' | 'sticker' | 'message' | 'img'
+    type:
+        | 'at'
+        | 'pre'
+        | 'emo'
+        | 'voice'
+        | 'sticker'
+        | 'message'
+        | 'img'
+        | 'face'
     content: string
     extra?: Record<string, string>
     start: number
@@ -179,6 +185,14 @@ export function processTextMatches(
                     : [h('text', { span: true, content: token.content })]
 
                 currentElements.push(h('message', { span: true }, ...children))
+                break
+            }
+            case 'face': {
+                currentElements.push(
+                    h('face', {
+                        id: token.content
+                    })
+                )
                 break
             }
             case 'voice':
@@ -315,6 +329,44 @@ function textMatchLexer(input: string): TextMatch[] {
                         end: endIndex + 5
                     })
                     index = endIndex + 5
+                    matched = true
+                }
+            }
+        }
+
+        if (
+            !matched &&
+            stack.length === 0 &&
+            input.startsWith('<face', index)
+        ) {
+            const endIndex = input.indexOf('</face>', index)
+            if (endIndex !== -1) {
+                const match = /<face\b[^>]*>(.*?)<\/face>/.exec(
+                    input.substring(index, endIndex + 7)
+                )
+                if (match) {
+                    const openTagMatch = /<face\b([^>]*)>/.exec(
+                        input.substring(index, endIndex + 7)
+                    )
+                    let extra: Record<string, string> | undefined
+
+                    if (openTagMatch && openTagMatch[1]) {
+                        const nameMatch = openTagMatch[1].match(
+                            /name=['"]([^'"]+)['"]/
+                        )
+                        if (nameMatch) {
+                            extra = { name: nameMatch[1] }
+                        }
+                    }
+
+                    tokens.push({
+                        type: 'face',
+                        content: match[1],
+                        extra,
+                        start: index,
+                        end: endIndex + 7
+                    })
+                    index = endIndex + 7
                     matched = true
                 }
             }
@@ -569,13 +621,15 @@ export async function createChatLunaChain(
     llmRef: ComputedRef<ChatLunaChatModel>,
     session: Session
 ): Promise<ComputedRef<ChatLunaChain>> {
-    const currentPreset = computed(()=>
-        ({
-            triggerKeyword: [''],
-            rawText: '',
-            messages: [],
-            config: {}
-        }) satisfies PresetTemplate)
+    const currentPreset = computed(
+        () =>
+            ({
+                triggerKeyword: [''],
+                rawText: '',
+                messages: [],
+                config: {}
+            }) satisfies PresetTemplate
+    )
 
     const chatPrompt = computed(() => {
         const llm = llmRef.value
@@ -591,45 +645,36 @@ export async function createChatLunaChain(
 
     const embeddingsRef = await createEmbeddingsModel(ctx)
     const toolListRef = ctx.chatluna.platform.getTools()
-    const toolsRef = computed(() => {
-        const embeddings = embeddingsRef.value
-        return toolListRef.value.map((tool) =>
-            ctx.chatluna.platform.getTool(tool).createTool({ embeddings })
-        )
+    const toolsListRef = computed(() =>
+        toolListRef.value.map((tool) => ctx.chatluna.platform.getTool(tool))
+    )
+
+    const toolsRef = createToolsRef({
+        tools: toolsListRef,
+        embeddings: embeddingsRef.value
     })
 
-    const executorRef = computed(() => {
-        const tools = toolsRef.value
-        const llm = llmRef.value
-        const prompt = chatPrompt.value
-
-        return async () =>
-            AgentExecutor.fromAgentAndTools({
-                tags: ['react-agent'],
-                agent:
-                    llm.modelInfo?.capabilities?.includes(
-                        ModelCapabilities.ToolCall
-                    ) === true
-                        ? createOpenAIAgent({
-                              llm,
-                              tools,
-                              prompt
-                          })
-                        : await createReactAgent({
-                              llm,
-                              tools,
-                              prompt
-                          }),
-                tools,
-                memory: undefined,
-                verbose: false
-            })
+    const executorRef = createAgentExecutor({
+        llm: llmRef,
+        tools: toolsRef.tools,
+        prompt: chatPrompt.value,
+        agentMode: 'tool-calling',
+        returnIntermediateSteps: true,
+        handleParsingErrors: true,
+        instructions: computed(() => undefined)
     })
 
     return computed(() => {
-        const executorFn = executorRef.value
+        const executor = executorRef.value
         return RunnableLambda.from(async (input, options) => {
-            const executor = await executorFn()
+            // Update tools before execution
+            if (options?.configurable?.session && options?.configurable?.messages) {
+                toolsRef.update(
+                    options.configurable.session,
+                    options.configurable.messages
+                )
+            }
+
             const output = await executor.invoke(input, {
                 callbacks: [
                     {

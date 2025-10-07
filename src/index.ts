@@ -205,7 +205,7 @@ export const Config = Schema.intersect([
             .min(0)
             .role('slider')
             .max(10000)
-            .description('随机发送消息的间隔'),
+            .description('随机发送消息的最大间隔'),
         messageActivityScore: Schema.number()
             .default(0.6)
             .min(0)
@@ -213,7 +213,7 @@ export const Config = Schema.intersect([
             .role('slider')
             .step(0.00001)
             .description(
-                '消息活跃度分数的阈值，当活跃度超过这个阈值则会发送消息'
+                '消息活跃度分数的阈值，当活跃度超过这个阈值则会发送消息。群越活跃，这个值就会越高。'
             ),
 
         coolDownTime: Schema.number()
@@ -306,7 +306,7 @@ export const Config = Schema.intersect([
                     .min(0)
                     .role('slider')
                     .max(10000)
-                    .description('随机发送消息的间隔'),
+                    .description('随机发送消息的间隔。群越活跃，这个值就会越高。'),
                 messageActivityScore: Schema.number()
                     .default(0.6)
                     .min(0)
@@ -314,7 +314,7 @@ export const Config = Schema.intersect([
                     .role('slider')
                     .step(0.00001)
                     .description(
-                        '消息活跃度分数的阈值，当活跃度超过这个阈值则会发送消息'
+                        '消息活跃度分数的阈值，当活跃度超过这个阈值则会发送消息。群越活跃，这个值就会越高。'
                     ),
                 toolCalling: Schema.boolean()
                     .description('是否启用工具调用功能')

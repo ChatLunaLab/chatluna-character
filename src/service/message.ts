@@ -372,7 +372,7 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
             }
         } else if (element.type === 'face') {
             filteredBuffer.push(
-                `[face:${element.attrs.id}:${element.attrs.name}]`
+                `<face name='${element.attrs.name}'>${element.attrs.id}</face>`
             )
         }
     }

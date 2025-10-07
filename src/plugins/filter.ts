@@ -4,9 +4,16 @@ import { ActivityScore, GroupInfo, PresetTemplate } from '../types'
 
 export const groupInfos: Record<string, GroupInfo> = {}
 
-export async function apply(ctx: Context, config: Config) {
-    const maxMessages = config.messageInterval
+const WINDOW_SIZE = 100
+const RECENT_WINDOW = Time.minute * 10
+const SHORT_BURST_WINDOW = Time.minute * 1
+const MIN_COOLDOWN_TIME = Time.second * 15
+const COOLDOWN_PENALTY = 0.3
+const LOW_FREQUENCY_THRESHOLD = 2
+const HIGH_FREQUENCY_THRESHOLD = 15
+const BURST_MESSAGE_COUNT = 8
 
+export async function apply(ctx: Context, config: Config) {
     const service = ctx.chatluna_character
     const preset = service.preset
     const logger = service.logger
@@ -20,7 +27,6 @@ export async function apply(ctx: Context, config: Config) {
 
         const info = groupInfos[guildId] || {
             messageCount: 0,
-            messageSendProbability: 1,
             messageTimestamps: [],
             lastActivityScore: 0,
             lastScoreUpdate: now,
@@ -68,15 +74,11 @@ export async function apply(ctx: Context, config: Config) {
             )}`
         )
 
-        // 检查是否在名单里面
         if (
             copyOfConfig.disableChatLuna &&
-            copyOfConfig.whiteListDisableChatLuna.includes(guildId)
+            !copyOfConfig.whiteListDisableChatLuna.includes(guildId)
         ) {
-            // check to last five message is send for bot
-
             const selfId = session.bot.userId ?? session.bot.selfId ?? '0'
-
             const guildMessages = ctx.chatluna_character.getMessages(guildId)
 
             let maxRecentMessage = 0
@@ -134,27 +136,23 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         const isMute = service.isMute(session)
-        // 保底必出
-        if (
-            (messageCount >
-                (copyOfConfig.messageInterval ?? maxMessages ?? 0) ||
-                appel ||
-                info.lastActivityScore > copyOfConfig.messageActivityScore ||
-                (copyOfConfig.isNickname &&
-                    currentPreset.nick_name.some((value) =>
-                        message.content.startsWith(value)
-                    )) ||
-                (copyOfConfig.isNickNameWithContent &&
-                    currentPreset.nick_name.some((value) =>
-                        message.content.includes(value)
-                    ))) &&
-            !isMute
-        ) {
+
+        const shouldRespond =
+            messageCount > copyOfConfig.messageInterval ||
+            appel ||
+            info.lastActivityScore > copyOfConfig.messageActivityScore ||
+            (copyOfConfig.isNickname &&
+                currentPreset.nick_name.some((value) =>
+                    message.content.startsWith(value)
+                )) ||
+            (copyOfConfig.isNickNameWithContent &&
+                currentPreset.nick_name.some((value) =>
+                    message.content.includes(value)
+                ))
+
+        if (shouldRespond && !isMute) {
             info.messageCount = 0
-
-            // 记录响应时间并降低活跃度
-            info.lastActivityScore -= COOLDOWN_PENALTY
-
+            info.lastActivityScore = Math.max(0, info.lastActivityScore - COOLDOWN_PENALTY)
             info.lastResponseTime = now
             groupInfos[session.guildId] = info
             return true
@@ -167,98 +165,68 @@ export async function apply(ctx: Context, config: Config) {
     })
 }
 
-// Improved constants for the activity scoring algorithm
-const WINDOW_SIZE = 100
-const MAX_INTERVAL = Time.minute * 5
-const MIN_COOLDOWN_TIME = Time.second * 15
-const BASE_PROBABILITY = 0.02
-const COOLDOWN_PENALTY = 0.3
-const ENTROPY_WEIGHT = 0.4
-const POISSON_WEIGHT = 0.3
-const RECENCY_WEIGHT = 0.25
-const RANDOM_WEIGHT = 0.05
-const LAMBDA_SCALE = 30000 // Scale factor for Poisson (30 seconds)
-const ENTROPY_NORMALIZER = Math.log2(MAX_INTERVAL)
 
-/**
- * Calculate Shannon entropy for a set of time intervals
- * Higher entropy indicates more unpredictable/chaotic messaging patterns
- */
-function calculateShannonEntropy(intervals: number[]): number {
-    if (intervals.length < 2) return 0
-
-    // Bin the intervals into discrete categories
-    const binSize = MAX_INTERVAL / 10
-    const bins: Record<number, number> = {}
-
-    // Count occurrences in each bin
-    for (const interval of intervals) {
-        const binIndex = Math.min(Math.floor(interval / binSize), 9)
-        bins[binIndex] = (bins[binIndex] || 0) + 1
-    }
-
-    // Calculate entropy
-    let entropy = 0
-    const totalCount = intervals.length
-
-    for (const binIndex in bins) {
-        const probability = bins[binIndex] / totalCount
-        entropy -= probability * Math.log2(probability)
-    }
-
-    // Normalize to 0-1 range
-    return Math.min(entropy / ENTROPY_NORMALIZER, 1)
-}
-
-/**
- * Calculate Poisson probability for message rate
- * Measure how unusual the current messaging rate is compared to expectation
- */
-function calculatePoissonActivity(intervals: number[]): number {
-    if (intervals.length < 2) return 0
-
-    // Calculate average interval (lambda for Poisson)
-    const avgInterval =
-        intervals.reduce((sum, interval) => sum + interval, 0) /
-        intervals.length
-    if (avgInterval === 0) return 1 // Avoid division by zero
-
-    // Calculate recent message rate (last 3 messages or fewer)
-    const recentIntervals = intervals.slice(-Math.min(3, intervals.length))
-    const recentAvgInterval =
-        recentIntervals.reduce((sum, interval) => sum + interval, 0) /
-        recentIntervals.length
-
-    // Normalize lambda for Poisson calculation
-    const lambda = avgInterval / LAMBDA_SCALE
-    const recentLambda = recentAvgInterval / LAMBDA_SCALE
-
-    // Exponential function to compare recent activity to average
-    // Higher activity (lower interval) creates higher score
-    const activityRatio = lambda / (recentLambda + 0.001) // Avoid division by zero
-
-    // Scale to a 0-1 range with diminishing returns for very high activity
-    return Math.min(1 - Math.exp(-activityRatio), 1)
-}
-
-/**
- * Calculates recency score using exponential decay
- * More recent messages have higher weight
- */
-function calculateRecencyScore(timestamps: number[]): number {
+function calculateFrequencyScore(timestamps: number[]): number {
     const now = Date.now()
+    const recentMessages = timestamps.filter(
+        (ts) => now - ts <= RECENT_WINDOW
+    )
+
+    if (recentMessages.length === 0) return 0
+
+    const messagesPerMinute =
+        (recentMessages.length / RECENT_WINDOW) * Time.minute
+    const normalized = Math.log(messagesPerMinute + 1) / Math.log(HIGH_FREQUENCY_THRESHOLD + 1)
+
+    return Math.min(normalized, 1.5)
+}
+
+function calculateAccelerationScore(timestamps: number[]): number {
+    if (timestamps.length < 6) return 0
+
+    const now = Date.now()
+    const recentWindow = RECENT_WINDOW / 2
+    const previousWindow = RECENT_WINDOW
+
+    const recentCount = timestamps.filter(
+        (ts) => now - ts <= recentWindow
+    ).length
+    const recentRate = recentCount / recentWindow
+
+    const previousCount = timestamps.filter(
+        (ts) => now - ts <= previousWindow && now - ts > recentWindow
+    ).length
+    const previousRate = previousCount / recentWindow
+
+    const acceleration = recentRate - previousRate
+    const normalized = acceleration * Time.minute * 10
+
+    return Math.max(-0.5, Math.min(normalized, 1))
+}
+
+function calculateBurstScore(timestamps: number[]): number {
+    const now = Date.now()
+    const burstMessages = timestamps.filter(
+        (ts) => now - ts <= SHORT_BURST_WINDOW
+    )
+
+    if (burstMessages.length < 3) return 0
+
+    const burstIntensity = (burstMessages.length - 2) / BURST_MESSAGE_COUNT
+
+    return Math.min(burstIntensity, 1.2)
+}
+
+function calculateFreshnessFactor(timestamps: number[]): number {
     if (timestamps.length === 0) return 0
 
+    const now = Date.now()
     const lastMessageTime = timestamps[timestamps.length - 1]
     const timeSinceLastMessage = now - lastMessageTime
 
-    // Exponential decay function
-    return Math.exp(-timeSinceLastMessage / MAX_INTERVAL)
+    return Math.exp(-timeSinceLastMessage / (Time.minute * 3))
 }
 
-/**
- * Advanced activity score calculation combining information theory and statistical methods
- */
 function calculateActivityScore(
     timestamps: number[],
     lastResponseTime?: number,
@@ -266,59 +234,35 @@ function calculateActivityScore(
 ): ActivityScore {
     const now = Date.now()
 
-    // If fewer than 2 messages, return minimum score
     if (timestamps.length < 2) {
         return { score: 0, timestamp: now }
     }
 
-    // Calculate intervals between messages
-    const intervals: number[] = []
-    for (let i = 1; i < timestamps.length; i++) {
-        intervals.push(timestamps[i] - timestamps[i - 1])
+    const frequencyScore = calculateFrequencyScore(timestamps)
+    const accelerationScore = calculateAccelerationScore(timestamps)
+    const burstScore = calculateBurstScore(timestamps)
+    const freshnessFactor = calculateFreshnessFactor(timestamps)
+
+    let rawScore = frequencyScore + Math.max(0, accelerationScore) + burstScore
+    let score = rawScore * freshnessFactor
+
+    if (timestamps.length >= 8) {
+        const sustainedBonus = Math.min(
+            Math.log(timestamps.length) / Math.log(maxMessages || 50),
+            0.3
+        )
+        score += sustainedBonus
     }
 
-    // Calculate accumulation factor - logarithmic growth provides diminishing returns as messages accumulate
-    const accumulationFactor = maxMessages
-        ? Math.min(
-              Math.log(timestamps.length + 1) / Math.log(maxMessages + 1),
-              1
-          )
-        : Math.min(timestamps.length / WINDOW_SIZE, 1)
-
-    // Information entropy score - measures randomness/unpredictability in messaging patterns
-    const entropyScore = calculateShannonEntropy(intervals)
-
-    // Poisson-based activity score - measures how unusual current activity is compared to average
-    const poissonScore = calculatePoissonActivity(intervals)
-
-    // Recency score - higher weight for more recent messages
-    const recencyScore = calculateRecencyScore(timestamps)
-
-    // Add controlled randomness for natural variability
-    const randomFactor = Math.random() * BASE_PROBABILITY
-
-    // Weighted combination of all factors
-    let score =
-        (entropyScore * ENTROPY_WEIGHT +
-            poissonScore * POISSON_WEIGHT +
-            recencyScore * RECENCY_WEIGHT +
-            randomFactor * RANDOM_WEIGHT) *
-        accumulationFactor
-
-    // Apply cooldown if bot recently responded
     if (lastResponseTime) {
         const timeSinceLastResponse = now - lastResponseTime
         if (timeSinceLastResponse < MIN_COOLDOWN_TIME) {
-            // Exponential cooldown - stronger effect immediately after response
-            const cooldownFactor = Math.exp(
-                -MIN_COOLDOWN_TIME / timeSinceLastResponse
-            )
+            const cooldownFactor = timeSinceLastResponse / MIN_COOLDOWN_TIME
             score *= cooldownFactor
         }
     }
 
-    // Ensure score is within valid range
-    score = Math.max(0, Math.min(1, score))
+    score = Math.max(0, Math.min(score / 2, 1))
 
     return { score, timestamp: now }
 }

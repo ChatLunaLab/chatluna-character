@@ -57,7 +57,7 @@ export interface GroupInfo {
     messageTimestamps: number[]
     lastActivityScore: number
     lastScoreUpdate: number
-    lastResponseTime: number // 新增字段：记录上次响应时间
+    lastResponseTime: number
 }
 
 export interface ActivityScore {
