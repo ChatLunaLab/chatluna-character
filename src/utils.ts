@@ -108,6 +108,8 @@ export async function processElements(
                 last() ? last().push(el) : result.push([el])
             } else if (el.type === 'message' && el.attrs.span) {
                 await process(el.children)
+            } else if (el.type === 'face') {
+                last() ? last().push(el) : result.push([el])
             } else {
                 canAppendAt() ? last().push(el) : result.push([el])
             }
