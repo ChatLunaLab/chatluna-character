@@ -32,7 +32,7 @@ export async function apply(ctx: Context, config: Config) {
         const guildId = session.guildId
         const now = Date.now()
 
-        const info = groupInfos[guildId] || {
+        const info = groupInfos[guildId] ?? {
             messageCount: 0,
             messageTimestamps: [],
             lastActivityScore: 0,
@@ -81,7 +81,7 @@ export async function apply(ctx: Context, config: Config) {
 
         if (
             copyOfConfig.disableChatLuna &&
-            !copyOfConfig.whiteListDisableChatLuna.includes(guildId)
+            copyOfConfig.whiteListDisableChatLuna.includes(guildId)
         ) {
             const selfId = session.bot.userId ?? session.bot.selfId ?? '0'
             const guildMessages = ctx.chatluna_character.getMessages(guildId)
@@ -109,7 +109,7 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         let appel = session.stripped.appel
-        const botId = session.bot.userId
+        const botId = session.bot.selfId
 
         if (!appel) {
             // 从消息元素中检测是否有被艾特当前用户

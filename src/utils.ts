@@ -1,7 +1,11 @@
 import { ChatLunaChatModel } from 'koishi-plugin-chatluna/llm-core/platform/model'
 import { Config } from '.'
 import { ChatLunaChain, Message } from './types'
-import { AIMessageChunk, BaseMessage } from '@langchain/core/messages'
+import {
+    AIMessageChunk,
+    BaseMessage,
+    HumanMessage
+} from '@langchain/core/messages'
 import { Context, Element, h, Logger, Session } from 'koishi'
 import { marked, Token } from 'marked'
 import he from 'he'
@@ -669,25 +673,30 @@ export async function createChatLunaChain(
     return computed(() => {
         const executor = executorRef.value
         return RunnableLambda.from(async (input, options) => {
+            let copyExecutor = executor
             // Update tools before execution
-            if (
-                options?.configurable?.session &&
-                options?.configurable?.messages
-            ) {
-                toolsRef.update(
-                    options.configurable.session,
-                    options.configurable.messages
-                )
+            if (options?.configurable?.session) {
+                const copyOfMessages =
+                    typeof input['chat_history'] === 'string'
+                        ? [new HumanMessage(input['chat_history'])]
+                        : [...input['chat_history']]
+
+                if (copyOfMessages.length === 0) {
+                    copyOfMessages.push(input.input)
+                }
+
+                toolsRef.update(options.configurable.session, copyOfMessages)
+                copyExecutor = executorRef.value
             }
 
-            const output = await executor.invoke(input, {
+            const output = await copyExecutor.invoke(input, {
                 callbacks: [
                     {
                         handleAgentAction(action) {
                             logger.debug('Agent Action:', action)
                         },
                         handleToolEnd(output, runId, parentRunId, tags) {
-                            logger.debug(`tool end: `, output)
+                            logger.debug(`Tool End: `, output)
                         }
                     }
                 ],
