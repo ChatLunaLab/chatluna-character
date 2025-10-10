@@ -1,4 +1,3 @@
-import { PromptTemplate } from '@langchain/core/prompts'
 import fs from 'fs/promises'
 import { load } from 'js-yaml'
 import { Context, Schema } from 'koishi'

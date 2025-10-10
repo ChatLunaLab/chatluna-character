@@ -1,4 +1,4 @@
-import { Context, Time } from 'koishi'
+import { Context, Session, Time } from 'koishi'
 import { Config } from '..'
 import { ActivityScore, GroupInfo, PresetTemplate } from '../types'
 
@@ -9,16 +9,16 @@ const WINDOW_SIZE = 100 // 时间戳窗口最大容量
 const RECENT_WINDOW = Time.minute * 15 // 频率统计窗口：15分钟
 const SHORT_BURST_WINDOW = Time.minute * 3 // 爆发检测窗口：3分钟
 const MIN_COOLDOWN_TIME = Time.second * 15 // 最小冷却时间：15秒
-const COOLDOWN_PENALTY = 0.3 // 响应后降低活跃度的惩罚值
+const COOLDOWN_PENALTY = 0.6 // 响应后降低活跃度的惩罚值
 const LOW_FREQUENCY_THRESHOLD = 3 // 低频阈值：3条/分钟以下不计分
 const HIGH_FREQUENCY_THRESHOLD = 40 // 高频阈值：40条/分钟
 const BURST_MESSAGE_COUNT = 80 // 爆发基准：3分钟内80条消息
 
 // 加权系数（重新引入权重控制）
-const FREQUENCY_WEIGHT = 0.35 // 频率权重
-const ACCELERATION_WEIGHT = 0.25 // 加速度权重
-const BURST_WEIGHT = 0.25 // 爆发权重
-const FRESHNESS_WEIGHT = 0.15 // 新鲜度因子基础影响
+const FREQUENCY_WEIGHT = 0.4 // 频率权重
+const ACCELERATION_WEIGHT = 0.2 // 加速度权重
+const BURST_WEIGHT = 0.2 // 爆发权重
+const FRESHNESS_WEIGHT = 0.2 // 新鲜度因子基础影响
 
 export async function apply(ctx: Context, config: Config) {
     const service = ctx.chatluna_character
@@ -27,6 +27,41 @@ export async function apply(ctx: Context, config: Config) {
 
     const globalPreset = await preset.getPreset(config.defaultPreset)
     const presetPool: Record<string, PresetTemplate> = {}
+
+    ctx.on('guild-member-updated', (session) => {
+        if (!config.applyGroup.includes(session.guildId)) {
+            return
+        }
+
+        console.log(session)
+    })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ctx.on('guild-member' as any, (session: Session) => {
+        if (
+            !config.applyGroup.includes(session.guildId) &&
+            session.event.type !== 'ban' &&
+            session.event.selfId !== session.event.user.id
+        ) {
+            return
+        }
+
+        const duration = (session.event._data['duration'] ?? 60) * 1000
+
+        if (duration === 0) {
+            ctx.chatluna_character.mute(session, 0)
+            return
+        }
+
+        logger.warn(
+            `检测到 ${session.bot.user?.name || session.selfId} 被 ${session.operatorId} 操作禁言 ${session.event._data['duration'] || 60 * 1000} 秒？。`
+        )
+
+        ctx.chatluna_character.mute(
+            session,
+            (session.event._data['duration'] || 60) * 1000
+        )
+    })
 
     service.addFilter((session, message) => {
         const guildId = session.guildId
