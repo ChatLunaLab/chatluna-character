@@ -28,20 +28,12 @@ export async function apply(ctx: Context, config: Config) {
     const globalPreset = await preset.getPreset(config.defaultPreset)
     const presetPool: Record<string, PresetTemplate> = {}
 
-    ctx.on('guild-member-updated', (session) => {
-        if (!config.applyGroup.includes(session.guildId)) {
-            return
-        }
-
-        console.log(session)
-    })
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ctx.on('guild-member' as any, (session: Session) => {
         if (
-            !config.applyGroup.includes(session.guildId) &&
-            session.event.type !== 'ban' &&
-            session.event.selfId !== session.event.user.id
+            !config.applyGroup.includes(session.guildId) ||
+            session.event.subtype !== 'ban' ||
+            session.bot.selfId !== session.event.user.id
         ) {
             return
         }
@@ -54,7 +46,7 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         logger.warn(
-            `检测到 ${session.bot.user?.name || session.selfId} 被 ${session.operatorId} 操作禁言 ${session.event._data['duration'] || 60 * 1000} 秒？。`
+            `检测到 ${session.bot.user?.name || session.selfId} 被 ${session.operatorId} 操作禁言 ${session.event._data['duration'] || 60 * 1000} 秒？`
         )
 
         ctx.chatluna_character.mute(
