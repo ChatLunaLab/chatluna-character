@@ -207,7 +207,7 @@ export const Config = Schema.intersect([
             .max(10000)
             .description('随机发送消息的最大间隔'),
         messageActivityScore: Schema.number()
-            .default(0.6)
+            .default(0.85)
             .min(0)
             .max(1)
             .role('slider')
@@ -310,7 +310,7 @@ export const Config = Schema.intersect([
                         '随机发送消息的间隔。群越活跃，这个值就会越高。'
                     ),
                 messageActivityScore: Schema.number()
-                    .default(0.6)
+                    .default(0.85)
                     .min(0)
                     .max(1)
                     .role('slider')
