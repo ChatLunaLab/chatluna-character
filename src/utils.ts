@@ -672,7 +672,7 @@ export async function createChatLunaChain(
 
     return computed(() => {
         const executor = executorRef.value
-        return RunnableLambda.from(async (input, options) => {
+        return RunnableLambda.from((input, options) => {
             let copyExecutor = executor
             // Update tools before execution
             if (options?.configurable?.session) {
@@ -689,22 +689,26 @@ export async function createChatLunaChain(
                 copyExecutor = executorRef.value
             }
 
-            const output = await copyExecutor.invoke(input, {
-                callbacks: [
-                    {
-                        handleAgentAction(action) {
-                            logger.debug('Agent Action:', action)
-                        },
-                        handleToolEnd(output, runId, parentRunId, tags) {
-                            logger.debug(`Tool End: `, output)
+            return copyExecutor
+                .invoke(input, {
+                    callbacks: [
+                        {
+                            handleAgentAction(action) {
+                                logger.debug('Agent Action:', action)
+                            },
+                            handleToolEnd(output, runId, parentRunId, tags) {
+                                logger.debug(`Tool End: `, output)
+                            }
                         }
-                    }
-                ],
-                ...(options ?? {})
-            })
-            return new AIMessageChunk({
-                content: output.output
-            })
+                    ],
+                    ...(options ?? {})
+                })
+                .then(
+                    (output) =>
+                        new AIMessageChunk({
+                            content: output.output
+                        })
+                )
         })
     })
 }

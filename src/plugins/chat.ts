@@ -144,7 +144,10 @@ async function prepareMessages(
             stickers: '',
             status: ''
         },
-        session.app.chatluna.promptRenderer
+        session.app.chatluna.promptRenderer,
+        {
+            session
+        }
     )
 
     if (!chain) {
@@ -164,9 +167,17 @@ async function prepareMessages(
                     .replaceAll('}', '}}'),
                 time: formatTimestamp(new Date()),
                 stickers: '', // JSON.stringify(stickerService.getAllStickTypes()),
-                status: temp.status ?? currentPreset.status ?? ''
+                status: temp.status ?? currentPreset.status ?? '',
+                prompt: session.content,
+                built: {
+                    preset: currentPreset.name,
+                    conversationId: session.guildId
+                }
             },
-            session.app.chatluna.promptRenderer
+            session.app.chatluna.promptRenderer,
+            {
+                session
+            }
         )
     )
 
@@ -244,7 +255,9 @@ async function getModelResponse(
                       }
                   )
                 : await model.invoke(completionMessages)
+
             logger.debug('model response: ' + responseMessage.content)
+
             const parsedResponse = await parseResponse(
                 responseMessage.content as string,
                 config.isAt,

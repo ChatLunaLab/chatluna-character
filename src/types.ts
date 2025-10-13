@@ -74,7 +74,11 @@ export type ChatLunaChain = Runnable<
 export interface ChatLunaCharacterPromptTemplate {
     rawString: string
     format(
-        variables: Record<string, string | number | boolean | string[]>,
-        variableService: ChatLunaService['promptRenderer']
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        variables: Record<string, any>,
+        variableService: ChatLunaService['promptRenderer'],
+        configurable: Parameters<
+            ChatLunaService['promptRenderer']['renderTemplate']
+        >[2]['configurable']
     ): Promise<string>
 }
