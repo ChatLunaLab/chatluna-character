@@ -409,9 +409,7 @@ async function getImages(ctx: Context, model: string, session: Session) {
                 : image.image_url.url
 
         const hash =
-            typeof image.image_url !== 'string'
-                ? (image.image_url['hash'] ?? url)
-                : image.image_url
+            typeof image.image_url !== 'string' ? image.image_url['hash'] : ''
 
         const formatted = hash ? `[image:${hash}]` : `<sticker>${url}</sticker>`
 

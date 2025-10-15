@@ -671,9 +671,7 @@ export async function createChatLunaChain(
     })
 
     return computed(() => {
-        const executor = executorRef.value
         return RunnableLambda.from((input, options) => {
-            let copyExecutor = executor
             // Update tools before execution
             if (options?.configurable?.session) {
                 const copyOfMessages =
@@ -686,10 +684,9 @@ export async function createChatLunaChain(
                 }
 
                 toolsRef.update(options.configurable.session, copyOfMessages)
-                copyExecutor = executorRef.value
             }
 
-            return copyExecutor
+            return executorRef.value
                 .invoke(input, {
                     callbacks: [
                         {
