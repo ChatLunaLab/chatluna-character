@@ -195,15 +195,15 @@ export class MessageCollector extends Service {
         const maxMessageSize = this._config.maxMessages
         let groupArray = this._messages[groupId] ? this._messages[groupId] : []
 
-        const elements = session.elements
-            ? session.elements
-            : [h.text(session.content)]
-
         const config = this._getGroupConfig(groupId)
 
         const images = config.image
             ? await getImages(this.ctx, config.model, session)
             : undefined
+
+        const elements = session.elements
+            ? session.elements
+            : [h.text(session.content)]
 
         const content = mapElementToString(session, session.content, elements)
 
@@ -367,7 +367,11 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
                 filteredBuffer.push(`<sticker>${imageUrl}</sticker>`)
             } else {
                 filteredBuffer.push(
-                    `[image` + (imageHash ? `:${imageHash}` : '') + `]`
+                    `[image` + imageHash
+                        ? `:${imageHash}`
+                        : imageUrl
+                          ? `:${imageUrl}`
+                          : '' + `]`
                 )
             }
         } else if (element.type === 'face') {
@@ -408,7 +412,7 @@ async function getImages(ctx: Context, model: string, session: Session) {
                 ? image.image_url
                 : image.image_url.url
 
-        const hash =
+        const hash: string =
             typeof image.image_url !== 'string' ? image.image_url['hash'] : ''
 
         const formatted = hash ? `[image:${hash}]` : `<sticker>${url}</sticker>`
