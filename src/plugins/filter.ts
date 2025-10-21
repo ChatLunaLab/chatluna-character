@@ -5,22 +5,22 @@ import { ActivityScore, GroupInfo, PresetTemplate } from '../types'
 export const groupInfos: Record<string, GroupInfo> = {}
 
 // 活跃度算法常量配置
-const WINDOW_SIZE = 100 // 时间戳窗口最大容量
-const RECENT_WINDOW = Time.minute * 15 // 频率统计窗口：15分钟
-const SHORT_BURST_WINDOW = Time.minute * 6 // 爆发检测窗口：6分钟
-const INSTANT_WINDOW = Time.minute * 4 // 短周期窗口，用于检测瞬时活跃
-const MIN_COOLDOWN_TIME = Time.second * 15 // 最小冷却时间：15秒
-const COOLDOWN_PENALTY = 0.6 // 响应后降低活跃度的惩罚值
+const WINDOW_SIZE = 150 // 时间戳窗口最大容量
+const RECENT_WINDOW = Time.second * 450 // 频率统计窗口：7.5分钟
+const SHORT_BURST_WINDOW = Time.minute * 3 // 爆发检测窗口：3分钟
+const INSTANT_WINDOW = Time.minute * 2 // 短周期窗口，用于检测瞬时活跃
+const MIN_COOLDOWN_TIME = Time.second * 7.5 // 最小冷却时间：7.5秒
+const COOLDOWN_PENALTY = 0.3 // 响应后降低活跃度的惩罚值
 
-const MIN_RECENT_MESSAGES = 24 // 进入活跃度统计的最小消息数
-const SUSTAINED_RATE_THRESHOLD = 16 // 持续活跃阈值（条/分钟）
-const SUSTAINED_RATE_SCALE = 7 // 持续活跃斜率，越大越平缓
-const INSTANT_RATE_THRESHOLD = 28 // 瞬时活跃阈值（条/分钟）
-const INSTANT_RATE_SCALE = 10 // 瞬时活跃斜率
-const BURST_RATE_THRESHOLD = 40 // 突发活跃阈值（条/分钟）
-const BURST_RATE_SCALE = 24 // 突发活跃斜率
-const SMOOTHING_WINDOW = Time.second * 24 // 分数平滑窗口
-const FRESHNESS_HALF_LIFE = Time.minute * 6 // 新鲜度半衰期：6分钟
+const MIN_RECENT_MESSAGES = 3 // 进入活跃度统计的最小消息数
+const SUSTAINED_RATE_THRESHOLD = 8 // 持续活跃阈值（条/分钟）
+const SUSTAINED_RATE_SCALE = 3.5 // 持续活跃斜率，越大越平缓
+const INSTANT_RATE_THRESHOLD = 14 // 瞬时活跃阈值（条/分钟）
+const INSTANT_RATE_SCALE = 5 // 瞬时活跃斜率
+const BURST_RATE_THRESHOLD = 20 // 突发活跃阈值（条/分钟）
+const BURST_RATE_SCALE = 12 // 突发活跃斜率
+const SMOOTHING_WINDOW = Time.second * 12 // 分数平滑窗口
+const FRESHNESS_HALF_LIFE = Time.minute * 3 // 新鲜度半衰期：3分钟
 
 export async function apply(ctx: Context, config: Config) {
     const service = ctx.chatluna_character
