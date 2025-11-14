@@ -61,8 +61,22 @@ export class MessageCollector extends Service {
     isMute(session: Session) {
         const lock = this._getGroupLocks(session.guildId)
 
-        // 移除对 at 的权重
         return lock.mute > new Date().getTime()
+    }
+
+    isResponseLocked(session: Session) {
+        const lock = this._getGroupLocks(session.guildId)
+        return lock.responseLock
+    }
+
+    setResponseLock(session: Session) {
+        const lock = this._getGroupLocks(session.guildId)
+        lock.responseLock = true
+    }
+
+    releaseResponseLock(session: Session) {
+        const lock = this._getGroupLocks(session.guildId)
+        lock.responseLock = false
     }
 
     async updateTemp(session: Session, temp: GroupTemp) {
@@ -95,7 +109,8 @@ export class MessageCollector extends Service {
         if (!this._groupLocks[groupId]) {
             this._groupLocks[groupId] = {
                 lock: false,
-                mute: 0
+                mute: 0,
+                responseLock: false
             }
         }
         return this._groupLocks[groupId]
@@ -260,14 +275,12 @@ export class MessageCollector extends Service {
             this._filters.some((func) => func(session, message)) &&
             !this.isMute(session)
         ) {
+            this.setResponseLock(session)
             this._eventEmitter.emit('collect', session, groupArray)
             await this._unlock(session)
             return true
         } else {
             await this._unlock(session)
-            // 禁言时还是不响应好点。。。。
-            // 命令是不会受到影响的
-            // 现在感觉
             return this.isMute(session)
         }
     }
@@ -426,6 +439,7 @@ type MessageCollectorFilter = (session: Session, message: Message) => boolean
 interface GroupLock {
     lock: boolean
     mute: number
+    responseLock: boolean
 }
 
 declare module 'koishi' {

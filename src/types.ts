@@ -24,8 +24,11 @@ export interface GroupTemp {
 export interface GuildConfig {
     preset: string
     messageInterval: number
+    messageActivityScoreLowerLimit: number
+    messageActivityScoreUpperLimit: number
     maxTokens: number
     isNickname: boolean
+    isNickNameWithContent: boolean
     isForceMute: boolean
     sendStickerProbability: number
     image: boolean
@@ -33,13 +36,15 @@ export interface GuildConfig {
     imageInputMaxSize: number
     splitSentence: boolean
     markdownRender: boolean
-
+    largeTextSize: number
+    largeTextTypingTime: number
     coolDownTime: number
     splitVoice: boolean
     isAt: boolean
     typingTime: number
-    messageProbability: number
     muteTime: number
+    modelCompletionCount: number
+    toolCalling: boolean
 }
 
 export interface PresetTemplate {
@@ -58,6 +63,9 @@ export interface GroupInfo {
     lastActivityScore: number
     lastScoreUpdate: number
     lastResponseTime: number
+    currentActivityThreshold: number
+    pendingResponse: boolean
+    lastUserMessageTime: number
 }
 
 export interface ActivityScore {

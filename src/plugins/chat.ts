@@ -534,8 +534,7 @@ export async function apply(ctx: Context, config: Config) {
             chainPool[guildId]?.value
         )
         if (!response) {
-            // clear the completion messages
-            // temp.completionMessages.length = 0
+            service.releaseResponseLock(session)
             return
         }
 
@@ -544,6 +543,7 @@ export async function apply(ctx: Context, config: Config) {
         temp.status = parsedResponse.status
         if (parsedResponse.elements.length < 1) {
             service.mute(session, copyOfConfig.muteTime)
+            service.releaseResponseLock(session)
             return
         }
 
@@ -566,5 +566,7 @@ export async function apply(ctx: Context, config: Config) {
             stickerService,
             parsedResponse
         )
+
+        service.releaseResponseLock(session)
     })
 }

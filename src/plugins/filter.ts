@@ -10,7 +10,8 @@ const RECENT_WINDOW = Time.second * 90 // 频率统计窗口：1.5分钟
 const SHORT_BURST_WINDOW = Time.second * 30 // 爆发检测窗口：30秒
 const INSTANT_WINDOW = Time.second * 20 // 短周期窗口，用于检测瞬时活跃
 const MIN_COOLDOWN_TIME = Time.second * 6 // 最小冷却时间：6秒
-const COOLDOWN_PENALTY = 0.3 // 响应后降低活跃度的惩罚值
+const COOLDOWN_PENALTY = 0.8 // 响应后降低活跃度的惩罚值
+const THRESHOLD_RESET_TIME = Time.minute * 10 // 十分钟无人回复时，重置活跃度阈值
 
 const MIN_RECENT_MESSAGES = 6 // 进入活跃度统计的最小消息数
 const SUSTAINED_RATE_THRESHOLD = 10 // 持续活跃阈值（条/分钟）
@@ -34,13 +35,13 @@ export async function apply(ctx: Context, config: Config) {
     ctx.on('guild-member' as any, (session: Session) => {
         if (
             !config.applyGroup.includes(session.guildId) ||
-            session.event.subtype !== 'ban' ||
-            session.bot.selfId !== session.event.user.id
+            session.event?.subtype !== 'ban' ||
+            session.bot.selfId !== session.event?.user?.id
         ) {
             return
         }
 
-        const duration = (session.event._data['duration'] ?? 60) * 1000
+        const duration = (session.event._data?.['duration'] ?? 60) * 1000
 
         if (duration === 0) {
             ctx.chatluna_character.mute(session, 0)
@@ -48,34 +49,15 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         logger.warn(
-            `检测到 ${session.bot.user?.name || session.selfId} 被 ${session.operatorId} 操作禁言 ${session.event._data['duration'] || 60 * 1000} 秒？`
+            `检测到 ${session.bot.user?.name || session.selfId} 被 ${session.operatorId} 操作禁言 ${duration / 1000} 秒？`
         )
 
-        ctx.chatluna_character.mute(
-            session,
-            (session.event._data['duration'] || 60) * 1000
-        )
+        ctx.chatluna_character.mute(session, duration)
     })
 
     service.addFilter((session, message) => {
         const guildId = session.guildId
         const now = Date.now()
-
-        const info = groupInfos[guildId] ?? {
-            messageCount: 0,
-            messageTimestamps: [],
-            lastActivityScore: 0,
-            lastScoreUpdate: 0,
-            lastResponseTime: 0
-        }
-
-        // 更新消息时间戳
-        info.messageTimestamps.push(now)
-        if (info.messageTimestamps.length > WINDOW_SIZE) {
-            info.messageTimestamps.shift()
-        }
-
-        // 计算新的活跃度分数，传入上次响应时间
 
         const currentGuildConfig = config.configs[guildId]
         let copyOfConfig = Object.assign({}, config)
@@ -94,6 +76,27 @@ export async function apply(ctx: Context, config: Config) {
                 })()
         }
 
+        const info = groupInfos[guildId] ?? {
+            messageCount: 0,
+            messageTimestamps: [],
+            lastActivityScore: 0,
+            lastScoreUpdate: 0,
+            lastResponseTime: 0,
+            currentActivityThreshold: copyOfConfig.messageActivityScoreLowerLimit,
+            pendingResponse: false,
+            lastUserMessageTime: now
+        }
+
+        info.messageTimestamps.push(now)
+        if (info.messageTimestamps.length > WINDOW_SIZE) {
+            info.messageTimestamps.shift()
+        }
+
+        if (now - info.lastUserMessageTime >= THRESHOLD_RESET_TIME) {
+            info.currentActivityThreshold = copyOfConfig.messageActivityScoreLowerLimit
+        }
+
+        info.lastUserMessageTime = now
         const activity = calculateActivityScore(
             info.messageTimestamps,
             info.lastResponseTime,
@@ -151,11 +154,9 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         if (!appel) {
-            // 检测引用的消息是否为 bot 本身
             appel = session.quote?.user?.id === botId
         }
 
-        // 在计算之前先检查是否需要禁言。
         if (
             copyOfConfig.isForceMute &&
             appel &&
@@ -173,10 +174,8 @@ export async function apply(ctx: Context, config: Config) {
 
         const isMute = service.isMute(session)
 
-        const shouldRespond =
-            info.messageCount > copyOfConfig.messageInterval ||
+        const isDirectTrigger =
             appel ||
-            info.lastActivityScore > copyOfConfig.messageActivityScore ||
             (copyOfConfig.isNickname &&
                 currentPreset.nick_name.some((value) =>
                     message.content.startsWith(value)
@@ -186,13 +185,61 @@ export async function apply(ctx: Context, config: Config) {
                     message.content.includes(value)
                 ))
 
-        if (shouldRespond && !isMute) {
+        const shouldRespond =
+            info.messageCount > copyOfConfig.messageInterval ||
+            isDirectTrigger ||
+            info.lastActivityScore > info.currentActivityThreshold
+
+        const isLocked = service.isResponseLocked(session)
+
+        if (info.pendingResponse && !isLocked) {
+            info.pendingResponse = false
             info.messageCount = 0
             info.lastActivityScore = Math.max(
                 0,
                 info.lastActivityScore - COOLDOWN_PENALTY
             )
             info.lastResponseTime = now
+
+            const lowerLimit = copyOfConfig.messageActivityScoreLowerLimit
+            const upperLimit = copyOfConfig.messageActivityScoreUpperLimit
+            const step = (upperLimit - lowerLimit) * 0.1
+            info.currentActivityThreshold = Math.max(
+                Math.min(info.currentActivityThreshold + step, Math.max(lowerLimit, upperLimit)),
+                Math.min(lowerLimit, upperLimit)
+            )
+
+            groupInfos[session.guildId] = info
+            return true
+        }
+
+        if (shouldRespond && !isMute) {
+            if (isLocked && !isDirectTrigger) {
+                info.pendingResponse = true
+                info.messageCount++
+                groupInfos[session.guildId] = info
+                return false
+            }
+
+            if (info.pendingResponse) {
+                info.pendingResponse = false
+            }
+
+            info.messageCount = 0
+            info.lastActivityScore = Math.max(
+                0,
+                info.lastActivityScore - COOLDOWN_PENALTY
+            )
+            info.lastResponseTime = now
+
+            const lowerLimit = copyOfConfig.messageActivityScoreLowerLimit
+            const upperLimit = copyOfConfig.messageActivityScoreUpperLimit
+            const step = (upperLimit - lowerLimit) * 0.1
+            info.currentActivityThreshold = Math.max(
+                Math.min(info.currentActivityThreshold + step, Math.max(lowerLimit, upperLimit)),
+                Math.min(lowerLimit, upperLimit)
+            )
+
             groupInfos[session.guildId] = info
             return true
         }

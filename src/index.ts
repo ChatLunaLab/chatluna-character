@@ -1,5 +1,5 @@
 /* eslint-disable max-len */
-import { Context, Disposable, Schema } from 'koishi'
+import { Context, Schema } from 'koishi'
 
 import { ChatLunaPlugin } from 'koishi-plugin-chatluna/services/chat'
 import { plugins } from './plugin'
@@ -7,56 +7,48 @@ import { MessageCollector } from './service/message'
 import { GuildConfig } from './types'
 
 export function apply(ctx: Context, config: Config) {
-    const disposables: Disposable[] = []
+    ctx.plugin(MessageCollector, config)
 
-    ctx.on('ready', async () => {
-        ctx.plugin(MessageCollector, config)
-
-        ctx.plugin(
-            {
-                apply: async (ctx: Context, config: Config) => {
+    ctx.plugin(
+        {
+            apply: (ctx: Context, config: Config) => {
+                ctx.on('ready', async () => {
                     await ctx.chatluna_character.stickerService.init()
                     await ctx.chatluna_character.preset.init()
                     await plugins(ctx, config)
-                },
-                inject: Object.assign({}, inject2, {
-                    chatluna_character: {
-                        required: true
-                    }
-                }),
-                name: 'chatluna_character_entry_point'
-            },
-            config
-        )
-
-        disposables.push(
-            ctx.middleware((session, next) => {
-                if (!ctx.chatluna_character) {
-                    return next()
-                }
-
-                // 不接收自己的消息
-                if (ctx.bots[session.uid]) {
-                    return next()
-                }
-
-                const guildId = session.guildId
-
-                if (!config.applyGroup.includes(guildId)) {
-                    return next()
-                }
-
-                return next(async (loop) => {
-                    if (!(await ctx.chatluna_character.broadcast(session))) {
-                        return loop()
-                    }
                 })
-            })
-        )
-    })
+            },
+            inject: Object.assign({}, inject2, {
+                chatluna_character: {
+                    required: true
+                }
+            }),
+            name: 'chatluna_character_entry_point'
+        },
+        config
+    )
 
-    ctx.on('dispose', () => {
-        disposables.forEach((disposable) => disposable())
+    ctx.middleware((session, next) => {
+        if (!ctx.chatluna_character) {
+            return next()
+        }
+
+        // 不接收自己的消息
+        if (ctx.bots[session.uid]) {
+            return next()
+        }
+
+        const guildId = session.guildId
+
+        if (!config.applyGroup.includes(guildId)) {
+            return next()
+        }
+
+        return next(async (loop) => {
+            if (!(await ctx.chatluna_character.broadcast(session))) {
+                return loop()
+            }
+        })
     })
 }
 
@@ -82,7 +74,8 @@ export interface Config extends ChatLunaPlugin.Config {
     maxMessages: number
 
     messageInterval: number
-    messageActivityScore: number
+    messageActivityScoreLowerLimit: number
+    messageActivityScoreUpperLimit: number
 
     maxTokens: number
     applyGroup: string[]
@@ -206,14 +199,23 @@ export const Config = Schema.intersect([
             .role('slider')
             .max(10000)
             .description('随机发送消息的最大间隔'),
-        messageActivityScore: Schema.number()
+        messageActivityScoreLowerLimit: Schema.number()
             .default(0.85)
             .min(0)
             .max(1)
             .role('slider')
             .step(0.00001)
             .description(
-                '消息活跃度分数的阈值，当活跃度超过这个阈值则会发送消息。群越活跃，这个值就会越高。'
+                '消息活跃度分数的下限阈值。初始状态或长时间无人回复后，会使用此阈值判断是否响应。'
+            ),
+        messageActivityScoreUpperLimit: Schema.number()
+            .default(0.85)
+            .min(0)
+            .max(1)
+            .role('slider')
+            .step(0.00001)
+            .description(
+                '消息活跃度分数的上限阈值。每次响应后，判断阈值会向此值靠拢。若下限 < 上限（如 0.1 → 0.9），则会越聊越少；若下限 > 上限（如 0.9 → 0.2），则会越聊越多。十分钟内无人回复时，会自动回退到下限。'
             ),
 
         coolDownTime: Schema.number()
@@ -309,14 +311,23 @@ export const Config = Schema.intersect([
                     .description(
                         '随机发送消息的间隔。群越活跃，这个值就会越高。'
                     ),
-                messageActivityScore: Schema.number()
+                messageActivityScoreLowerLimit: Schema.number()
                     .default(0.85)
                     .min(0)
                     .max(1)
                     .role('slider')
                     .step(0.00001)
                     .description(
-                        '消息活跃度分数的阈值，当活跃度超过这个阈值则会发送消息。群越活跃，这个值就会越高。'
+                        '消息活跃度分数的下限阈值。初始状态或长时间无人回复后，会使用此阈值判断是否响应。'
+                    ),
+                messageActivityScoreUpperLimit: Schema.number()
+                    .default(0.85)
+                    .min(0)
+                    .max(1)
+                    .role('slider')
+                    .step(0.00001)
+                    .description(
+                        '消息活跃度分数的上限阈值。每次响应后，判断阈值会向此值靠拢。若下限 < 上限（如 0.1 → 0.9），则会越聊越少；若下限 > 上限（如 0.9 → 0.2），则会越聊越多。十分钟内无人回复时，会自动回退到下限。'
                     ),
                 toolCalling: Schema.boolean()
                     .description('是否启用工具调用功能')

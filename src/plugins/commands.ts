@@ -26,6 +26,9 @@ export function apply(ctx: Context, config: Config) {
             messageCount: 0,
             messageTimestamps: [],
             lastActivityScore: 0,
+            currentActivityThreshold: 0,
+            pendingResponse: false,
+            lastUserMessageTime: 0,
             lastScoreUpdate: Date.now(),
             lastResponseTime: 0
         }
