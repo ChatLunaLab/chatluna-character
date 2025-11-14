@@ -82,7 +82,8 @@ export async function apply(ctx: Context, config: Config) {
             lastActivityScore: 0,
             lastScoreUpdate: 0,
             lastResponseTime: 0,
-            currentActivityThreshold: copyOfConfig.messageActivityScoreLowerLimit,
+            currentActivityThreshold:
+                copyOfConfig.messageActivityScoreLowerLimit,
             pendingResponse: false,
             lastUserMessageTime: now
         }
@@ -93,7 +94,8 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         if (now - info.lastUserMessageTime >= THRESHOLD_RESET_TIME) {
-            info.currentActivityThreshold = copyOfConfig.messageActivityScoreLowerLimit
+            info.currentActivityThreshold =
+                copyOfConfig.messageActivityScoreLowerLimit
         }
 
         info.lastUserMessageTime = now
@@ -205,7 +207,10 @@ export async function apply(ctx: Context, config: Config) {
             const upperLimit = copyOfConfig.messageActivityScoreUpperLimit
             const step = (upperLimit - lowerLimit) * 0.1
             info.currentActivityThreshold = Math.max(
-                Math.min(info.currentActivityThreshold + step, Math.max(lowerLimit, upperLimit)),
+                Math.min(
+                    info.currentActivityThreshold + step,
+                    Math.max(lowerLimit, upperLimit)
+                ),
                 Math.min(lowerLimit, upperLimit)
             )
 
@@ -236,7 +241,10 @@ export async function apply(ctx: Context, config: Config) {
             const upperLimit = copyOfConfig.messageActivityScoreUpperLimit
             const step = (upperLimit - lowerLimit) * 0.1
             info.currentActivityThreshold = Math.max(
-                Math.min(info.currentActivityThreshold + step, Math.max(lowerLimit, upperLimit)),
+                Math.min(
+                    info.currentActivityThreshold + step,
+                    Math.max(lowerLimit, upperLimit)
+                ),
                 Math.min(lowerLimit, upperLimit)
             )
 

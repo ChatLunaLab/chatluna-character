@@ -3,7 +3,9 @@
     "allow": [
       "Bash(git push:*)",
       "Read(//g/projects/koishi_projects/koishi-new/external/chatluna/packages/core/src/llm-core/chain/**)",
-      "Read(//g/projects/koishi_projects/koishi-new/external/chatluna/packages/core/src/llm-core/agent/**)"
+      "Read(//g/projects/koishi_projects/koishi-new/external/chatluna/packages/core/src/llm-core/agent/**)",
+      "mcp__grep__searchGitHub",
+      "WebFetch(domain:github.com)"
     ],
     "deny": [],
     "ask": []
