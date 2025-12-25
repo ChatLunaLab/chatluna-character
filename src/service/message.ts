@@ -185,6 +185,7 @@ export class MessageCollector extends Service {
             content,
             name: session.bot.user.name,
             id: session.bot.selfId ?? '0',
+            messageId: session.messageId,
             timestamp: session.event.timestamp
         }
 
@@ -236,6 +237,7 @@ export class MessageCollector extends Service {
                 session.username
             ),
             id: session.author.id,
+            messageId: session.messageId,
             timestamp: session.event.timestamp,
             quote: session.quote
                 ? {
@@ -247,7 +249,10 @@ export class MessageCollector extends Service {
                           ]
                       ),
                       name: session.quote?.user?.name,
-                      id: session.quote?.user?.id
+                      id: session.quote?.user?.id,
+                      // `session.quote.id` is the quoted message id in Koishi.
+                      messageId: (session.quote as { id?: string } | undefined)
+                          ?.id
                   }
                 : undefined,
             images

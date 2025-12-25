@@ -49,7 +49,7 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         logger.warn(
-            `检测到 ${session.bot.user?.name || session.selfId} 被 ${session.operatorId} 操作禁言 ${duration / 1000} 秒？`
+            `检测到 ${session.bot.user?.name || session.selfId} 被 ${session.operatorId} 操作禁言 ${duration / 1000} 秒。`
         )
 
         ctx.chatluna_character.mute(session, duration)
@@ -190,7 +190,7 @@ export async function apply(ctx: Context, config: Config) {
         const shouldRespond =
             info.messageCount > copyOfConfig.messageInterval ||
             isDirectTrigger ||
-            info.lastActivityScore > info.currentActivityThreshold
+            info.lastActivityScore >= info.currentActivityThreshold
 
         const isLocked = service.isResponseLocked(session)
 

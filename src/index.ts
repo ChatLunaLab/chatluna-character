@@ -110,6 +110,9 @@ export interface Config extends ChatLunaPlugin.Config {
     splitVoice: boolean
     splitSentence: boolean
     isAt: boolean
+
+    // When enabled, `<message id="...">` in the prompt uses platform message ids.
+    enableMessageId: boolean
 }
 
 export const Config = Schema.intersect([
@@ -188,6 +191,9 @@ export const Config = Schema.intersect([
                 '是否启用自分割发送消息 **注意请确保你的预设和模型在使用时支持自分割消息，否则请不要关闭**'
             )
             .default(true),
+        enableMessageId: Schema.boolean()
+            .description('向模型暴露平台消息 ID，以允许发送引用消息。')
+            .default(false),
         markdownRender: Schema.boolean()
             .description(
                 '是否启用 Markdown 渲染。关闭后可能会损失分割消息的精度'
@@ -261,6 +267,7 @@ export const Config = Schema.intersect([
             .max(1)
             .role('slider')
             .step(0.01)
+            .hidden()
             .description('发送表情的概率（即将废弃，将制作新的表情系统插件）'),
         defaultPreset: Schema.dynamic('character-preset')
             .description('使用的伪装预设')
@@ -276,6 +283,9 @@ export const Config = Schema.intersect([
                     .max(20000)
                     .description('使用聊天的最大 token 数'),
 
+                enableMessageId: Schema.boolean()
+                    .description('向模型暴露平台消息 ID，以允许发送引用消息。')
+                    .default(false),
                 isAt: Schema.boolean().description('是否启用@').default(true),
                 splitVoice: Schema.boolean()
                     .description('是否分段发送语音')

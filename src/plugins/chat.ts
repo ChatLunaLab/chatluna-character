@@ -130,6 +130,7 @@ async function prepareMessages(
     temp: GroupTemp,
     chain?: ChatLunaChain
 ): Promise<BaseMessage[]> {
+    // `enableMessageId` controls whether `<message id="...">` is included in history.
     const [recentMessage, lastMessage] = await formatMessage(
         messages,
         config,

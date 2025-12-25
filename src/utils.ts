@@ -68,7 +68,9 @@ function parseMessageContent(response: string) {
 
     const tempJson = parseXmlToObject(rawMessage)
     return {
-        rawMessage: tempJson.content,
+        // Keep the original `<message ...>...</message>` so we can read attributes
+        // (e.g. `quote="..."`) during element parsing.
+        rawMessage,
         messageType: tempJson.type,
         status,
         sticker: tempJson.sticker
@@ -84,44 +86,117 @@ export async function processElements(
     const last = () => result.at(-1)
     const canAppendAt = () => last()?.at(-2)?.type === 'at'
 
-    const process = async (els: Element[]) => {
+    type PendingQuote = { id?: string; used: boolean }
+
+    const ensureLast = () => {
+        if (!last()) result.push([])
+    }
+
+    const appendToLast = (items: Element[], pendingQuote?: PendingQuote) => {
+        if (items.length === 0) return
+        ensureLast()
+        const target = last()
+
+        // Attach quote to the first fragment that actually receives content.
+        if (pendingQuote?.id && !pendingQuote.used) {
+            target.unshift(h('quote', { id: pendingQuote.id }))
+            pendingQuote.used = true
+        }
+
+        target.push(...items)
+    }
+
+    const pushFragment = (items: Element[], pendingQuote?: PendingQuote) => {
+        if (items.length === 0) {
+            result.push([])
+            return
+        }
+
+        if (pendingQuote?.id && !pendingQuote.used) {
+            result.push([h('quote', { id: pendingQuote.id }), ...items])
+            pendingQuote.used = true
+            return
+        }
+
+        result.push(items)
+    }
+
+    const startNewFragmentIfNeeded = () => {
+        if (last()?.length) result.push([])
+    }
+
+    const process = async (els: Element[], pendingQuote?: PendingQuote) => {
         for (const el of els) {
             if (el.type === 'text') {
                 if (el.attrs.code || el.attrs.span) {
-                    result.push([el])
+                    pushFragment([el], pendingQuote)
                 } else if (el.attrs.voice && voiceRender) {
-                    result.push(await voiceRender(el))
+                    pushFragment(await voiceRender(el), pendingQuote)
                 } else if (config?.splitSentence) {
                     for (const text of splitSentence(
                         he.decode(el.attrs.content)
                     ).filter(Boolean)) {
                         canAppendAt()
-                            ? last().push(h.text(text))
-                            : result.push([h.text(text)])
+                            ? appendToLast([h.text(text)], pendingQuote)
+                            : pushFragment([h.text(text)], pendingQuote)
                     }
                 } else {
-                    canAppendAt() ? last().push(el) : result.push([el])
+                    canAppendAt()
+                        ? appendToLast([el], pendingQuote)
+                        : pushFragment([el], pendingQuote)
                 }
             } else if (['em', 'strong', 'del', 'p'].includes(el.type)) {
-                el.children ? await process(el.children) : result.push([el])
+                el.children
+                    ? await process(el.children, pendingQuote)
+                    : pushFragment([el], pendingQuote)
             } else if (el.type === 'at') {
                 last()
-                    ? last().push(h.text(' '), el, h.text(' '))
-                    : result.push([h.text(' '), el, h.text(' ')])
+                    ? appendToLast([h.text(' '), el, h.text(' ')], pendingQuote)
+                    : pushFragment([h.text(' '), el, h.text(' ')], pendingQuote)
             } else if (el.type === 'img' && !el.attrs.sticker) {
-                last() ? last().push(el) : result.push([el])
+                last()
+                    ? appendToLast([el], pendingQuote)
+                    : pushFragment([el], pendingQuote)
+            } else if (
+                el.type === 'message' &&
+                el.attrs.span &&
+                el.attrs.block
+            ) {
+                // A top-level `<message ...>` block from the model output.
+                // Use it as a boundary so each block can carry its own quote id.
+                startNewFragmentIfNeeded()
+                const blockQuote: PendingQuote | undefined = el.attrs.quote
+                    ? { id: String(el.attrs.quote), used: false }
+                    : undefined
+
+                await process(el.children, blockQuote)
+                startNewFragmentIfNeeded()
             } else if (el.type === 'message' && el.attrs.span) {
-                await process(el.children)
+                await process(el.children, pendingQuote)
             } else if (el.type === 'face') {
-                last() ? last().push(el) : result.push([el])
+                last()
+                    ? appendToLast([el], pendingQuote)
+                    : pushFragment([el], pendingQuote)
             } else {
-                canAppendAt() ? last().push(el) : result.push([el])
+                canAppendAt()
+                    ? appendToLast([el], pendingQuote)
+                    : pushFragment([el], pendingQuote)
             }
         }
     }
 
     await process(elements)
-    return result
+
+    // Align with ChatLuna sender: drop quote if the fragment contains incompatible types.
+    for (const fragment of result) {
+        if (fragment[0]?.type !== 'quote') continue
+        const hasIncompatibleType = fragment.some(
+            (element) => element.type === 'audio' || element.type === 'message'
+        )
+        if (hasIncompatibleType) fragment.shift()
+    }
+
+    return result.filter((fragment) => fragment.length > 0)
 }
 
 interface TextMatch {
@@ -190,7 +265,22 @@ export function processTextMatches(
                           .currentElements
                     : [h('text', { span: true, content: token.content })]
 
-                currentElements.push(h('message', { span: true }, ...children))
+                const isTopLevelMessage = token.extra?.topLevel === 'true'
+                const quoteId = isTopLevelMessage
+                    ? token.extra?.quote
+                    : undefined
+
+                currentElements.push(
+                    h(
+                        'message',
+                        {
+                            span: true,
+                            ...(isTopLevelMessage ? { block: true } : {}),
+                            ...(quoteId ? { quote: quoteId } : {})
+                        },
+                        ...children
+                    )
+                )
                 break
             }
             case 'face': {
@@ -247,12 +337,6 @@ function textMatchLexer(input: string): TextMatch[] {
 
     const tagMappings = [
         { open: '<pre>', close: '</pre>', type: 'pre' as const, nested: true },
-        {
-            open: '<message>',
-            close: '</message>',
-            type: 'message' as const,
-            nested: true
-        },
         { open: '<emo>', close: '</emo>', type: 'emo' as const, nested: false },
         {
             open: '<sticker>',
@@ -268,10 +352,68 @@ function textMatchLexer(input: string): TextMatch[] {
         }
     ]
 
-    const stack: { type: (typeof tagMappings)[0]['type']; start: number }[] = []
+    const stack: {
+        type: TextMatch['type']
+        start: number
+        contentStart?: number
+        extra?: Record<string, string>
+    }[] = []
 
     while (index < input.length) {
         let matched = false
+
+        // `<message ...>...</message>` supports attributes, so handle it explicitly.
+        if (!matched && input.startsWith('<message', index)) {
+            const openEnd = input.indexOf('>', index)
+            if (openEnd !== -1) {
+                const boundary = input.charAt(index + '<message'.length)
+                if (boundary === '>' || boundary === ' ' || boundary === '\t') {
+                    const attrs = input.substring(
+                        index + '<message'.length,
+                        openEnd
+                    )
+                    const quote = attrs.match(
+                        /\bquote\s*=\s*['"]([^'"]+)['"]/
+                    )?.[1]
+
+                    stack.push({
+                        type: 'message',
+                        start: index,
+                        contentStart: openEnd + 1,
+                        extra: {
+                            ...(quote ? { quote } : {}),
+                            topLevel: stack.length === 0 ? 'true' : 'false'
+                        }
+                    })
+                    index = openEnd + 1
+                    matched = true
+                }
+            }
+        }
+
+        if (
+            !matched &&
+            stack.length > 0 &&
+            stack[stack.length - 1].type === 'message' &&
+            input.startsWith('</message>', index)
+        ) {
+            const stackItem = stack.pop()
+            if (stackItem) {
+                const content = input.substring(stackItem.contentStart!, index)
+                const children = textMatchLexer(content)
+
+                tokens.push({
+                    type: 'message',
+                    content,
+                    extra: stackItem.extra,
+                    start: stackItem.start,
+                    end: index + '</message>'.length,
+                    children
+                })
+                index += '</message>'.length
+                matched = true
+            }
+        }
 
         for (const { open, close, type, nested } of tagMappings) {
             if (input.startsWith(open, index)) {
@@ -299,8 +441,9 @@ function textMatchLexer(input: string): TextMatch[] {
                     }
                 }
             } else if (nested && input.startsWith(close, index)) {
-                const stackItem = stack.pop()
+                const stackItem = stack.at(-1)
                 if (stackItem?.type === type) {
+                    stack.pop()
                     const content = input.substring(
                         stackItem.start + open.length,
                         index
@@ -605,8 +748,14 @@ export function formatTimestamp(timestamp: number | Date): string {
     })
 }
 
-function formatMessageString(message: Message) {
-    let xmlMessage = `<message name='${message.name}' id='${message.id}'`
+function formatMessageString(message: Message, enableMessageId: boolean) {
+    let xmlMessage = `<message name='${message.name}'`
+
+    // `id` is optional and disabled by default to avoid leaking platform message ids.
+    if (enableMessageId) {
+        const id = message.messageId ?? message.id
+        if (id) xmlMessage += ` id='${id}'`
+    }
 
     if (message.timestamp) {
         const timestampString = formatTimestamp(message.timestamp)
@@ -614,7 +763,7 @@ function formatMessageString(message: Message) {
     }
 
     if (message.quote) {
-        xmlMessage += ` quote='${formatMessageString(message.quote)}'`
+        xmlMessage += ` quote='${formatMessageString(message.quote, enableMessageId)}'`
     }
 
     xmlMessage += `>${message.content}</message>`
@@ -734,7 +883,10 @@ export async function formatMessage(
     const calculatedMessages: string[] = []
 
     for (let i = messages.length - 1; i >= 0; i--) {
-        const xmlMessage = formatMessageString(messages[i])
+        const xmlMessage = formatMessageString(
+            messages[i],
+            config.enableMessageId
+        )
 
         const xmlMessageToken = await model.getNumTokens(xmlMessage)
 

@@ -7,6 +7,11 @@ export interface Message {
     content: string
     name: string
     id: string
+    /**
+     * Platform message id (e.g. `session.messageId`), used when the plugin
+     * chooses to expose message ids to the model.
+     */
+    messageId?: string
     timestamp?: number
     quote?: Message
     images?: {
@@ -23,6 +28,7 @@ export interface GroupTemp {
 
 export interface GuildConfig {
     preset: string
+    enableMessageId: boolean
     messageInterval: number
     messageActivityScoreLowerLimit: number
     messageActivityScoreUpperLimit: number
