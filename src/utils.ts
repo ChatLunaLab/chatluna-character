@@ -751,10 +751,13 @@ export function formatTimestamp(timestamp: number | Date): string {
 function formatMessageString(message: Message, enableMessageId: boolean) {
     let xmlMessage = `<message name='${message.name}'`
 
+    const id = message.id
+    if (id) xmlMessage += ` id='${id}'`
+
     // `id` is optional and disabled by default to avoid leaking platform message ids.
     if (enableMessageId) {
-        const id = message.messageId ?? message.id
-        if (id) xmlMessage += ` id='${id}'`
+        const id = message.messageId
+        if (id) xmlMessage += ` messageId='${id}'`
     }
 
     if (message.timestamp) {
