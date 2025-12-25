@@ -6,7 +6,10 @@ import { Config } from '..'
 import { Preset } from '../preset'
 import { GroupTemp, Message } from '../types'
 import { StickerService } from './sticker'
-import { isMessageContentImageUrl } from 'koishi-plugin-chatluna/utils/string'
+import {
+    hashString,
+    isMessageContentImageUrl
+} from 'koishi-plugin-chatluna/utils/string'
 
 export class MessageCollector extends Service {
     private _messages: Record<string, Message[]> = {}
@@ -221,7 +224,12 @@ export class MessageCollector extends Service {
             ? session.elements
             : [h.text(session.content)]
 
-        const content = mapElementToString(session, session.content, elements)
+        const content = mapElementToString(
+            session,
+            session.content,
+            elements,
+            images
+        )
 
         if (content.length < 1) {
             await this._unlock(session)
@@ -357,8 +365,20 @@ export class MessageCollector extends Service {
     }
 }
 
-function mapElementToString(session: Session, content: string, elements: h[]) {
+type MessageImage = {
+    url: string
+    hash: string
+    formatted: string
+}
+
+function mapElementToString(
+    session: Session,
+    content: string,
+    elements: h[],
+    images?: MessageImage[]
+) {
     const filteredBuffer: string[] = []
+    const usedImages = new Set<string>()
 
     for (const element of elements) {
         if (element.type === 'text') {
@@ -381,16 +401,38 @@ function mapElementToString(session: Session, content: string, elements: h[]) {
             const imageHash = element.attrs.imageHash as string | undefined
             const imageUrl = element.attrs.imageUrl as string | undefined
 
-            if (imageUrl) {
+            const matchedImage = images?.find((image) => {
+                if (imageHash && image.hash === imageHash) {
+                    return true
+                }
+                if (imageUrl && image.url === imageUrl) {
+                    return true
+                }
+                return false
+            })
+
+            if (matchedImage) {
+                filteredBuffer.push(matchedImage.formatted)
+                usedImages.add(matchedImage.formatted)
+            } else if (images && images.length > 0) {
+                for (const image of images) {
+                    if (!usedImages.has(image.formatted)) {
+                        filteredBuffer.push(image.formatted)
+                        usedImages.add(image.formatted)
+                    }
+                }
+            } else if (imageUrl) {
                 filteredBuffer.push(`<sticker>${imageUrl}</sticker>`)
             } else {
-                filteredBuffer.push(
-                    `[image` + imageHash
-                        ? `:${imageHash}`
-                        : imageUrl
-                          ? `:${imageUrl}`
-                          : '' + `]`
-                )
+                let buffer = `[image`
+                if (imageHash) {
+                    buffer += `:${imageHash}`
+                }
+                if (imageUrl) {
+                    buffer += `:${imageUrl}`
+                }
+                buffer += ']'
+                filteredBuffer.push(buffer)
             }
         } else if (element.type === 'face') {
             filteredBuffer.push(
@@ -424,19 +466,27 @@ async function getImages(ctx: Context, model: string, session: Session) {
         return undefined
     }
 
-    return images.map((image) => {
+    const results: MessageImage[] = []
+
+    for (const image of images) {
         const url =
             typeof image.image_url === 'string'
                 ? image.image_url
                 : image.image_url.url
 
-        const hash: string =
+        let hash: string =
             typeof image.image_url !== 'string' ? image.image_url['hash'] : ''
+
+        if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+            hash = await hashString(url, 8)
+        }
 
         const formatted = hash ? `[image:${hash}]` : `<sticker>${url}</sticker>`
 
-        return { url, hash, formatted }
-    })
+        results.push({ url, hash, formatted })
+    }
+
+    return results
 }
 
 type MessageCollectorFilter = (session: Session, message: Message) => boolean
