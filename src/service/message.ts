@@ -80,6 +80,19 @@ export class MessageCollector extends Service {
     releaseResponseLock(session: Session) {
         const lock = this._getGroupLocks(session.guildId)
         lock.responseLock = false
+        lock.pendingTrigger = undefined
+    }
+
+    setPendingTrigger(session: Session, message: Message) {
+        const lock = this._getGroupLocks(session.guildId)
+        lock.pendingTrigger = { session, message, timestamp: Date.now() }
+    }
+
+    takePendingTrigger(groupId: string) {
+        const lock = this._getGroupLocks(groupId)
+        const pendingTrigger = lock.pendingTrigger
+        lock.pendingTrigger = undefined
+        return pendingTrigger
     }
 
     async updateTemp(session: Session, temp: GroupTemp) {
@@ -156,11 +169,19 @@ export class MessageCollector extends Service {
     clear(groupId?: string) {
         if (groupId) {
             this._messages[groupId] = []
-        } else {
-            this._messages = {}
+            this._groupTemp[groupId] = {
+                completionMessages: []
+            }
+            const lock = this._groupLocks[groupId]
+            if (lock) lock.pendingTrigger = undefined
+            return
         }
-        this._groupTemp[groupId] = {
-            completionMessages: []
+
+        this._messages = {}
+        this._groupTemp = {}
+
+        for (const lock of Object.values(this._groupLocks)) {
+            lock.pendingTrigger = undefined
         }
     }
 
@@ -495,6 +516,13 @@ interface GroupLock {
     lock: boolean
     mute: number
     responseLock: boolean
+    pendingTrigger?: PendingTrigger
+}
+
+interface PendingTrigger {
+    session: Session
+    message: Message
+    timestamp: number
 }
 
 declare module 'koishi' {

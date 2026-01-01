@@ -128,7 +128,8 @@ async function prepareMessages(
     model: ChatLunaChatModel,
     currentPreset: PresetTemplate,
     temp: GroupTemp,
-    chain?: ChatLunaChain
+    chain?: ChatLunaChain,
+    focusMessage?: Message
 ): Promise<BaseMessage[]> {
     // `enableMessageId` controls whether `<message id="...">` is included in history.
     const [recentMessage, lastMessage] = await formatMessage(
@@ -136,7 +137,8 @@ async function prepareMessages(
         config,
         model,
         currentPreset.system.rawString,
-        currentPreset.input.rawString
+        currentPreset.input.rawString,
+        focusMessage
     )
 
     const formattedSystemPrompt = await currentPreset.system.format(
@@ -455,7 +457,6 @@ async function handleModelResponse(
 
     await handleStickerSending(session, config, parsedResponse, stickerService)
 
-    ctx.chatluna_character.mute(session, config.coolDownTime * 1000)
     await ctx.chatluna_character.broadcastOnBot(
         session,
         parsedResponse.elements.flat()
@@ -484,90 +485,124 @@ export async function apply(ctx: Context, config: Config) {
 
     service.collect(async (session, messages) => {
         const guildId = session.event.guild?.id ?? session.guildId
-        const model = await getModelForGuild(guildId, globalModel, modelPool)
 
-        const { copyOfConfig, currentPreset } =
-            await getConfigAndPresetForGuild(
+        try {
+            const model = await getModelForGuild(
                 guildId,
-                config,
-                globalPreset,
-                presetPool,
-                preset
+                globalModel,
+                modelPool
             )
 
-        if (model.value == null) {
-            logger.warn(
-                `Model ${copyOfConfig.model} load not successful. Please check your logs output.`
-            )
-            return
-        }
+            const { copyOfConfig, currentPreset } =
+                await getConfigAndPresetForGuild(
+                    guildId,
+                    config,
+                    globalPreset,
+                    presetPool,
+                    preset
+                )
 
-        if (copyOfConfig.toolCalling) {
-            chainPool[guildId] =
-                chainPool[guildId] ??
-                (await createChatLunaChain(ctx, model, session))
-        }
+            if (model.value == null) {
+                logger.warn(
+                    `Model ${copyOfConfig.model} load not successful. Please check your logs output.`
+                )
+                return
+            }
 
-        const temp = await service.getTemp(session)
-        const completionMessages = await prepareMessages(
-            messages,
-            copyOfConfig,
-            session,
-            model.value,
-            currentPreset,
-            temp,
-            chainPool[guildId]?.value
-        )
+            if (copyOfConfig.toolCalling) {
+                chainPool[guildId] =
+                    chainPool[guildId] ??
+                    (await createChatLunaChain(ctx, model, session))
+            }
 
-        if (!chainPool[guildId]) {
-            logger.debug(
-                'completion message: ' +
-                    JSON.stringify(completionMessages.map((it) => it.content))
-            )
-        }
+            const temp = await service.getTemp(session)
 
-        const response = await getModelResponse(
-            ctx,
-            session,
-            model.value,
-            completionMessages,
-            copyOfConfig,
-            chainPool[guildId]?.value
-        )
-        if (!response) {
+            let currentSession = session
+            let focusMessage: Message | undefined =
+                messages[messages.length - 1]
+            let responded = false
+
+            while (true) {
+                const latestMessages = service.getMessages(guildId) ?? messages
+
+                const completionMessages = await prepareMessages(
+                    latestMessages,
+                    copyOfConfig,
+                    currentSession,
+                    model.value,
+                    currentPreset,
+                    temp,
+                    chainPool[guildId]?.value,
+                    focusMessage
+                )
+
+                if (!chainPool[guildId]) {
+                    logger.debug(
+                        'completion message: ' +
+                            JSON.stringify(
+                                completionMessages.map((it) => it.content)
+                            )
+                    )
+                }
+
+                const response = await getModelResponse(
+                    ctx,
+                    currentSession,
+                    model.value,
+                    completionMessages,
+                    copyOfConfig,
+                    chainPool[guildId]?.value
+                )
+
+                if (!response) break
+
+                const { responseMessage, parsedResponse } = response
+
+                temp.status = parsedResponse.status
+                if (parsedResponse.elements.length < 1) {
+                    service.mute(currentSession, copyOfConfig.muteTime)
+                    break
+                }
+
+                temp.completionMessages.push(
+                    completionMessages[completionMessages.length - 1]
+                )
+                temp.completionMessages.push(responseMessage)
+
+                if (
+                    temp.completionMessages.length >
+                    config.modelCompletionCount * 2
+                ) {
+                    temp.completionMessages.length = Math.max(
+                        0,
+                        config.modelCompletionCount * 2 - 2
+                    )
+                }
+
+                await handleModelResponse(
+                    currentSession,
+                    copyOfConfig,
+                    ctx,
+                    stickerService,
+                    parsedResponse
+                )
+
+                responded = true
+
+                const pendingTrigger = service.takePendingTrigger(guildId)
+                if (!pendingTrigger) break
+
+                currentSession = pendingTrigger.session
+                focusMessage = pendingTrigger.message
+            }
+
+            if (responded) {
+                service.mute(session, copyOfConfig.coolDownTime * 1000)
+            }
+        } catch (e) {
+            logger.error(e)
+        } finally {
             service.releaseResponseLock(session)
-            return
         }
-
-        const { responseMessage, parsedResponse } = response
-
-        temp.status = parsedResponse.status
-        if (parsedResponse.elements.length < 1) {
-            service.mute(session, copyOfConfig.muteTime)
-            service.releaseResponseLock(session)
-            return
-        }
-
-        temp.completionMessages.push(
-            completionMessages[completionMessages.length - 1]
-        )
-        temp.completionMessages.push(responseMessage)
-
-        if (temp.completionMessages.length > config.modelCompletionCount * 2) {
-            temp.completionMessages.length = Math.max(
-                0,
-                config.modelCompletionCount * 2 - 2
-            )
-        }
-
-        await handleModelResponse(
-            session,
-            copyOfConfig,
-            ctx,
-            stickerService,
-            parsedResponse
-        )
-
-        service.releaseResponseLock(session)
     })
 }

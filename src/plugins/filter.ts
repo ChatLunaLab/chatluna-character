@@ -219,8 +219,8 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         if (shouldRespond && !isMute) {
-            if (isLocked && !isDirectTrigger) {
-                info.pendingResponse = true
+            if (isLocked) {
+                service.setPendingTrigger(session, message)
                 info.messageCount++
                 groupInfos[session.guildId] = info
                 return false
