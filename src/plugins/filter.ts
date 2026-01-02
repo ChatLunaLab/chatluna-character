@@ -84,7 +84,6 @@ export async function apply(ctx: Context, config: Config) {
             lastResponseTime: 0,
             currentActivityThreshold:
                 copyOfConfig.messageActivityScoreLowerLimit,
-            pendingResponse: false,
             lastUserMessageTime: now
         }
 
@@ -194,40 +193,12 @@ export async function apply(ctx: Context, config: Config) {
 
         const isLocked = service.isResponseLocked(session)
 
-        if (info.pendingResponse && !isLocked) {
-            info.pendingResponse = false
-            info.messageCount = 0
-            info.lastActivityScore = Math.max(
-                0,
-                info.lastActivityScore - COOLDOWN_PENALTY
-            )
-            info.lastResponseTime = now
-
-            const lowerLimit = copyOfConfig.messageActivityScoreLowerLimit
-            const upperLimit = copyOfConfig.messageActivityScoreUpperLimit
-            const step = (upperLimit - lowerLimit) * 0.1
-            info.currentActivityThreshold = Math.max(
-                Math.min(
-                    info.currentActivityThreshold + step,
-                    Math.max(lowerLimit, upperLimit)
-                ),
-                Math.min(lowerLimit, upperLimit)
-            )
-
-            groupInfos[session.guildId] = info
-            return true
-        }
-
         if (shouldRespond && !isMute) {
             if (isLocked) {
                 service.setPendingTrigger(session, message)
                 info.messageCount++
                 groupInfos[session.guildId] = info
                 return false
-            }
-
-            if (info.pendingResponse) {
-                info.pendingResponse = false
             }
 
             info.messageCount = 0

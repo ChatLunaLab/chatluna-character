@@ -70,7 +70,6 @@ export interface GroupInfo {
     lastScoreUpdate: number
     lastResponseTime: number
     currentActivityThreshold: number
-    pendingResponse: boolean
     lastUserMessageTime: number
 }
 
