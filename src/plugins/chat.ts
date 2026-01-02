@@ -33,6 +33,22 @@ interface ModelResponse {
     parsedResponse: Awaited<ReturnType<typeof parseResponse>>
 }
 
+function trimCompletionMessages(
+    completionMessages: BaseMessage[],
+    modelCompletionCount: number
+) {
+    const limit = Math.max(0, Math.floor(modelCompletionCount)) * 2
+    if (limit === 0) {
+        completionMessages.length = 0
+        return
+    }
+
+    const overflow = completionMessages.length - limit
+    if (overflow > 0) {
+        completionMessages.splice(0, overflow)
+    }
+}
+
 async function initializeModel(
     ctx: Context,
     platform: string,
@@ -569,15 +585,10 @@ export async function apply(ctx: Context, config: Config) {
                 )
                 temp.completionMessages.push(responseMessage)
 
-                if (
-                    temp.completionMessages.length >
-                    config.modelCompletionCount * 2
-                ) {
-                    temp.completionMessages.length = Math.max(
-                        0,
-                        config.modelCompletionCount * 2 - 2
-                    )
-                }
+                trimCompletionMessages(
+                    temp.completionMessages,
+                    copyOfConfig.modelCompletionCount
+                )
 
                 await handleModelResponse(
                     currentSession,
@@ -597,7 +608,7 @@ export async function apply(ctx: Context, config: Config) {
             }
 
             if (responded) {
-                service.mute(session, copyOfConfig.coolDownTime * 1000)
+                service.muteAtLeast(session, copyOfConfig.coolDownTime * 1000)
             }
         } catch (e) {
             logger.error(e)

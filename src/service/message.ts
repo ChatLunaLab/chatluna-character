@@ -53,6 +53,11 @@ export class MessageCollector extends Service {
         lock.mute = mute
     }
 
+    muteAtLeast(session: Session, time: number) {
+        const lock = this._getGroupLocks(session.guildId)
+        lock.mute = Math.max(lock.mute ?? 0, Date.now() + time)
+    }
+
     collect(func: (session: Session, messages: Message[]) => Promise<void>) {
         this._eventEmitter.on('collect', func)
     }
