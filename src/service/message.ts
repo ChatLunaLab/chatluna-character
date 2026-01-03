@@ -1,5 +1,4 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import EventEmitter from 'events'
 import { Context, h, Logger, Service, Session, Time } from 'koishi'
 import { createLogger } from 'koishi-plugin-chatluna/utils/logger'
 import { Config } from '..'
@@ -13,8 +12,6 @@ import {
 
 export class MessageCollector extends Service {
     private _messages: Record<string, Message[]> = {}
-
-    private _eventEmitter = new EventEmitter()
 
     private _filters: MessageCollectorFilter[] = []
 
@@ -59,7 +56,7 @@ export class MessageCollector extends Service {
     }
 
     collect(func: (session: Session, messages: Message[]) => Promise<void>) {
-        this._eventEmitter.on('collect', func)
+        this.ctx.on('chatluna_character/message_collect', func)
     }
 
     getMessages(groupId: string) {
@@ -315,7 +312,11 @@ export class MessageCollector extends Service {
             !this.isMute(session)
         ) {
             this.setResponseLock(session)
-            this._eventEmitter.emit('collect', session, groupArray)
+            await this.ctx.parallel(
+                'chatluna_character/message_collect',
+                session,
+                groupArray
+            )
             await this._unlock(session)
             return true
         } else {
@@ -533,6 +534,12 @@ interface PendingTrigger {
 declare module 'koishi' {
     export interface Context {
         chatluna_character: MessageCollector
+    }
+    export interface Events {
+        'chatluna_character/message_collect': (
+            session: Session,
+            message: Message[]
+        ) => Promise<void>
     }
 }
 
