@@ -41,9 +41,12 @@ export async function apply(ctx: Context, config: Config) {
             return
         }
 
-        const duration = (session.event._data?.['duration'] ?? 60) * 1000
+        const duration = (session.event._data?.['duration'] ?? 0) * 1000
 
         if (duration === 0) {
+            logger.warn(
+                `检测到 ${session.bot.user?.name || session.selfId} 被 ${session.operatorId} 操作解禁。`
+            )
             ctx.chatluna_character.mute(session, 0)
             return
         }

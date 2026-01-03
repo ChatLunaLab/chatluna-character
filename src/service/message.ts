@@ -411,7 +411,9 @@ function mapElementToString(
                 return false
             })
 
-            if (matchedImage) {
+            if (imageUrl) {
+                filteredBuffer.push(`<sticker>${imageUrl}</sticker>`)
+            } else if (matchedImage) {
                 filteredBuffer.push(matchedImage.formatted)
                 usedImages.add(matchedImage.formatted)
             } else if (images && images.length > 0) {
@@ -421,8 +423,6 @@ function mapElementToString(
                         usedImages.add(image.formatted)
                     }
                 }
-            } else if (imageUrl) {
-                filteredBuffer.push(`<sticker>${imageUrl}</sticker>`)
             } else {
                 let buffer = `[image`
                 if (imageHash) {
