@@ -191,16 +191,7 @@ export async function apply(ctx: Context, config: Config) {
             isDirectTrigger ||
             info.lastActivityScore >= info.currentActivityThreshold
 
-        const isLocked = service.isResponseLocked(session)
-
         if (shouldRespond && !isMute) {
-            if (isLocked) {
-                service.setPendingTrigger(session, message)
-                info.messageCount++
-                groupInfos[session.guildId] = info
-                return false
-            }
-
             info.messageCount = 0
             info.lastActivityScore = Math.max(
                 0,

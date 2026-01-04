@@ -25,6 +25,14 @@ export class MessageCollector extends Service {
 
     private _groupTemp: Record<string, GroupTemp> = {}
 
+    private _responseWaiters: Record<
+        string,
+        {
+            resolve: () => void
+            reject: (reason?: string) => void
+        }[]
+    > = {}
+
     stickerService: StickerService
 
     preset: Preset
@@ -80,27 +88,69 @@ export class MessageCollector extends Service {
         return lock.responseLock
     }
 
+    /**
+     * Try to acquire the response lock. If the lock is already held, wait until it is released.
+     * @returns A Promise that resolves to whether the lock was successfully acquired (false means cancelled)
+     */
+    async acquireResponseLock(
+        session: Session,
+        message: Message
+    ): Promise<boolean> {
+        const groupId = session.guildId
+        const lock = this._getGroupLocks(groupId)
+
+        if (!lock.responseLock) {
+            lock.responseLock = true
+            return true
+        }
+
+        // Lock is held, wait for release
+        return new Promise<boolean>((resolve) => {
+            if (!this._responseWaiters[groupId]) {
+                this._responseWaiters[groupId] = []
+            }
+            this._responseWaiters[groupId].push({
+                resolve: () => resolve(true),
+                reject: () => resolve(false)
+            })
+        })
+    }
+
     setResponseLock(session: Session) {
         const lock = this._getGroupLocks(session.guildId)
         lock.responseLock = true
     }
 
     releaseResponseLock(session: Session) {
-        const lock = this._getGroupLocks(session.guildId)
-        lock.responseLock = false
-        lock.pendingTrigger = undefined
-    }
-
-    setPendingTrigger(session: Session, message: Message) {
-        const lock = this._getGroupLocks(session.guildId)
-        lock.pendingTrigger = { session, message, timestamp: Date.now() }
-    }
-
-    takePendingTrigger(groupId: string) {
+        const groupId = session.guildId
         const lock = this._getGroupLocks(groupId)
-        const pendingTrigger = lock.pendingTrigger
-        lock.pendingTrigger = undefined
-        return pendingTrigger
+
+        lock.responseLock = false
+
+        const waiters = this._responseWaiters[groupId]
+        if (waiters && waiters.length > 0) {
+            // Cancel all old waiters, only wake up the latest one
+            const latestWaiter = waiters.pop()
+            for (const waiter of waiters) {
+                waiter.reject()
+            }
+            this._responseWaiters[groupId] = []
+
+            if (latestWaiter) {
+                lock.responseLock = true
+                latestWaiter.resolve()
+            }
+        }
+    }
+
+    cancelPendingWaiters(groupId: string) {
+        const waiters = this._responseWaiters[groupId]
+        if (waiters) {
+            for (const waiter of waiters) {
+                waiter.reject('cancelled')
+            }
+            this._responseWaiters[groupId] = []
+        }
     }
 
     async updateTemp(session: Session, temp: GroupTemp) {
@@ -180,16 +230,15 @@ export class MessageCollector extends Service {
             this._groupTemp[groupId] = {
                 completionMessages: []
             }
-            const lock = this._groupLocks[groupId]
-            if (lock) lock.pendingTrigger = undefined
+            this.cancelPendingWaiters(groupId)
             return
         }
 
         this._messages = {}
         this._groupTemp = {}
 
-        for (const lock of Object.values(this._groupLocks)) {
-            lock.pendingTrigger = undefined
+        for (const gid of Object.keys(this._groupLocks)) {
+            this.cancelPendingWaiters(gid)
         }
     }
 
@@ -276,7 +325,11 @@ export class MessageCollector extends Service {
         })
 
         if (shouldTrigger && !this.isMute(session)) {
-            this.setResponseLock(session)
+            const acquired = await this.acquireResponseLock(session, message)
+            if (!acquired) {
+                // Cancelled, do not trigger
+                return false
+            }
             await this.ctx.parallel(
                 'chatluna_character/message_collect',
                 session,

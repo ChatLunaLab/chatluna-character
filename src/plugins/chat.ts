@@ -18,7 +18,8 @@ import {
     formatTimestamp,
     isEmoticonStatement,
     parseResponse,
-    setLogger
+    setLogger,
+    trimCompletionMessages
 } from '../utils'
 import { Preset } from '../preset'
 import { StickerService } from '../service/sticker'
@@ -31,22 +32,6 @@ let logger: Logger
 interface ModelResponse {
     responseMessage: BaseMessage
     parsedResponse: Awaited<ReturnType<typeof parseResponse>>
-}
-
-function trimCompletionMessages(
-    completionMessages: BaseMessage[],
-    modelCompletionCount: number
-) {
-    const limit = Math.max(0, Math.floor(modelCompletionCount)) * 2
-    if (limit === 0) {
-        completionMessages.length = 0
-        return
-    }
-
-    const overflow = completionMessages.length - limit
-    if (overflow > 0) {
-        completionMessages.splice(0, overflow)
-    }
 }
 
 async function initializeModel(
@@ -147,7 +132,6 @@ async function prepareMessages(
     chain?: ChatLunaChain,
     focusMessage?: Message
 ): Promise<BaseMessage[]> {
-    // `enableMessageId` controls whether `<message id="...">` is included in history.
     const [recentMessage, lastMessage] = await formatMessage(
         messages,
         config,
@@ -532,84 +516,67 @@ export async function apply(ctx: Context, config: Config) {
             }
 
             const temp = await service.getTemp(session)
+            const latestMessages = service.getMessages(guildId) ?? messages
+            const focusMessage = latestMessages[latestMessages.length - 1]
 
-            let currentSession = session
-            let focusMessage: Message | undefined =
-                messages[messages.length - 1]
-            let responded = false
+            const completionMessages = await prepareMessages(
+                latestMessages,
+                copyOfConfig,
+                session,
+                model.value,
+                currentPreset,
+                temp,
+                chainPool[guildId]?.value,
+                focusMessage
+            )
 
-            while (true) {
-                const latestMessages = service.getMessages(guildId) ?? messages
-
-                const completionMessages = await prepareMessages(
-                    latestMessages,
-                    copyOfConfig,
-                    currentSession,
-                    model.value,
-                    currentPreset,
-                    temp,
-                    chainPool[guildId]?.value,
-                    focusMessage
+            if (!chainPool[guildId]) {
+                logger.debug(
+                    'completion message: ' +
+                        JSON.stringify(
+                            completionMessages.map((it) => it.content)
+                        )
                 )
-
-                if (!chainPool[guildId]) {
-                    logger.debug(
-                        'completion message: ' +
-                            JSON.stringify(
-                                completionMessages.map((it) => it.content)
-                            )
-                    )
-                }
-
-                const response = await getModelResponse(
-                    ctx,
-                    currentSession,
-                    model.value,
-                    completionMessages,
-                    copyOfConfig,
-                    chainPool[guildId]?.value
-                )
-
-                if (!response) break
-
-                const { responseMessage, parsedResponse } = response
-
-                temp.status = parsedResponse.status
-                if (parsedResponse.elements.length < 1) {
-                    service.mute(currentSession, copyOfConfig.muteTime)
-                    break
-                }
-
-                temp.completionMessages.push(
-                    completionMessages[completionMessages.length - 1]
-                )
-                temp.completionMessages.push(responseMessage)
-
-                trimCompletionMessages(
-                    temp.completionMessages,
-                    copyOfConfig.modelCompletionCount
-                )
-
-                await handleModelResponse(
-                    currentSession,
-                    copyOfConfig,
-                    ctx,
-                    stickerService,
-                    parsedResponse
-                )
-
-                responded = true
-
-                const pendingTrigger = service.takePendingTrigger(guildId)
-                if (!pendingTrigger) break
-
-                currentSession = pendingTrigger.session
-                focusMessage = pendingTrigger.message
             }
 
-            if (responded) {
-                service.muteAtLeast(session, copyOfConfig.coolDownTime * 1000)
+            const response = await getModelResponse(
+                ctx,
+                session,
+                model.value,
+                completionMessages,
+                copyOfConfig,
+                chainPool[guildId]?.value
+            )
+
+            if (!response) return
+
+            const { responseMessage, parsedResponse } = response
+
+            temp.status = parsedResponse.status
+            if (parsedResponse.elements.length < 1) {
+                service.mute(session, copyOfConfig.muteTime)
+                return
             }
+
+            temp.completionMessages.push(
+                completionMessages[completionMessages.length - 1]
+            )
+            temp.completionMessages.push(responseMessage)
+
+            trimCompletionMessages(
+                temp.completionMessages,
+                copyOfConfig.modelCompletionCount
+            )
+
+            await handleModelResponse(
+                session,
+                copyOfConfig,
+                ctx,
+                stickerService,
+                parsedResponse
+            )
+
+            service.muteAtLeast(session, copyOfConfig.coolDownTime * 1000)
         } catch (e) {
             logger.error(e)
         } finally {

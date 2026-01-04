@@ -8,10 +8,6 @@ export interface Message {
     content: string
     name: string
     id: string
-    /**
-     * Platform message id (e.g. `session.messageId`), used when the plugin
-     * chooses to expose message ids to the model.
-     */
     messageId?: string
     timestamp?: number
     quote?: Message
@@ -106,13 +102,6 @@ export interface GroupLock {
     lock: boolean
     mute: number
     responseLock: boolean
-    pendingTrigger?: PendingTrigger
-}
-
-export interface PendingTrigger {
-    session: Session
-    message: Message
-    timestamp: number
 }
 
 export type MessageImage = {

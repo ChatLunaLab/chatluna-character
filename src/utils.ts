@@ -1028,6 +1028,22 @@ export function parseXmlToObject(xml: string) {
     }
 }
 
+export function trimCompletionMessages(
+    completionMessages: BaseMessage[],
+    modelCompletionCount: number
+) {
+    const limit = Math.max(0, Math.floor(modelCompletionCount)) * 2
+    if (limit === 0) {
+        completionMessages.length = 0
+        return
+    }
+
+    const overflow = completionMessages.length - limit
+    if (overflow > 0) {
+        completionMessages.splice(0, overflow)
+    }
+}
+
 const tagRegExp = /<(\/?)([^!\s>/]+)([^>]*?)\s*(\/?)>/
 
 function renderToken(token: Token): h {
