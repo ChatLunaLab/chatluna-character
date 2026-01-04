@@ -3,7 +3,13 @@ import { Context, h, Logger, Service, Session, Time } from 'koishi'
 import { createLogger } from 'koishi-plugin-chatluna/utils/logger'
 import { Config } from '..'
 import { Preset } from '../preset'
-import { GroupTemp, Message } from '../types'
+import {
+    GroupLock,
+    GroupTemp,
+    Message,
+    MessageCollectorFilter,
+    MessageImage
+} from '../types'
 import { StickerService } from './sticker'
 import {
     hashString,
@@ -392,12 +398,6 @@ export class MessageCollector extends Service {
     }
 }
 
-type MessageImage = {
-    url: string
-    hash: string
-    formatted: string
-}
-
 function mapElementToString(
     session: Session,
     content: string,
@@ -516,19 +516,12 @@ async function getImages(ctx: Context, model: string, session: Session) {
     return results
 }
 
-type MessageCollectorFilter = (session: Session, message: Message) => boolean
-
-interface GroupLock {
-    lock: boolean
-    mute: number
-    responseLock: boolean
-    pendingTrigger?: PendingTrigger
-}
-
-interface PendingTrigger {
-    session: Session
-    message: Message
-    timestamp: number
+export function getNotEmptyString(...texts: (string | undefined)[]): string {
+    for (const text of texts) {
+        if (text && text?.length > 0) {
+            return text
+        }
+    }
 }
 
 declare module 'koishi' {
@@ -540,13 +533,5 @@ declare module 'koishi' {
             session: Session,
             message: Message[]
         ) => void | Promise<void>
-    }
-}
-
-export function getNotEmptyString(...texts: (string | undefined)[]): string {
-    for (const text of texts) {
-        if (text && text?.length > 0) {
-            return text
-        }
     }
 }
