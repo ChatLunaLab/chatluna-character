@@ -65,8 +65,24 @@ export class MessageCollector extends Service {
     }
 
     muteAtLeast(session: Session, time: number) {
-        const lock = this._getGroupLocks(session.guildId)
-        lock.mute = Math.max(lock.mute ?? 0, Date.now() + time)
+        const groupId = session.guildId
+        const groupLock = this._getGroupLocks(groupId)
+
+        const interval = setInterval(() => {
+            if (!groupLock.lock) {
+                groupLock.lock = true
+                clearInterval(interval)
+
+                try {
+                    groupLock.mute = Math.max(
+                        groupLock.mute ?? 0,
+                        Date.now() + time
+                    )
+                } finally {
+                    groupLock.lock = false
+                }
+            }
+        }, 100)
     }
 
     collect(func: (session: Session, messages: Message[]) => Promise<void>) {
@@ -224,21 +240,57 @@ export class MessageCollector extends Service {
         })
     }
 
-    clear(groupId?: string) {
+    private _lockByGroupId(groupId: string) {
+        const groupLock = this._getGroupLocks(groupId)
+        return new Promise<void>((resolve) => {
+            const interval = setInterval(() => {
+                if (!groupLock.lock) {
+                    groupLock.lock = true
+                    clearInterval(interval)
+                    resolve()
+                }
+            }, 100)
+        })
+    }
+
+    private _unlockByGroupId(groupId: string) {
+        const groupLock = this._getGroupLocks(groupId)
+        groupLock.lock = false
+    }
+
+    async clear(groupId?: string) {
         if (groupId) {
-            this._messages[groupId] = []
-            this._groupTemp[groupId] = {
-                completionMessages: []
+            await this._lockByGroupId(groupId)
+            try {
+                this._messages[groupId] = []
+                this._groupTemp[groupId] = {
+                    completionMessages: []
+                }
+                this.cancelPendingWaiters(groupId)
+            } finally {
+                this._unlockByGroupId(groupId)
             }
-            this.cancelPendingWaiters(groupId)
             return
         }
 
-        this._messages = {}
-        this._groupTemp = {}
+        // For clear-all, acquire locks in sorted order to prevent deadlocks
+        const groupIds = Object.keys(this._groupLocks).sort()
+        for (const gid of groupIds) {
+            await this._lockByGroupId(gid)
+        }
 
-        for (const gid of Object.keys(this._groupLocks)) {
-            this.cancelPendingWaiters(gid)
+        try {
+            this._messages = {}
+            this._groupTemp = {}
+
+            for (const gid of groupIds) {
+                this.cancelPendingWaiters(gid)
+            }
+        } finally {
+            // Release in reverse order
+            for (let i = groupIds.length - 1; i >= 0; i--) {
+                this._unlockByGroupId(groupIds[i])
+            }
         }
     }
 
