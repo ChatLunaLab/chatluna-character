@@ -192,18 +192,9 @@ export class MessageCollector extends Service {
             return
         }
 
-        await this._lock(session)
-
-        const groupId = session.guildId
-        const maxMessageSize = this._config.maxMessages
-        const groupArray = this._messages[groupId]
-            ? this._messages[groupId]
-            : []
-
         const content = mapElementToString(session, session.content, elements)
 
         if (content.length < 1) {
-            await this._unlock(session)
             return
         }
 
@@ -215,15 +206,7 @@ export class MessageCollector extends Service {
             timestamp: session.event.timestamp
         }
 
-        groupArray.push(message)
-
-        while (groupArray.length > maxMessageSize) {
-            groupArray.shift()
-        }
-
-        this._messages[groupId] = groupArray
-
-        await this._unlock(session)
+        await this._addMessage(session, message)
     }
 
     async broadcast(session: Session) {
@@ -231,12 +214,7 @@ export class MessageCollector extends Service {
             return
         }
 
-        await this._lock(session)
-
         const groupId = session.guildId
-        const maxMessageSize = this._config.maxMessages
-        let groupArray = this._messages[groupId] ? this._messages[groupId] : []
-
         const config = this._getGroupConfig(groupId)
 
         const images = config.image
@@ -255,7 +233,6 @@ export class MessageCollector extends Service {
         )
 
         if (content.length < 1) {
-            await this._unlock(session)
             return
         }
 
@@ -281,49 +258,70 @@ export class MessageCollector extends Service {
                       ),
                       name: session.quote?.user?.name,
                       id: session.quote?.user?.id,
-                      // `session.quote.id` is the quoted message id in Koishi.
-                      messageId: (session.quote as { id?: string } | undefined)
-                          ?.id
+                      messageId: session.quote.id
                   }
                 : undefined,
             images
         }
 
-        groupArray.push(message)
-
-        while (groupArray.length > maxMessageSize) {
-            groupArray.shift()
-        }
-
-        const now = Date.now()
-        groupArray = groupArray.filter((message) => {
-            return (
-                message.timestamp == null ||
-                message.timestamp >= now - Time.hour
-            )
+        const shouldTrigger = await this._addMessage(session, message, {
+            filterExpiredMessages: true,
+            processImages: config
         })
 
-        await this._processImages(groupArray, config)
-
-        this._messages[groupId] = groupArray
-
-        if (
-            this._filters.some((func) => func(session, message)) &&
-            !this.isMute(session)
-        ) {
+        if (shouldTrigger && !this.isMute(session)) {
             this.setResponseLock(session)
-            this.ctx
-                .parallel(
-                    'chatluna_character/message_collect',
-                    session,
-                    groupArray
-                )
-                .catch((error) => this.logger.error(error))
-            await this._unlock(session)
+            await this.ctx.parallel(
+                'chatluna_character/message_collect',
+                session,
+                this._messages[groupId]
+            )
             return true
         } else {
-            await this._unlock(session)
             return this.isMute(session)
+        }
+    }
+
+    private async _addMessage(
+        session: Session,
+        message: Message,
+        options?: {
+            filterExpiredMessages?: boolean
+            processImages?: Config
+        }
+    ): Promise<boolean> {
+        await this._lock(session)
+
+        try {
+            const groupId = session.guildId
+            const maxMessageSize = this._config.maxMessages
+            let groupArray = this._messages[groupId] ?? []
+
+            groupArray.push(message)
+
+            while (groupArray.length > maxMessageSize) {
+                groupArray.shift()
+            }
+
+            if (options?.filterExpiredMessages) {
+                const now = Date.now()
+                groupArray = groupArray.filter((msg) => {
+                    return (
+                        msg.timestamp == null ||
+                        msg.timestamp >= now - Time.hour
+                    )
+                })
+            }
+
+            if (options?.processImages) {
+                await this._processImages(groupArray, options.processImages)
+            }
+
+            this._messages[groupId] = groupArray
+
+            return this._filters.some((func) => func(session, message))
+        } finally {
+            await this._unlock(session)
         }
     }
 
