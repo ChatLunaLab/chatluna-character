@@ -312,11 +312,13 @@ export class MessageCollector extends Service {
             !this.isMute(session)
         ) {
             this.setResponseLock(session)
-            await this.ctx.parallel(
-                'chatluna_character/message_collect',
-                session,
-                groupArray
-            )
+            this.ctx
+                .parallel(
+                    'chatluna_character/message_collect',
+                    session,
+                    groupArray
+                )
+                .catch((error) => this.logger.error(error))
             await this._unlock(session)
             return true
         } else {
@@ -539,7 +541,7 @@ declare module 'koishi' {
         'chatluna_character/message_collect': (
             session: Session,
             message: Message[]
-        ) => Promise<void>
+        ) => void | Promise<void>
     }
 }
 
