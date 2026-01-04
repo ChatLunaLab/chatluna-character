@@ -64,25 +64,15 @@ export class MessageCollector extends Service {
         lock.mute = mute
     }
 
-    muteAtLeast(session: Session, time: number) {
+    async muteAtLeast(session: Session, time: number) {
         const groupId = session.guildId
-        const groupLock = this._getGroupLocks(groupId)
-
-        const interval = setInterval(() => {
-            if (!groupLock.lock) {
-                groupLock.lock = true
-                clearInterval(interval)
-
-                try {
-                    groupLock.mute = Math.max(
-                        groupLock.mute ?? 0,
-                        Date.now() + time
-                    )
-                } finally {
-                    groupLock.lock = false
-                }
-            }
-        }, 100)
+        await this._lockByGroupId(groupId)
+        try {
+            const groupLock = this._getGroupLocks(groupId)
+            groupLock.mute = Math.max(groupLock.mute ?? 0, Date.now() + time)
+        } finally {
+            this._unlockByGroupId(groupId)
+        }
     }
 
     collect(func: (session: Session, messages: Message[]) => Promise<void>) {
@@ -113,15 +103,19 @@ export class MessageCollector extends Service {
         message: Message
     ): Promise<boolean> {
         const groupId = session.guildId
+
+        await this._lockByGroupId(groupId)
+
         const lock = this._getGroupLocks(groupId)
 
         if (!lock.responseLock) {
             lock.responseLock = true
+            this._unlockByGroupId(groupId)
             return true
         }
 
-        // Lock is held, wait for release
-        return new Promise<boolean>((resolve) => {
+        // Lock is held, create waiter while holding mutex
+        const waiterPromise = new Promise<boolean>((resolve) => {
             if (!this._responseWaiters[groupId]) {
                 this._responseWaiters[groupId] = []
             }
@@ -130,6 +124,10 @@ export class MessageCollector extends Service {
                 reject: () => resolve(false)
             })
         })
+
+        this._unlockByGroupId(groupId)
+
+        return waiterPromise
     }
 
     setResponseLock(session: Session) {
@@ -137,35 +135,47 @@ export class MessageCollector extends Service {
         lock.responseLock = true
     }
 
-    releaseResponseLock(session: Session) {
+    async releaseResponseLock(session: Session) {
         const groupId = session.guildId
-        const lock = this._getGroupLocks(groupId)
 
-        lock.responseLock = false
+        await this._lockByGroupId(groupId)
 
-        const waiters = this._responseWaiters[groupId]
-        if (waiters && waiters.length > 0) {
-            // Cancel all old waiters, only wake up the latest one
-            const latestWaiter = waiters.pop()
-            for (const waiter of waiters) {
-                waiter.reject()
+        try {
+            const lock = this._getGroupLocks(groupId)
+            lock.responseLock = false
+
+            const waiters = this._responseWaiters[groupId]
+            if (waiters && waiters.length > 0) {
+                // Cancel all old waiters, only wake up the latest one
+                const latestWaiter = waiters.pop()
+                for (const waiter of waiters) {
+                    waiter.reject()
+                }
+                this._responseWaiters[groupId] = []
+
+                if (latestWaiter) {
+                    lock.responseLock = true
+                    latestWaiter.resolve()
+                }
             }
-            this._responseWaiters[groupId] = []
-
-            if (latestWaiter) {
-                lock.responseLock = true
-                latestWaiter.resolve()
-            }
+        } finally {
+            this._unlockByGroupId(groupId)
         }
     }
 
-    cancelPendingWaiters(groupId: string) {
-        const waiters = this._responseWaiters[groupId]
-        if (waiters) {
-            for (const waiter of waiters) {
-                waiter.reject('cancelled')
+    async cancelPendingWaiters(groupId: string) {
+        await this._lockByGroupId(groupId)
+
+        try {
+            const waiters = this._responseWaiters[groupId]
+            if (waiters) {
+                for (const waiter of waiters) {
+                    waiter.reject('cancelled')
+                }
+                this._responseWaiters[groupId] = []
             }
-            this._responseWaiters[groupId] = []
+        } finally {
+            this._unlockByGroupId(groupId)
         }
     }
 
@@ -266,7 +276,14 @@ export class MessageCollector extends Service {
                 this._groupTemp[groupId] = {
                     completionMessages: []
                 }
-                this.cancelPendingWaiters(groupId)
+                // Cancel waiters directly while holding lock
+                const waiters = this._responseWaiters[groupId]
+                if (waiters) {
+                    for (const waiter of waiters) {
+                        waiter.reject('cancelled')
+                    }
+                    this._responseWaiters[groupId] = []
+                }
             } finally {
                 this._unlockByGroupId(groupId)
             }
@@ -283,8 +300,15 @@ export class MessageCollector extends Service {
             this._messages = {}
             this._groupTemp = {}
 
+            // Cancel waiters directly while holding locks
             for (const gid of groupIds) {
-                this.cancelPendingWaiters(gid)
+                const waiters = this._responseWaiters[gid]
+                if (waiters) {
+                    for (const waiter of waiters) {
+                        waiter.reject('cancelled')
+                    }
+                    this._responseWaiters[gid] = []
+                }
             }
         } finally {
             // Release in reverse order
