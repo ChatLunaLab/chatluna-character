@@ -591,6 +591,14 @@ function mapElementToString(
             filteredBuffer.push(
                 `<face name='${element.attrs.name}'>${element.attrs.id}</face>`
             )
+        } else if (element.type === 'file') {
+            const url = element.attrs['chatluna_file_url']
+            if (!url) {
+                continue
+            }
+            const name = element.attrs['file'] ?? element.attrs['name']
+
+            filteredBuffer.push(`[file:${name}:${url}]`)
         }
     }
 
