@@ -13,7 +13,6 @@ export function apply(ctx: Context, config: Config) {
         {
             apply: (ctx: Context, config: Config) => {
                 ctx.on('ready', async () => {
-                    await ctx.chatluna_character.stickerService.init()
                     await ctx.chatluna_character.preset.init()
                     await plugins(ctx, config)
                 })
@@ -261,14 +260,6 @@ export const Config = Schema.intersect([
             .max(6)
             .description('模型历史消息轮数，为 0 不发送之前的历史轮次'),
 
-        sendStickerProbability: Schema.number()
-            .default(0.0)
-            .min(0)
-            .max(1)
-            .role('slider')
-            .step(0.01)
-            .hidden()
-            .description('发送表情的概率（即将废弃，将制作新的表情系统插件）'),
         defaultPreset: Schema.dynamic('character-preset')
             .description('使用的伪装预设')
             .default('煕')
@@ -394,14 +385,6 @@ export const Config = Schema.intersect([
                     .min(0)
                     .max(6)
                     .description('模型历史消息轮数，为 0 不发送之前的历史轮次'),
-
-                sendStickerProbability: Schema.number()
-                    .default(0)
-                    .min(0)
-                    .max(1)
-                    .role('slider')
-                    .step(0.01)
-                    .description('发送表情的概率'),
                 preset: Schema.dynamic('character-preset')
                     .description('使用的伪装预设')
                     .default('煕')

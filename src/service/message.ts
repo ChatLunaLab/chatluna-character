@@ -10,7 +10,7 @@ import {
     MessageCollectorFilter,
     MessageImage
 } from '../types'
-import { StickerService } from './sticker'
+
 import {
     hashString,
     isMessageContentImageUrl
@@ -33,8 +33,6 @@ export class MessageCollector extends Service {
         }[]
     > = {}
 
-    stickerService: StickerService
-
     preset: Preset
 
     declare logger: Logger
@@ -44,7 +42,6 @@ export class MessageCollector extends Service {
         public _config: Config
     ) {
         super(ctx, 'chatluna_character')
-        this.stickerService = new StickerService(ctx, _config)
         this.logger = createLogger(ctx, 'chatluna-character')
         this.preset = new Preset(ctx)
     }

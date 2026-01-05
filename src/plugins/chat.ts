@@ -22,7 +22,7 @@ import {
     trimCompletionMessages
 } from '../utils'
 import { Preset } from '../preset'
-import { StickerService } from '../service/sticker'
+
 import type {} from 'koishi-plugin-chatluna/services/chat'
 import { getMessageContent } from 'koishi-plugin-chatluna/utils/string'
 import { ComputedRef } from 'koishi-plugin-chatluna'
@@ -399,27 +399,10 @@ async function handleMessageSending(
     return false
 }
 
-async function handleStickerSending(
-    session: Session,
-    config: Config,
-    parsedResponse: Awaited<ReturnType<typeof parseResponse>>,
-    stickerService: StickerService
-): Promise<void> {
-    const random = new Random()
-    if (Math.random() < config.sendStickerProbability) {
-        const sticker = await stickerService.randomStickByType(
-            parsedResponse.sticker
-        )
-        await sleep(random.int(500, 2000))
-        await session.send(sticker)
-    }
-}
-
 async function handleModelResponse(
     session: Session,
     config: Config,
     ctx: Context,
-    stickerService: StickerService,
     parsedResponse: Awaited<ReturnType<typeof parseResponse>>
 ): Promise<void> {
     let breakSay = false
@@ -455,8 +438,6 @@ async function handleModelResponse(
         }
     }
 
-    await handleStickerSending(session, config, parsedResponse, stickerService)
-
     await ctx.chatluna_character.broadcastOnBot(
         session,
         parsedResponse.elements.flat()
@@ -466,7 +447,6 @@ async function handleModelResponse(
 export async function apply(ctx: Context, config: Config) {
     const service = ctx.chatluna_character
     const preset = service.preset
-    const stickerService = service.stickerService
     logger = service.logger
 
     setLogger(logger)
@@ -572,7 +552,6 @@ export async function apply(ctx: Context, config: Config) {
                 session,
                 copyOfConfig,
                 ctx,
-                stickerService,
                 parsedResponse
             )
 
