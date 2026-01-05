@@ -875,7 +875,8 @@ export async function formatMessage(
     config: Config,
     model: ChatLunaChatModel,
     systemPrompt: string,
-    historyPrompt: string
+    historyPrompt: string,
+    focusMessage?: Message
 ) {
     const maxTokens = config.maxTokens - 300
     let currentTokens = 0
@@ -884,8 +885,24 @@ export async function formatMessage(
     currentTokens += await model.getNumTokens(historyPrompt)
 
     const calculatedMessages: string[] = []
+    let lastMessage: string | undefined
+
+    if (focusMessage && messages.includes(focusMessage)) {
+        const xmlFocusMessage = formatMessageString(
+            focusMessage,
+            config.enableMessageId
+        )
+        const xmlFocusMessageToken = await model.getNumTokens(xmlFocusMessage)
+
+        if (currentTokens + xmlFocusMessageToken <= maxTokens - 4) {
+            currentTokens += xmlFocusMessageToken
+            lastMessage = xmlFocusMessage
+        }
+    }
 
     for (let i = messages.length - 1; i >= 0; i--) {
+        if (lastMessage && messages[i] === focusMessage) continue
+
         const xmlMessage = formatMessageString(
             messages[i],
             config.enableMessageId
@@ -901,7 +918,9 @@ export async function formatMessage(
         calculatedMessages.unshift(xmlMessage)
     }
 
-    const lastMessage = calculatedMessages.pop()
+    if (lastMessage === undefined) {
+        lastMessage = calculatedMessages.pop()
+    }
 
     if (lastMessage === undefined) {
         throw new Error(
@@ -1006,6 +1025,22 @@ export function parseXmlToObject(xml: string) {
         type: getAttr('type') || 'text',
         sticker: getAttr('sticker'),
         content
+    }
+}
+
+export function trimCompletionMessages(
+    completionMessages: BaseMessage[],
+    modelCompletionCount: number
+) {
+    const limit = Math.max(0, Math.floor(modelCompletionCount)) * 2
+    if (limit === 0) {
+        completionMessages.length = 0
+        return
+    }
+
+    const overflow = completionMessages.length - limit
+    if (overflow > 0) {
+        completionMessages.splice(0, overflow)
     }
 }
 

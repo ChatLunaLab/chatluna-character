@@ -2,15 +2,12 @@ import { AIMessageChunk, BaseMessage } from '@langchain/core/messages'
 import { Runnable, RunnableConfig } from '@langchain/core/runnables'
 import { ChatLunaService } from 'koishi-plugin-chatluna/services/chat'
 import { ChatLunaChatPromptFormat } from 'koishi-plugin-chatluna/llm-core/chain/prompt'
+import { Session } from 'koishi'
 
 export interface Message {
     content: string
     name: string
     id: string
-    /**
-     * Platform message id (e.g. `session.messageId`), used when the plugin
-     * chooses to expose message ids to the model.
-     */
     messageId?: string
     timestamp?: number
     quote?: Message
@@ -70,7 +67,6 @@ export interface GroupInfo {
     lastScoreUpdate: number
     lastResponseTime: number
     currentActivityThreshold: number
-    pendingResponse: boolean
     lastUserMessageTime: number
 }
 
@@ -95,4 +91,21 @@ export interface ChatLunaCharacterPromptTemplate {
             ChatLunaService['promptRenderer']['renderTemplate']
         >[2]['configurable']
     ): Promise<string>
+}
+
+export type MessageCollectorFilter = (
+    session: Session,
+    message: Message
+) => boolean
+
+export interface GroupLock {
+    lock: boolean
+    mute: number
+    responseLock: boolean
+}
+
+export type MessageImage = {
+    url: string
+    hash: string
+    formatted: string
 }
