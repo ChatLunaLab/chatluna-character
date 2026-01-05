@@ -54,7 +54,7 @@ export class MessageCollector extends Service {
         const lock = this._getGroupLocks(session.guildId)
         let mute = lock.mute ?? 0
 
-        if (mute === 0) {
+        if (time === 0) {
             mute = 0
         } else if (mute < new Date().getTime()) {
             mute = new Date().getTime() + time
