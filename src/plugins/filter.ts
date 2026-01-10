@@ -161,13 +161,25 @@ export async function apply(ctx: Context, config: Config) {
             appel = session.quote?.user?.id === botId
         }
 
+        const plainTextContent =
+            copyOfConfig.isNickname ||
+            copyOfConfig.isNickNameWithContent ||
+            (copyOfConfig.isForceMute &&
+                appel &&
+                currentPreset.mute_keyword?.length > 0)
+                ? (session.elements ?? [])
+                      .filter((element) => element.type === 'text')
+                      .map((element) => element.attrs?.content ?? '')
+                      .join('')
+                : ''
+
         if (
             copyOfConfig.isForceMute &&
             appel &&
             currentPreset.mute_keyword?.length > 0
         ) {
             const needMute = currentPreset.mute_keyword.some((value) =>
-                message.content.includes(value)
+                plainTextContent.includes(value)
             )
 
             if (needMute) {
@@ -182,11 +194,11 @@ export async function apply(ctx: Context, config: Config) {
             appel ||
             (copyOfConfig.isNickname &&
                 currentPreset.nick_name.some((value) =>
-                    message.content.startsWith(value)
+                    plainTextContent.startsWith(value)
                 )) ||
             (copyOfConfig.isNickNameWithContent &&
                 currentPreset.nick_name.some((value) =>
-                    message.content.includes(value)
+                    plainTextContent.includes(value)
                 ))
 
         const shouldRespond =
