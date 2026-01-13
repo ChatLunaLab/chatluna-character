@@ -161,24 +161,24 @@ export async function apply(ctx: Context, config: Config) {
             appel = session.quote?.user?.id === botId
         }
 
-        const plainTextContent =
+        const isAppel = Boolean(appel)
+        const muteKeywords = currentPreset.mute_keyword ?? []
+        const forceMuteActive =
+            copyOfConfig.isForceMute && isAppel && muteKeywords.length > 0
+        const needPlainText =
             copyOfConfig.isNickname ||
             copyOfConfig.isNickNameWithContent ||
-            (copyOfConfig.isForceMute &&
-                appel &&
-                currentPreset.mute_keyword?.length > 0)
-                ? (session.elements ?? [])
-                      .filter((element) => element.type === 'text')
-                      .map((element) => element.attrs?.content ?? '')
-                      .join('')
-                : ''
+            forceMuteActive
 
-        if (
-            copyOfConfig.isForceMute &&
-            appel &&
-            currentPreset.mute_keyword?.length > 0
-        ) {
-            const needMute = currentPreset.mute_keyword.some((value) =>
+        const plainTextContent = needPlainText
+            ? (session.elements ?? [])
+                  .filter((element) => element.type === 'text')
+                  .map((element) => element.attrs?.content ?? '')
+                  .join('')
+            : ''
+
+        if (forceMuteActive) {
+            const needMute = muteKeywords.some((value) =>
                 plainTextContent.includes(value)
             )
 
@@ -191,7 +191,7 @@ export async function apply(ctx: Context, config: Config) {
         const isMute = service.isMute(session)
 
         const isDirectTrigger =
-            appel ||
+            isAppel ||
             (copyOfConfig.isNickname &&
                 currentPreset.nick_name.some((value) =>
                     plainTextContent.startsWith(value)
