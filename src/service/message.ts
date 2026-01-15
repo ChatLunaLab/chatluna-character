@@ -522,7 +522,7 @@ export class MessageCollector extends Service {
             )
             return Math.ceil((base64Data.length * 3) / 4)
         } catch (e) {
-            this.logger.error(e)
+            this.logger.error(e, base64Image)
             return 0
         }
     }
