@@ -509,19 +509,20 @@ export class MessageCollector extends Service {
     }
 
     private async _getImageSize(base64Image: string): Promise<number> {
-        if (!base64Image.startsWith('data:')) {
-            const resp = await this.ctx.http.get(base64Image, {
-                responseType: 'arraybuffer'
-            })
-            return resp.byteLength
-        }
         try {
+            if (!base64Image.startsWith('data:')) {
+                const resp = await this.ctx.http.get(base64Image, {
+                    responseType: 'arraybuffer'
+                })
+                return resp.byteLength
+            }
             const base64Data = base64Image.replace(
                 /^data:image\/[a-z]+;base64,/,
                 ''
             )
             return Math.ceil((base64Data.length * 3) / 4)
-        } catch {
+        } catch (e) {
+            this.logger.error(e)
             return 0
         }
     }
