@@ -110,7 +110,6 @@ export interface Config extends ChatLunaPlugin.Config {
     splitSentence: boolean
     isAt: boolean
 
-    // When enabled, `<message id="...">` in the prompt uses platform message ids.
     enableMessageId: boolean
 }
 
@@ -225,7 +224,7 @@ export const Config = Schema.intersect([
 
         coolDownTime: Schema.number()
             .default(10)
-            .min(1)
+            .min(0)
             .max(60 * 24)
             .description('冷却发言时间（秒）'),
 
@@ -352,7 +351,7 @@ export const Config = Schema.intersect([
                     .description('最大的输入图片大小（KB）'),
                 coolDownTime: Schema.number()
                     .default(10)
-                    .min(1)
+                    .min(0)
                     .max(60 * 24 * 24)
                     .description('冷却发言时间（秒）'),
 
