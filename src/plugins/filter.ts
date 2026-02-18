@@ -394,7 +394,7 @@ function findIdleTriggerReason(
 
     const waitSeconds = info.currentIdleWaitSeconds
     const triggerAnchorTime = hasTriggeredSinceLastMessage
-        ? info.lastPassiveTriggerAt ?? info.lastUserMessageTime
+        ? (info.lastPassiveTriggerAt ?? info.lastUserMessageTime)
         : info.lastUserMessageTime
     const passiveReady = now - triggerAnchorTime >= waitSeconds * 1000
 
@@ -639,8 +639,9 @@ async function processSchedulerTickForGuild(
         previousLastUserMessageTime
     )
 
-    const nextRepliesRegisteredDuringCollect = (info.pendingNextReplies ?? [])
-        .filter((pending) => pending.createdAt >= triggerCollectStartedAt)
+    const nextRepliesRegisteredDuringCollect = (
+        info.pendingNextReplies ?? []
+    ).filter((pending) => pending.createdAt >= triggerCollectStartedAt)
 
     markTriggered(info, copyOfConfig, completedAt)
     if (nextRepliesRegisteredDuringCollect.length > 0) {
@@ -729,7 +730,9 @@ export async function apply(ctx: Context, config: Config) {
             )}`
         )
 
-        if (shouldStopWhenDisableChatLuna(ctx, session, copyOfConfig, guildId)) {
+        if (
+            shouldStopWhenDisableChatLuna(ctx, session, copyOfConfig, guildId)
+        ) {
             return
         }
 
