@@ -179,7 +179,9 @@ async function prepareMessages(
                 time: formatTimestamp(new Date()),
                 stickers: '', // JSON.stringify(stickerService.getAllStickTypes()),
                 status: temp.status ?? currentPreset.status ?? '',
-                trigger_reason: triggerReason ?? 'Normal message trigger',
+                trigger_reason: (triggerReason ?? 'Normal message trigger')
+                    .replaceAll('{', '{{')
+                    .replaceAll('}', '}}'),
                 prompt: session.content,
                 built: {
                     preset: currentPreset.name,
