@@ -21,7 +21,6 @@ const MIN_COOLDOWN_TIME = Time.second * 6 // 最小冷却时间：6秒
 const COOLDOWN_PENALTY = 0.8 // 响应后降低活跃度的惩罚值
 const THRESHOLD_RESET_TIME = Time.minute * 10 // 十分钟无人回复时，重置活跃度阈值
 const SCHEDULER_TICK = Time.second
-const WAKE_UP_REPLY_MAX_COUNT = 24
 
 const MIN_RECENT_MESSAGES = 6 // 进入活跃度统计的最小消息数
 const SUSTAINED_RATE_THRESHOLD = 10 // 持续活跃阈值（条/分钟）
@@ -290,11 +289,9 @@ export function registerNextReplyTrigger(
         createdAt: now
     }
 
-    info.pendingNextReplies = info.pendingNextReplies ?? []
-    info.pendingNextReplies.push(pending)
-    if (info.pendingNextReplies.length > 12) {
-        info.pendingNextReplies.shift()
-    }
+    // `next_reply` is designed as a single-shot trigger slot:
+    // the latest setting overrides previous pending one.
+    info.pendingNextReplies = [pending]
 
     groupInfos[groupId] = info
     return true
@@ -338,9 +335,6 @@ export function registerWakeUpReplyTrigger(
 
     info.pendingWakeUpReplies = info.pendingWakeUpReplies ?? []
     info.pendingWakeUpReplies.push(pending)
-    if (info.pendingWakeUpReplies.length > WAKE_UP_REPLY_MAX_COUNT) {
-        info.pendingWakeUpReplies.shift()
-    }
 
     groupInfos[groupId] = info
     return true
