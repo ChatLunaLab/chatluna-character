@@ -58,15 +58,7 @@ function parseWakeUpTimeToTimestamp(rawTime: string): number | null {
         .match(/^(\d{4})\/(\d{2})\/(\d{2})-(\d{2}):(\d{2}):(\d{2})$/)
     if (!matched) return null
 
-    const [
-        ,
-        rawYear,
-        rawMonth,
-        rawDay,
-        rawHour,
-        rawMinute,
-        rawSecond
-    ] = matched
+    const [, rawYear, rawMonth, rawDay, rawHour, rawMinute, rawSecond] = matched
 
     const year = Number.parseInt(rawYear, 10)
     const month = Number.parseInt(rawMonth, 10)
@@ -171,10 +163,7 @@ function clearPendingNextReplies(info: GroupInfo) {
     info.pendingNextReplies = []
 }
 
-function removePendingWakeUpReply(
-    info: GroupInfo,
-    target: PendingWakeUpReply
-) {
+function removePendingWakeUpReply(info: GroupInfo, target: PendingWakeUpReply) {
     info.pendingWakeUpReplies = (info.pendingWakeUpReplies ?? []).filter(
         (pending) =>
             !(
@@ -188,7 +177,10 @@ function removePendingWakeUpReply(
 
 function markTriggered(info: GroupInfo, config: Config, now: number) {
     info.messageCount = 0
-    info.lastActivityScore = Math.max(0, info.lastActivityScore - COOLDOWN_PENALTY)
+    info.lastActivityScore = Math.max(
+        0,
+        info.lastActivityScore - COOLDOWN_PENALTY
+    )
     info.lastResponseTime = now
 
     const lowerLimit = config.messageActivityScoreLowerLimit
@@ -225,10 +217,7 @@ function getPassiveRetryIntervalSeconds(
     info: GroupInfo,
     config: Config
 ): number {
-    const baseMinutes = Math.max(
-        config.idleTriggerIntervalMinutes,
-        1
-    )
+    const baseMinutes = Math.max(config.idleTriggerIntervalMinutes, 1)
     const baseSeconds = baseMinutes * 60
 
     if (config.idleTriggerRetryStyle === 'fixed') {
@@ -242,7 +231,10 @@ function getPassiveRetryIntervalSeconds(
         return backoffSeconds
     }
 
-    const maxMinutes = Math.max(config.idleTriggerMaxIntervalMinutes ?? 60 * 24, 1)
+    const maxMinutes = Math.max(
+        config.idleTriggerMaxIntervalMinutes ?? 60 * 24,
+        1
+    )
     const maxSeconds = maxMinutes * 60
     return Math.min(backoffSeconds, maxSeconds)
 }
@@ -394,7 +386,9 @@ export async function apply(ctx: Context, config: Config) {
             const pending = info.pendingNextReplies ?? []
             if (
                 pending.length > 0 &&
-                pending.some((trigger) => info.lastResponseTime > trigger.createdAt)
+                pending.some(
+                    (trigger) => info.lastResponseTime > trigger.createdAt
+                )
             ) {
                 clearPendingNextReplies(info)
             }
@@ -441,7 +435,7 @@ export async function apply(ctx: Context, config: Config) {
 
                 const waitSeconds = info.currentIdleWaitSeconds
                 const triggerAnchorTime = hasTriggeredSinceLastMessage
-                    ? (info.lastPassiveTriggerAt ?? info.lastUserMessageTime)
+                    ? info.lastPassiveTriggerAt ?? info.lastUserMessageTime
                     : info.lastUserMessageTime
                 const passiveReady = now - triggerAnchorTime >= waitSeconds * 1000
 
@@ -461,10 +455,7 @@ export async function apply(ctx: Context, config: Config) {
 
             let triggered = false
             try {
-                triggered = await service.triggerCollect(
-                    session,
-                    triggerReason
-                )
+                triggered = await service.triggerCollect(session, triggerReason)
             } catch (e) {
                 logger.error(`triggerCollect failed for guild ${guildId}`, e)
                 groupInfos[guildId] = info
