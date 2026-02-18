@@ -281,8 +281,7 @@ export function registerNextReplyTrigger(
         createdAt: now
     }
 
-    // `next_reply` is designed as a single-shot trigger slot:
-    // the latest setting overrides previous pending one.
+    // `next_reply` 设计为单次触发槽位：后设置会覆盖先设置。
     info.pendingNextReplies = [pending]
 
     groupInfos[groupId] = info
@@ -427,8 +426,7 @@ function updatePassiveRetryStateAfterTriggered(
     if (hasTriggeredSinceLastMessage) {
         info.passiveRetryCount = (info.passiveRetryCount ?? 0) + 1
     } else {
-        // First idle trigger after a user message should make the next
-        // interval start backoff immediately (base * 2).
+        // 用户新消息后的首次空闲触发，下一次间隔应立即进入退避（base * 2）。
         info.passiveRetryCount = 1
     }
     info.lastPassiveTriggerAt = completedAt
@@ -627,7 +625,7 @@ async function processSchedulerTickForGuild(
         return
     }
 
-    // Use the actual completion moment of this reply as idle retry anchor.
+    // 以本次回复真正完成的时刻作为空闲重试锚点。
     const completedAt = Date.now()
     if (triggeredWakeUpReply) {
         removePendingWakeUpReply(info, triggeredWakeUpReply)

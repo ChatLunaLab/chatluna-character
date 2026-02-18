@@ -68,8 +68,7 @@ function parseMessageContent(response: string) {
 
     const tempJson = parseXmlToObject(rawMessage)
     return {
-        // Keep the original `<message ...>...</message>` so we can read attributes
-        // (e.g. `quote="..."`) during element parsing.
+        // 保留原始 `<message ...>...</message>`，便于后续解析元素属性（如 `quote="..."`）。
         rawMessage,
         messageType: tempJson.type,
         status,
@@ -137,7 +136,7 @@ export async function processElements(
         ensureLast()
         const target = last()
 
-        // Attach quote to the first fragment that actually receives content.
+        // 仅在第一个真正承载内容的片段前附加引用。
         if (pendingQuote?.id && !pendingQuote.used) {
             target.unshift(h('quote', { id: pendingQuote.id }))
             pendingQuote.used = true
@@ -207,8 +206,7 @@ export async function processElements(
             return
         }
 
-        // A top-level `<message ...>` block from the model output.
-        // Use it as a boundary so each block can carry its own quote id.
+        // 模型输出的顶层 `<message ...>` 块作为分片边界，每个块可携带自己的 quote id。
         startNewFragmentIfNeeded()
         const blockQuote: PendingQuote | undefined = el.attrs.quote
             ? { id: String(el.attrs.quote), used: false }
@@ -265,7 +263,7 @@ export async function processElements(
 
     await process(elements)
 
-    // Align with ChatLuna sender: drop quote if the fragment contains incompatible types.
+    // 与 ChatLuna 发送侧行为对齐：片段中若存在不兼容类型则移除 quote。
     for (const fragment of result) {
         if (fragment[0]?.type !== 'quote') continue
         const hasIncompatibleType = fragment.some(
