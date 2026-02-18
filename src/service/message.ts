@@ -33,6 +33,8 @@ export class MessageCollector extends Service {
         }[]
     > = {}
 
+    private _lastSessions: Record<string, Session> = {}
+
     preset: Preset
 
     declare logger: Logger
@@ -75,12 +77,22 @@ export class MessageCollector extends Service {
         }
     }
 
-    collect(func: (session: Session, messages: Message[]) => Promise<void>) {
+    collect(
+        func: (
+            session: Session,
+            messages: Message[],
+            triggerReason?: string
+        ) => Promise<void>
+    ) {
         this.ctx.on('chatluna_character/message_collect', func)
     }
 
     getMessages(groupId: string) {
         return this._messages[groupId]
+    }
+
+    getLastSession(groupId: string) {
+        return this._lastSessions[groupId]
     }
 
     isMute(session: Session) {
@@ -276,6 +288,7 @@ export class MessageCollector extends Service {
                 this._groupTemp[groupId] = {
                     completionMessages: []
                 }
+                delete this._lastSessions[groupId]
                 // Cancel waiters directly while holding lock
                 const waiters = this._responseWaiters[groupId]
                 if (waiters) {
@@ -299,6 +312,7 @@ export class MessageCollector extends Service {
         try {
             this._messages = {}
             this._groupTemp = {}
+            this._lastSessions = {}
 
             // Cancel waiters directly while holding locks
             for (const gid of groupIds) {
@@ -346,6 +360,7 @@ export class MessageCollector extends Service {
         }
 
         const groupId = session.guildId
+        this._lastSessions[groupId] = session
         const config = this._getGroupConfig(groupId)
 
         const images = config.image
@@ -395,26 +410,51 @@ export class MessageCollector extends Service {
             images
         }
 
-        const shouldTrigger = await this._addMessage(session, message, {
+        const triggerReason = await this._addMessage(session, message, {
             filterExpiredMessages: true,
             processImages: config
         })
 
-        if (shouldTrigger && !this.isMute(session)) {
-            const acquired = await this.acquireResponseLock(session, message)
-            if (!acquired) {
-                // Cancelled, do not trigger
-                return false
-            }
-            await this.ctx.parallel(
-                'chatluna_character/message_collect',
+        if (triggerReason && !this.isMute(session)) {
+            const triggered = await this.triggerCollect(
                 session,
-                this._messages[groupId]
+                triggerReason,
+                message
             )
-            return true
+            return triggered
         } else {
             return this.isMute(session)
         }
+    }
+
+    async triggerCollect(
+        session: Session,
+        triggerReason: string,
+        message?: Message
+    ) {
+        const groupId = session.guildId
+        const focusMessage = message ?? this._messages[groupId]?.at(-1)
+        const acquired = await this.acquireResponseLock(
+            session,
+            focusMessage ?? {
+                content: '',
+                name: session.bot.user?.name ?? session.selfId,
+                id: session.bot.selfId ?? '0'
+            }
+        )
+
+        if (!acquired) {
+            return false
+        }
+
+        await this.ctx.parallel(
+            'chatluna_character/message_collect',
+            session,
+            this._messages[groupId] ?? [],
+            triggerReason
+        )
+
+        return true
     }
 
     private async _addMessage(
@@ -424,7 +464,7 @@ export class MessageCollector extends Service {
             filterExpiredMessages?: boolean
             processImages?: Config
         }
-    ): Promise<boolean> {
+    ): Promise<string | undefined> {
         await this._lock(session)
 
         try {
@@ -454,7 +494,14 @@ export class MessageCollector extends Service {
 
             this._messages[groupId] = groupArray
 
-            return this._filters.some((func) => func(session, message))
+            for (const filter of this._filters) {
+                const reason = filter(session, message)
+                if (typeof reason === 'string' && reason.length > 0) {
+                    return reason
+                }
+            }
+
+            return undefined
         } finally {
             await this._unlock(session)
         }
@@ -669,7 +716,8 @@ declare module 'koishi' {
     export interface Events {
         'chatluna_character/message_collect': (
             session: Session,
-            message: Message[]
+            message: Message[],
+            triggerReason?: string
         ) => void | Promise<void>
     }
 }

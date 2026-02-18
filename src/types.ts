@@ -27,6 +27,11 @@ export interface GuildConfig {
     preset: string
     enableMessageId: boolean
     messageInterval: number
+    enableLongWaitTrigger: boolean
+    idleTriggerIntervalMinutes: number
+    idleTriggerRetryStyle: 'exponential' | 'fixed'
+    enableIdleTriggerMaxInterval: boolean
+    idleTriggerMaxIntervalMinutes: number
     messageActivityScoreLowerLimit: number
     messageActivityScoreUpperLimit: number
     maxTokens: number
@@ -68,11 +73,39 @@ export interface GroupInfo {
     lastResponseTime: number
     currentActivityThreshold: number
     lastUserMessageTime: number
+    lastMessageUserId?: string
+    lastPassiveTriggerAt?: number
+    passiveRetryCount?: number
+    pendingNextReplies?: PendingNextReply[]
+    pendingWakeUpReplies?: PendingWakeUpReply[]
 }
 
 export interface ActivityScore {
     score: number
     timestamp: number
+}
+
+export type NextReplyPredicate =
+    | { type: 'time'; seconds: number }
+    | { type: 'id'; userId: string }
+
+export interface PendingNextReplyConditionGroup {
+    predicates: NextReplyPredicate[]
+    naturalReason: string
+}
+
+export interface PendingNextReply {
+    rawReason: string
+    groups: PendingNextReplyConditionGroup[]
+    createdAt: number
+}
+
+export interface PendingWakeUpReply {
+    rawTime: string
+    reason: string
+    naturalReason: string
+    triggerAt: number
+    createdAt: number
 }
 
 export type ChatLunaChain = Runnable<
@@ -96,7 +129,7 @@ export interface ChatLunaCharacterPromptTemplate {
 export type MessageCollectorFilter = (
     session: Session,
     message: Message
-) => boolean
+) => string | false | undefined
 
 export interface GroupLock {
     lock: boolean

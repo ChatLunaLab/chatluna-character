@@ -77,6 +77,46 @@ function parseMessageContent(response: string) {
     }
 }
 
+export function extractNextReplyReasons(response: string): string[] {
+    const reasons: string[] = []
+    const regex = /<next_reply\b([^>]*)\/>/gi
+
+    for (const match of response.matchAll(regex)) {
+        const attributes = match[1] ?? ''
+        const reason = attributes.match(/\breason\s*=\s*['"]([^'"]+)['"]/i)?.[1]
+        if (reason?.trim()) {
+            reasons.push(reason.trim())
+        }
+    }
+
+    return reasons
+}
+
+export interface WakeUpReplyTag {
+    time: string
+    reason: string
+}
+
+export function extractWakeUpReplies(response: string): WakeUpReplyTag[] {
+    const wakeUps: WakeUpReplyTag[] = []
+    const regex = /<wake_up_reply\b([^>]*)\/>/gi
+
+    for (const match of response.matchAll(regex)) {
+        const attributes = match[1] ?? ''
+        const time = attributes.match(/\btime\s*=\s*['"]([^'"]+)['"]/i)?.[1]
+        const reason = attributes.match(/\breason\s*=\s*['"]([^'"]*)['"]/i)?.[1]
+
+        if (time?.trim()) {
+            wakeUps.push({
+                time: time.trim(),
+                reason: reason?.trim() ?? ''
+            })
+        }
+    }
+
+    return wakeUps
+}
+
 export async function processElements(
     elements: Element[],
     voiceRender?: (element: h) => Promise<h[]>,

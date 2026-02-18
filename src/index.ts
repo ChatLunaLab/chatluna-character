@@ -73,6 +73,11 @@ export interface Config extends ChatLunaPlugin.Config {
     maxMessages: number
 
     messageInterval: number
+    enableLongWaitTrigger: boolean
+    idleTriggerIntervalMinutes: number
+    idleTriggerRetryStyle: 'exponential' | 'fixed'
+    enableIdleTriggerMaxInterval: boolean
+    idleTriggerMaxIntervalMinutes: number
     messageActivityScoreLowerLimit: number
     messageActivityScoreUpperLimit: number
 
@@ -203,6 +208,36 @@ export const Config = Schema.intersect([
             .role('slider')
             .max(10000)
             .description('随机发送消息的最大间隔'),
+        enableLongWaitTrigger: Schema.boolean()
+            .default(false)
+            .description('是否启用空闲触发'),
+        idleTriggerIntervalMinutes: Schema.number()
+            .default(60 * 3)
+            .min(1)
+            .max(60 * 24 * 7)
+            .description(
+                '空闲触发间隔（分钟）：当超过该时间未收到新消息时，将自动触发一次回复请求。'
+            ),
+        idleTriggerRetryStyle: Schema.union([
+            Schema.const('exponential').description(
+                '指数退避（默认）：首次触发后若仍无新消息，按“空闲触发间隔（分钟）”作为起始值每次乘 2（例如 2→4→8→16）。'
+            ),
+            Schema.const('fixed').description(
+                '固定重试：始终按“空闲触发间隔（分钟）”重复触发。'
+            )
+        ])
+            .default('exponential')
+            .description('空闲触发重试风格'),
+        enableIdleTriggerMaxInterval: Schema.boolean()
+            .default(true)
+            .description('是否启用空闲触发最大间隔限制'),
+        idleTriggerMaxIntervalMinutes: Schema.number()
+            .default(60 * 24)
+            .min(1)
+            .max(60 * 24 * 30)
+            .description(
+                '空闲触发最大间隔（分钟）：仅在“指数退避”下生效，关闭上面的限制时不封顶。'
+            ),
         messageActivityScoreLowerLimit: Schema.number()
             .default(0.85)
             .min(0)
@@ -310,6 +345,36 @@ export const Config = Schema.intersect([
                     .max(10000)
                     .description(
                         '随机发送消息的间隔。群越活跃，这个值就会越高。'
+                    ),
+                enableLongWaitTrigger: Schema.boolean()
+                    .default(false)
+                    .description('是否启用空闲触发'),
+                idleTriggerIntervalMinutes: Schema.number()
+                    .default(60 * 3)
+                    .min(1)
+                    .max(60 * 24 * 7)
+                    .description(
+                        '空闲触发间隔（分钟）：当超过该时间未收到新消息时，将自动触发一次回复请求。'
+                    ),
+                idleTriggerRetryStyle: Schema.union([
+                    Schema.const('exponential').description(
+                        '指数退避（默认）：首次触发后若仍无新消息，按“空闲触发间隔（分钟）”作为起始值每次乘 2（例如 2→4→8→16）。'
+                    ),
+                    Schema.const('fixed').description(
+                        '固定重试：始终按“空闲触发间隔（分钟）”重复触发。'
+                    )
+                ])
+                    .default('exponential')
+                    .description('空闲触发重试风格'),
+                enableIdleTriggerMaxInterval: Schema.boolean()
+                    .default(true)
+                    .description('是否启用空闲触发最大间隔限制'),
+                idleTriggerMaxIntervalMinutes: Schema.number()
+                    .default(60 * 24)
+                    .min(1)
+                    .max(60 * 24 * 30)
+                    .description(
+                        '空闲触发最大间隔（分钟）：仅在“指数退避”下生效，关闭上面的限制时不封顶。'
                     ),
                 messageActivityScoreLowerLimit: Schema.number()
                     .default(0.85)

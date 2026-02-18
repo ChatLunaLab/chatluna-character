@@ -28,6 +28,11 @@ export function apply(ctx: Context, config: Config) {
             lastActivityScore: 0,
             currentActivityThreshold: 0,
             lastUserMessageTime: 0,
+            lastPassiveTriggerAt: 0,
+            passiveRetryCount: 0,
+            lastMessageUserId: '',
+            pendingNextReplies: [],
+            pendingWakeUpReplies: [],
             lastScoreUpdate: Date.now(),
             lastResponseTime: 0
         }
