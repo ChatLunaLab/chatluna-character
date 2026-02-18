@@ -612,6 +612,7 @@ async function processSchedulerTickForGuild(
     }
 
     const previousLastUserMessageTime = info.lastUserMessageTime
+    const triggerCollectStartedAt = Date.now()
     let triggered = false
     try {
         triggered = await service.triggerCollect(session, triggerReason)
@@ -637,7 +638,15 @@ async function processSchedulerTickForGuild(
         completedAt,
         previousLastUserMessageTime
     )
+
+    const nextRepliesRegisteredDuringCollect = (info.pendingNextReplies ?? [])
+        .filter((pending) => pending.createdAt >= triggerCollectStartedAt)
+
     markTriggered(info, copyOfConfig, completedAt)
+    if (nextRepliesRegisteredDuringCollect.length > 0) {
+        info.pendingNextReplies = nextRepliesRegisteredDuringCollect
+    }
+
     groupInfos[guildId] = info
 }
 
