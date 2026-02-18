@@ -13,6 +13,8 @@ import { Config } from '..'
 import { ChatLunaChain, GroupTemp, Message, PresetTemplate } from '../types'
 import {
     createChatLunaChain,
+    extractNextReplyReasons,
+    extractWakeUpReplies,
     formatCompletionMessages,
     formatMessage,
     formatTimestamp,
@@ -22,6 +24,11 @@ import {
     trimCompletionMessages
 } from '../utils'
 import { Preset } from '../preset'
+import {
+    clearNextReplyTriggers,
+    registerNextReplyTrigger,
+    registerWakeUpReplyTrigger
+} from './filter'
 
 import type {} from 'koishi-plugin-chatluna/services/chat'
 import { getMessageContent } from 'koishi-plugin-chatluna/utils/string'
@@ -130,7 +137,8 @@ async function prepareMessages(
     currentPreset: PresetTemplate,
     temp: GroupTemp,
     chain?: ChatLunaChain,
-    focusMessage?: Message
+    focusMessage?: Message,
+    triggerReason?: string
 ): Promise<BaseMessage[]> {
     const [recentMessage, lastMessage] = await formatMessage(
         messages,
@@ -171,6 +179,7 @@ async function prepareMessages(
                 time: formatTimestamp(new Date()),
                 stickers: '', // JSON.stringify(stickerService.getAllStickTypes()),
                 status: temp.status ?? currentPreset.status ?? '',
+                trigger_reason: triggerReason ?? 'Normal message trigger',
                 prompt: session.content,
                 built: {
                     preset: currentPreset.name,
@@ -463,7 +472,7 @@ export async function apply(ctx: Context, config: Config) {
         presetPool = {}
     })
 
-    service.collect(async (session, messages) => {
+    service.collect(async (session, messages, triggerReason) => {
         const guildId = session.event.guild?.id ?? session.guildId
 
         try {
@@ -507,7 +516,8 @@ export async function apply(ctx: Context, config: Config) {
                 currentPreset,
                 temp,
                 chainPool[guildId]?.value,
-                focusMessage
+                focusMessage,
+                triggerReason
             )
 
             if (!chainPool[guildId]) {
@@ -531,6 +541,41 @@ export async function apply(ctx: Context, config: Config) {
             if (!response) return
 
             const { responseMessage, parsedResponse } = response
+            const rawContent = getMessageContent(responseMessage.content)
+            const nextReplyReasons = extractNextReplyReasons(rawContent)
+            const wakeUpReplies = extractWakeUpReplies(rawContent)
+
+            if (nextReplyReasons.length > 0) {
+                clearNextReplyTriggers(guildId)
+                for (const reason of nextReplyReasons) {
+                    const accepted = registerNextReplyTrigger(
+                        guildId,
+                        reason,
+                        copyOfConfig
+                    )
+
+                    if (!accepted) {
+                        logger.warn(
+                            `Ignore invalid <next_reply reason="${reason}" /> for group ${guildId}`
+                        )
+                    }
+                }
+            }
+
+            for (const wakeUp of wakeUpReplies) {
+                const accepted = registerWakeUpReplyTrigger(
+                    guildId,
+                    wakeUp.time,
+                    wakeUp.reason,
+                    copyOfConfig
+                )
+
+                if (!accepted) {
+                    logger.warn(
+                        `Ignore invalid <wake_up_reply time="${wakeUp.time}" reason="${wakeUp.reason}" /> for group ${guildId}`
+                    )
+                }
+            }
 
             temp.status = parsedResponse.status
             if (parsedResponse.elements.length < 1) {

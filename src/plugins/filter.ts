@@ -1,6 +1,14 @@
 import { Context, Session, Time } from 'koishi'
 import { Config } from '..'
-import { ActivityScore, GroupInfo, PresetTemplate } from '../types'
+import {
+    ActivityScore,
+    GroupInfo,
+    NextReplyPredicate,
+    PendingNextReply,
+    PendingNextReplyConditionGroup,
+    PendingWakeUpReply,
+    PresetTemplate
+} from '../types'
 
 export const groupInfos: Record<string, GroupInfo> = {}
 
@@ -12,6 +20,8 @@ const INSTANT_WINDOW = Time.second * 20 // 短周期窗口，用于检测瞬时�
 const MIN_COOLDOWN_TIME = Time.second * 6 // 最小冷却时间：6秒
 const COOLDOWN_PENALTY = 0.8 // 响应后降低活跃度的惩罚值
 const THRESHOLD_RESET_TIME = Time.minute * 10 // 十分钟无人回复时，重置活跃度阈值
+const SCHEDULER_TICK = Time.second
+const WAKE_UP_REPLY_MAX_COUNT = 24
 
 const MIN_RECENT_MESSAGES = 6 // 进入活跃度统计的最小消息数
 const SUSTAINED_RATE_THRESHOLD = 10 // 持续活跃阈值（条/分钟）
@@ -22,6 +32,306 @@ const BURST_RATE_THRESHOLD = 12 // 突发活跃阈值（条/分钟）
 const BURST_RATE_SCALE = 4 // 突发活跃斜率
 const SMOOTHING_WINDOW = Time.second * 8 // 分数平滑窗口
 const FRESHNESS_HALF_LIFE = Time.second * 60 // 新鲜度半衰期：60秒
+
+function parseNextReplyToken(token: string): NextReplyPredicate | null {
+    const trimmed = token.trim()
+    if (!trimmed) return null
+
+    const timeMatch = trimmed.match(/^time_(\d+)s$/i)
+    if (timeMatch) {
+        const seconds = Number.parseInt(timeMatch[1], 10)
+        if (Number.isFinite(seconds) && seconds > 0) {
+            return { type: 'time', seconds }
+        }
+    }
+
+    const idMatch = trimmed.match(/^id_([\w-]+)$/i)
+    if (idMatch) {
+        return { type: 'id', userId: idMatch[1] }
+    }
+
+    return null
+}
+
+function parseWakeUpTimeToTimestamp(rawTime: string): number | null {
+    const matched = rawTime
+        .trim()
+        .match(/^(\d{4})\/(\d{2})\/(\d{2})-(\d{2}):(\d{2}):(\d{2})$/)
+    if (!matched) return null
+
+    const [
+        ,
+        rawYear,
+        rawMonth,
+        rawDay,
+        rawHour,
+        rawMinute,
+        rawSecond
+    ] = matched
+
+    const year = Number.parseInt(rawYear, 10)
+    const month = Number.parseInt(rawMonth, 10)
+    const day = Number.parseInt(rawDay, 10)
+    const hour = Number.parseInt(rawHour, 10)
+    const minute = Number.parseInt(rawMinute, 10)
+    const second = Number.parseInt(rawSecond, 10)
+
+    if (
+        !Number.isFinite(year) ||
+        !Number.isFinite(month) ||
+        !Number.isFinite(day) ||
+        !Number.isFinite(hour) ||
+        !Number.isFinite(minute) ||
+        !Number.isFinite(second)
+    ) {
+        return null
+    }
+
+    const date = new Date(year, month - 1, day, hour, minute, second, 0)
+    if (
+        date.getFullYear() !== year ||
+        date.getMonth() !== month - 1 ||
+        date.getDate() !== day ||
+        date.getHours() !== hour ||
+        date.getMinutes() !== minute ||
+        date.getSeconds() !== second
+    ) {
+        return null
+    }
+
+    return date.getTime()
+}
+
+function formatWakeUpDateTime(timestamp: number): string {
+    const date = new Date(timestamp)
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    const hour = String(date.getHours()).padStart(2, '0')
+    const minute = String(date.getMinutes()).padStart(2, '0')
+    const second = String(date.getSeconds()).padStart(2, '0')
+
+    return `${year}/${month}/${day}-${hour}:${minute}:${second}`
+}
+
+function buildNaturalReason(predicates: NextReplyPredicate[]): string {
+    return predicates
+        .map((predicate) => {
+            if (predicate.type === 'time') {
+                return `no new messages for ${predicate.seconds}s`
+            }
+
+            return `user ${predicate.userId} sent a message`
+        })
+        .join(' and ')
+}
+
+function parseNextReplyReason(
+    rawReason: string
+): PendingNextReplyConditionGroup[] {
+    const groups: PendingNextReplyConditionGroup[] = []
+
+    for (const branch of rawReason.split('|').map((it) => it.trim())) {
+        if (!branch) continue
+
+        const predicates = branch
+            .split('&')
+            .map((it) => parseNextReplyToken(it))
+            .filter((it): it is NextReplyPredicate => it != null)
+
+        if (predicates.length < 1) continue
+
+        groups.push({
+            predicates,
+            naturalReason: buildNaturalReason(predicates)
+        })
+    }
+
+    return groups
+}
+
+function evaluateNextReplyGroup(
+    group: PendingNextReplyConditionGroup,
+    info: GroupInfo,
+    createdAt: number
+) {
+    const now = Date.now()
+    return group.predicates.every((predicate) => {
+        if (predicate.type === 'time') {
+            return now - info.lastUserMessageTime >= predicate.seconds * 1000
+        }
+
+        return (
+            info.lastMessageUserId === predicate.userId &&
+            info.lastUserMessageTime >= createdAt
+        )
+    })
+}
+
+function clearPendingNextReplies(info: GroupInfo) {
+    info.pendingNextReplies = []
+}
+
+function removePendingWakeUpReply(
+    info: GroupInfo,
+    target: PendingWakeUpReply
+) {
+    info.pendingWakeUpReplies = (info.pendingWakeUpReplies ?? []).filter(
+        (pending) =>
+            !(
+                pending.createdAt === target.createdAt &&
+                pending.triggerAt === target.triggerAt &&
+                pending.rawTime === target.rawTime &&
+                pending.reason === target.reason
+            )
+    )
+}
+
+function markTriggered(info: GroupInfo, config: Config, now: number) {
+    info.messageCount = 0
+    info.lastActivityScore = Math.max(0, info.lastActivityScore - COOLDOWN_PENALTY)
+    info.lastResponseTime = now
+
+    const lowerLimit = config.messageActivityScoreLowerLimit
+    const upperLimit = config.messageActivityScoreUpperLimit
+    const step = (upperLimit - lowerLimit) * 0.1
+    info.currentActivityThreshold = Math.max(
+        Math.min(
+            info.currentActivityThreshold + step,
+            Math.max(lowerLimit, upperLimit)
+        ),
+        Math.min(lowerLimit, upperLimit)
+    )
+
+    clearPendingNextReplies(info)
+}
+
+function createDefaultGroupInfo(config: Config, now: number): GroupInfo {
+    return {
+        messageCount: 0,
+        messageTimestamps: [],
+        lastActivityScore: 0,
+        lastScoreUpdate: 0,
+        lastResponseTime: 0,
+        currentActivityThreshold: config.messageActivityScoreLowerLimit,
+        lastUserMessageTime: now,
+        passiveRetryCount: 0,
+        pendingNextReplies: [],
+        pendingWakeUpReplies: []
+    }
+}
+
+function getPassiveRetryIntervalSeconds(
+    info: GroupInfo,
+    config: Config
+): number {
+    const baseMinutes = Math.max(
+        config.idleTriggerIntervalMinutes,
+        1
+    )
+    const baseSeconds = baseMinutes * 60
+
+    if (config.idleTriggerRetryStyle === 'fixed') {
+        return baseSeconds
+    }
+
+    const retried = Math.max(info.passiveRetryCount ?? 0, 0)
+    const backoffSeconds = baseSeconds * Math.pow(2, retried)
+
+    if (config.enableIdleTriggerMaxInterval === false) {
+        return backoffSeconds
+    }
+
+    const maxMinutes = Math.max(config.idleTriggerMaxIntervalMinutes ?? 60 * 24, 1)
+    const maxSeconds = maxMinutes * 60
+    return Math.min(backoffSeconds, maxSeconds)
+}
+
+function getGroupConfig(config: Config, guildId: string) {
+    const currentGuildConfig = config.configs[guildId]
+    if (currentGuildConfig == null) {
+        return Object.assign({}, config)
+    }
+
+    return Object.assign({}, config, currentGuildConfig)
+}
+
+export function registerNextReplyTrigger(
+    groupId: string,
+    rawReason: string,
+    config: Config
+) {
+    const groups = parseNextReplyReason(rawReason)
+    if (groups.length < 1) {
+        return false
+    }
+
+    const now = Date.now()
+    const info =
+        groupInfos[groupId] ??
+        createDefaultGroupInfo(getGroupConfig(config, groupId), now)
+
+    const pending: PendingNextReply = {
+        rawReason,
+        groups,
+        createdAt: now
+    }
+
+    info.pendingNextReplies = info.pendingNextReplies ?? []
+    info.pendingNextReplies.push(pending)
+    if (info.pendingNextReplies.length > 12) {
+        info.pendingNextReplies.shift()
+    }
+
+    groupInfos[groupId] = info
+    return true
+}
+
+export function clearNextReplyTriggers(groupId: string) {
+    const info = groupInfos[groupId]
+    if (!info) return
+
+    clearPendingNextReplies(info)
+    groupInfos[groupId] = info
+}
+
+export function registerWakeUpReplyTrigger(
+    groupId: string,
+    rawTime: string,
+    reason: string,
+    config: Config
+) {
+    const triggerAt = parseWakeUpTimeToTimestamp(rawTime)
+    if (triggerAt == null) {
+        return false
+    }
+
+    const now = Date.now()
+    const info =
+        groupInfos[groupId] ??
+        createDefaultGroupInfo(getGroupConfig(config, groupId), now)
+
+    const normalizedReason = reason.trim()
+    const configuredAtText = formatWakeUpDateTime(now)
+    const pending: PendingWakeUpReply = {
+        rawTime,
+        reason: normalizedReason,
+        naturalReason: normalizedReason
+            ? `You configured this wake-up at ${configuredAtText} to trigger at ${rawTime}, note: "${normalizedReason}"`
+            : `You configured this wake-up at ${configuredAtText} to trigger at ${rawTime}`,
+        triggerAt,
+        createdAt: now
+    }
+
+    info.pendingWakeUpReplies = info.pendingWakeUpReplies ?? []
+    info.pendingWakeUpReplies.push(pending)
+    if (info.pendingWakeUpReplies.length > WAKE_UP_REPLY_MAX_COUNT) {
+        info.pendingWakeUpReplies.shift()
+    }
+
+    groupInfos[groupId] = info
+    return true
+}
 
 export async function apply(ctx: Context, config: Config) {
     const service = ctx.chatluna_character
@@ -58,6 +368,116 @@ export async function apply(ctx: Context, config: Config) {
         ctx.chatluna_character.mute(session, duration)
     })
 
+    ctx.setInterval(async () => {
+        const now = Date.now()
+
+        for (const guildId of Object.keys(groupInfos)) {
+            const info = groupInfos[guildId]
+            const copyOfConfig = getGroupConfig(config, guildId)
+            const session = service.getLastSession(guildId)
+
+            if (session == null) {
+                continue
+            }
+
+            if (service.isMute(session) || service.isResponseLocked(session)) {
+                continue
+            }
+
+            const pending = info.pendingNextReplies ?? []
+            if (
+                pending.length > 0 &&
+                pending.some((trigger) => info.lastResponseTime > trigger.createdAt)
+            ) {
+                clearPendingNextReplies(info)
+            }
+
+            let triggerReason: string | undefined
+            let triggeredWakeUpReply: PendingWakeUpReply | undefined
+
+            for (const wakeUp of info.pendingWakeUpReplies ?? []) {
+                if (now >= wakeUp.triggerAt) {
+                    triggeredWakeUpReply = wakeUp
+                    triggerReason = `Scheduled wake-up reply: ${wakeUp.naturalReason}`
+                    break
+                }
+            }
+
+            if (!triggerReason) {
+                for (const trigger of info.pendingNextReplies ?? []) {
+                    const matchedGroup = trigger.groups.find((group) =>
+                        evaluateNextReplyGroup(group, info, trigger.createdAt)
+                    )
+
+                    if (matchedGroup) {
+                        triggerReason = `Scheduled next reply: ${matchedGroup.naturalReason}`
+                        break
+                    }
+                }
+            }
+
+            if (!triggerReason && copyOfConfig.enableLongWaitTrigger) {
+                const hasTriggeredSinceLastMessage =
+                    info.lastPassiveTriggerAt != null &&
+                    info.lastPassiveTriggerAt >= info.lastUserMessageTime
+
+                const waitSeconds = hasTriggeredSinceLastMessage
+                    ? getPassiveRetryIntervalSeconds(info, copyOfConfig)
+                    : Math.max(
+                          copyOfConfig.idleTriggerIntervalMinutes,
+                          1
+                      ) * 60
+
+                const idleDuration = waitSeconds * 1000
+                const passiveReady =
+                    now - info.lastUserMessageTime >= idleDuration &&
+                    (info.lastPassiveTriggerAt == null ||
+                        now - info.lastPassiveTriggerAt >= idleDuration)
+
+                if (passiveReady) {
+                    const elapsedSeconds = Math.max(
+                        1,
+                        Math.floor((now - info.lastUserMessageTime) / 1000)
+                    )
+                    triggerReason = `No new messages for ${elapsedSeconds}s`
+                }
+            }
+
+            if (!triggerReason) {
+                groupInfos[guildId] = info
+                continue
+            }
+
+            const triggered = await service.triggerCollect(session, triggerReason)
+            if (!triggered) {
+                groupInfos[guildId] = info
+                continue
+            }
+
+            // Use the actual completion moment of this reply as idle retry anchor.
+            const completedAt = Date.now()
+
+            if (triggeredWakeUpReply) {
+                removePendingWakeUpReply(info, triggeredWakeUpReply)
+            }
+
+            const hasTriggeredSinceLastMessage =
+                info.lastPassiveTriggerAt != null &&
+                info.lastPassiveTriggerAt >= info.lastUserMessageTime
+            if (hasTriggeredSinceLastMessage) {
+                info.passiveRetryCount = (info.passiveRetryCount ?? 0) + 1
+            } else {
+                // First idle trigger after a user message should make the next
+                // interval start backoff immediately (base * 2).
+                info.passiveRetryCount = 1
+            }
+            info.lastPassiveTriggerAt = completedAt
+
+            markTriggered(info, copyOfConfig, completedAt)
+            groupInfos[guildId] = info
+        }
+    }, SCHEDULER_TICK)
+
     service.addFilter((session, message) => {
         const guildId = session.guildId
         const now = Date.now()
@@ -79,15 +499,13 @@ export async function apply(ctx: Context, config: Config) {
                 })()
         }
 
-        const info = groupInfos[guildId] ?? {
-            messageCount: 0,
-            messageTimestamps: [],
-            lastActivityScore: 0,
-            lastScoreUpdate: 0,
-            lastResponseTime: 0,
-            currentActivityThreshold:
-                copyOfConfig.messageActivityScoreLowerLimit,
-            lastUserMessageTime: now
+        const info =
+            groupInfos[guildId] ?? createDefaultGroupInfo(copyOfConfig, now)
+
+        const selfId = session.bot.selfId ?? session.bot.userId ?? '0'
+        if (message.id === selfId) {
+            groupInfos[guildId] = info
+            return
         }
 
         info.messageTimestamps.push(now)
@@ -101,6 +519,10 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         info.lastUserMessageTime = now
+        info.lastPassiveTriggerAt = undefined
+        info.passiveRetryCount = 0
+        info.lastMessageUserId = message.id
+
         const activity = calculateActivityScore(
             info.messageTimestamps,
             info.lastResponseTime,
@@ -135,7 +557,7 @@ export async function apply(ctx: Context, config: Config) {
                     guildMessages[guildMessages?.length - 1 - maxRecentMessage]
 
                 if (currentMessage == null) {
-                    return false
+                    return
                 }
 
                 if (currentMessage.id === selfId) {
@@ -201,37 +623,26 @@ export async function apply(ctx: Context, config: Config) {
                     plainTextContent.includes(value)
                 ))
 
-        const shouldRespond =
-            info.messageCount > copyOfConfig.messageInterval ||
-            isDirectTrigger ||
-            info.lastActivityScore >= info.currentActivityThreshold
+        let triggerReason: string | undefined
+        if (info.messageCount > copyOfConfig.messageInterval) {
+            triggerReason = `Message interval reached (${info.messageCount}/${copyOfConfig.messageInterval})`
+        } else if (isDirectTrigger) {
+            triggerReason = isAppel
+                ? 'Mention or quote trigger'
+                : 'Nickname trigger'
+        } else if (info.lastActivityScore >= info.currentActivityThreshold) {
+            triggerReason = `Activity score trigger (${info.lastActivityScore.toFixed(3)} >= ${info.currentActivityThreshold.toFixed(3)})`
+        }
 
-        if (shouldRespond && !isMute) {
-            info.messageCount = 0
-            info.lastActivityScore = Math.max(
-                0,
-                info.lastActivityScore - COOLDOWN_PENALTY
-            )
-            info.lastResponseTime = now
-
-            const lowerLimit = copyOfConfig.messageActivityScoreLowerLimit
-            const upperLimit = copyOfConfig.messageActivityScoreUpperLimit
-            const step = (upperLimit - lowerLimit) * 0.1
-            info.currentActivityThreshold = Math.max(
-                Math.min(
-                    info.currentActivityThreshold + step,
-                    Math.max(lowerLimit, upperLimit)
-                ),
-                Math.min(lowerLimit, upperLimit)
-            )
-
+        if (triggerReason && !isMute) {
+            markTriggered(info, copyOfConfig, now)
             groupInfos[session.guildId] = info
-            return true
+            return triggerReason
         }
 
         info.messageCount++
         groupInfos[session.guildId] = info
-        return false
+        return
     })
 }
 
