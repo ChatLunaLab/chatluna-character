@@ -165,63 +165,101 @@ export async function processElements(
         if (last()?.length) result.push([])
     }
 
+    const appendOrPush = (items: Element[], pendingQuote?: PendingQuote) => {
+        canAppendAt()
+            ? appendToLast(items, pendingQuote)
+            : pushFragment(items, pendingQuote)
+    }
+
+    const processTextElement = async (
+        el: Element,
+        pendingQuote?: PendingQuote
+    ) => {
+        if (el.attrs.code || el.attrs.span) {
+            pushFragment([el], pendingQuote)
+            return
+        }
+
+        if (el.attrs.voice && voiceRender) {
+            pushFragment(await voiceRender(el), pendingQuote)
+            return
+        }
+
+        if (config?.splitSentence) {
+            for (const text of splitSentence(he.decode(el.attrs.content)).filter(
+                Boolean
+            )) {
+                appendOrPush([h.text(text)], pendingQuote)
+            }
+            return
+        }
+
+        appendOrPush([el], pendingQuote)
+    }
+
+    const processMessageElement = async (
+        el: Element,
+        process: (els: Element[], pendingQuote?: PendingQuote) => Promise<void>,
+        pendingQuote?: PendingQuote
+    ) => {
+        if (!(el.attrs.span && el.attrs.block)) {
+            await process(el.children, pendingQuote)
+            return
+        }
+
+        // A top-level `<message ...>` block from the model output.
+        // Use it as a boundary so each block can carry its own quote id.
+        startNewFragmentIfNeeded()
+        const blockQuote: PendingQuote | undefined = el.attrs.quote
+            ? { id: String(el.attrs.quote), used: false }
+            : undefined
+
+        await process(el.children, blockQuote)
+        startNewFragmentIfNeeded()
+    }
+
     const process = async (els: Element[], pendingQuote?: PendingQuote) => {
         for (const el of els) {
             if (el.type === 'text') {
-                if (el.attrs.code || el.attrs.span) {
-                    pushFragment([el], pendingQuote)
-                } else if (el.attrs.voice && voiceRender) {
-                    pushFragment(await voiceRender(el), pendingQuote)
-                } else if (config?.splitSentence) {
-                    for (const text of splitSentence(
-                        he.decode(el.attrs.content)
-                    ).filter(Boolean)) {
-                        canAppendAt()
-                            ? appendToLast([h.text(text)], pendingQuote)
-                            : pushFragment([h.text(text)], pendingQuote)
-                    }
-                } else {
-                    canAppendAt()
-                        ? appendToLast([el], pendingQuote)
-                        : pushFragment([el], pendingQuote)
-                }
-            } else if (['em', 'strong', 'del', 'p'].includes(el.type)) {
+                await processTextElement(el, pendingQuote)
+                continue
+            }
+
+            if (['em', 'strong', 'del', 'p'].includes(el.type)) {
                 el.children
                     ? await process(el.children, pendingQuote)
                     : pushFragment([el], pendingQuote)
-            } else if (el.type === 'at') {
-                last()
-                    ? appendToLast([h.text(' '), el, h.text(' ')], pendingQuote)
-                    : pushFragment([h.text(' '), el, h.text(' ')], pendingQuote)
-            } else if (el.type === 'img' && !el.attrs.sticker) {
-                last()
-                    ? appendToLast([el], pendingQuote)
-                    : pushFragment([el], pendingQuote)
-            } else if (
-                el.type === 'message' &&
-                el.attrs.span &&
-                el.attrs.block
-            ) {
-                // A top-level `<message ...>` block from the model output.
-                // Use it as a boundary so each block can carry its own quote id.
-                startNewFragmentIfNeeded()
-                const blockQuote: PendingQuote | undefined = el.attrs.quote
-                    ? { id: String(el.attrs.quote), used: false }
-                    : undefined
-
-                await process(el.children, blockQuote)
-                startNewFragmentIfNeeded()
-            } else if (el.type === 'message' && el.attrs.span) {
-                await process(el.children, pendingQuote)
-            } else if (el.type === 'face') {
-                last()
-                    ? appendToLast([el], pendingQuote)
-                    : pushFragment([el], pendingQuote)
-            } else {
-                canAppendAt()
-                    ? appendToLast([el], pendingQuote)
-                    : pushFragment([el], pendingQuote)
+                continue
             }
+
+            if (el.type === 'at') {
+                const wrappedAt = [h.text(' '), el, h.text(' ')]
+                last()
+                    ? appendToLast(wrappedAt, pendingQuote)
+                    : pushFragment(wrappedAt, pendingQuote)
+                continue
+            }
+
+            if (el.type === 'img' && !el.attrs.sticker) {
+                last()
+                    ? appendToLast([el], pendingQuote)
+                    : pushFragment([el], pendingQuote)
+                continue
+            }
+
+            if (el.type === 'message' && el.attrs.span) {
+                await processMessageElement(el, process, pendingQuote)
+                continue
+            }
+
+            if (el.type === 'face') {
+                last()
+                    ? appendToLast([el], pendingQuote)
+                    : pushFragment([el], pendingQuote)
+                continue
+            }
+
+            appendOrPush([el], pendingQuote)
         }
     }
 
