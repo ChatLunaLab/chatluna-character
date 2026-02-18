@@ -394,7 +394,7 @@ function findIdleTriggerReason(
 
     const waitSeconds = info.currentIdleWaitSeconds
     const triggerAnchorTime = hasTriggeredSinceLastMessage
-        ? (info.lastPassiveTriggerAt ?? info.lastUserMessageTime)
+        ? info.lastPassiveTriggerAt ?? info.lastUserMessageTime
         : info.lastUserMessageTime
     const passiveReady = now - triggerAnchorTime >= waitSeconds * 1000
 
