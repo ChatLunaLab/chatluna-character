@@ -459,7 +459,17 @@ export async function apply(ctx: Context, config: Config) {
                 continue
             }
 
-            const triggered = await service.triggerCollect(session, triggerReason)
+            let triggered = false
+            try {
+                triggered = await service.triggerCollect(
+                    session,
+                    triggerReason
+                )
+            } catch (e) {
+                logger.error(`triggerCollect failed for guild ${guildId}`, e)
+                groupInfos[guildId] = info
+                continue
+            }
             if (!triggered) {
                 groupInfos[guildId] = info
                 continue
@@ -655,7 +665,6 @@ export async function apply(ctx: Context, config: Config) {
 
         info.messageCount++
         groupInfos[session.guildId] = info
-        return
     })
 }
 

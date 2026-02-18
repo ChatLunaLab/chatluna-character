@@ -41,6 +41,12 @@ interface ModelResponse {
     parsedResponse: Awaited<ReturnType<typeof parseResponse>>
 }
 
+function stripInternalTriggerTags(content: string) {
+    return content
+        .replace(/<next_reply\b[^>]*\/>/gi, '')
+        .replace(/<wake_up_reply\b[^>]*\/>/gi, '')
+}
+
 async function initializeModel(
     ctx: Context,
     platform: string,
@@ -273,7 +279,7 @@ async function getModelResponse(
             logger.debug('model response: ' + responseMessage.content)
 
             const parsedResponse = await parseResponse(
-                responseMessage.content as string,
+                stripInternalTriggerTags(responseMessage.content as string),
                 config.isAt,
                 async (element) => {
                     logger.debug(
