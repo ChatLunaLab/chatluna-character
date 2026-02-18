@@ -435,9 +435,10 @@ export async function apply(ctx: Context, config: Config) {
 
                 const waitSeconds = info.currentIdleWaitSeconds
                 const triggerAnchorTime = hasTriggeredSinceLastMessage
-                    ? info.lastPassiveTriggerAt ?? info.lastUserMessageTime
+                    ? (info.lastPassiveTriggerAt ?? info.lastUserMessageTime)
                     : info.lastUserMessageTime
-                const passiveReady = now - triggerAnchorTime >= waitSeconds * 1000
+                const passiveReady =
+                    now - triggerAnchorTime >= waitSeconds * 1000
 
                 if (passiveReady) {
                     const elapsedSeconds = Math.max(
