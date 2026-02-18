@@ -454,6 +454,7 @@ export async function apply(ctx: Context, config: Config) {
                 continue
             }
 
+            const previousLastUserMessageTime = info.lastUserMessageTime
             let triggered = false
             try {
                 triggered = await service.triggerCollect(session, triggerReason)
@@ -474,18 +475,23 @@ export async function apply(ctx: Context, config: Config) {
                 removePendingWakeUpReply(info, triggeredWakeUpReply)
             }
 
-            const hasTriggeredSinceLastMessage =
-                info.lastPassiveTriggerAt != null &&
-                info.lastPassiveTriggerAt >= info.lastUserMessageTime
-            if (hasTriggeredSinceLastMessage) {
-                info.passiveRetryCount = (info.passiveRetryCount ?? 0) + 1
-            } else {
-                // First idle trigger after a user message should make the next
-                // interval start backoff immediately (base * 2).
-                info.passiveRetryCount = 1
+            const userMessageArrivedDuringTrigger =
+                info.lastUserMessageTime !== previousLastUserMessageTime
+
+            if (!userMessageArrivedDuringTrigger) {
+                const hasTriggeredSinceLastMessage =
+                    info.lastPassiveTriggerAt != null &&
+                    info.lastPassiveTriggerAt >= info.lastUserMessageTime
+                if (hasTriggeredSinceLastMessage) {
+                    info.passiveRetryCount = (info.passiveRetryCount ?? 0) + 1
+                } else {
+                    // First idle trigger after a user message should make the next
+                    // interval start backoff immediately (base * 2).
+                    info.passiveRetryCount = 1
+                }
+                info.lastPassiveTriggerAt = completedAt
+                info.currentIdleWaitSeconds = undefined
             }
-            info.lastPassiveTriggerAt = completedAt
-            info.currentIdleWaitSeconds = undefined
 
             markTriggered(info, copyOfConfig, completedAt)
             groupInfos[guildId] = info
