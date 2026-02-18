@@ -720,14 +720,7 @@ export async function apply(ctx: Context, config: Config) {
             )}`
         )
 
-        if (
-            shouldStopWhenDisableChatLuna(
-                ctx,
-                session,
-                copyOfConfig,
-                guildId
-            )
-        ) {
+        if (shouldStopWhenDisableChatLuna(ctx, session, copyOfConfig, guildId)) {
             return
         }
 
