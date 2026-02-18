@@ -78,6 +78,7 @@ export interface Config extends ChatLunaPlugin.Config {
     idleTriggerRetryStyle: 'exponential' | 'fixed'
     enableIdleTriggerMaxInterval: boolean
     idleTriggerMaxIntervalMinutes: number
+    enableIdleTriggerJitter: boolean
     messageActivityScoreLowerLimit: number
     messageActivityScoreUpperLimit: number
 
@@ -238,6 +239,11 @@ export const Config = Schema.intersect([
             .description(
                 '空闲触发最大间隔（分钟）：仅在“指数退避”下生效，关闭上面的限制时不封顶。'
             ),
+        enableIdleTriggerJitter: Schema.boolean()
+            .default(true)
+            .description(
+                '是否启用空闲触发随机抖动：对固定重试与指数退避都生效，每轮会随机提前或延后 5%-10%。'
+            ),
         messageActivityScoreLowerLimit: Schema.number()
             .default(0.85)
             .min(0)
@@ -375,6 +381,11 @@ export const Config = Schema.intersect([
                     .max(60 * 24 * 30)
                     .description(
                         '空闲触发最大间隔（分钟）：仅在“指数退避”下生效，关闭上面的限制时不封顶。'
+                    ),
+                enableIdleTriggerJitter: Schema.boolean()
+                    .default(true)
+                    .description(
+                        '是否启用空闲触发随机抖动：对固定重试与指数退避都生效，每轮会随机提前或延后 5%-10%。'
                     ),
                 messageActivityScoreLowerLimit: Schema.number()
                     .default(0.85)

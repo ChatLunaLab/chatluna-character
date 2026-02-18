@@ -32,6 +32,7 @@ export interface GuildConfig {
     idleTriggerRetryStyle: 'exponential' | 'fixed'
     enableIdleTriggerMaxInterval: boolean
     idleTriggerMaxIntervalMinutes: number
+    enableIdleTriggerJitter: boolean
     messageActivityScoreLowerLimit: number
     messageActivityScoreUpperLimit: number
     maxTokens: number
@@ -76,6 +77,7 @@ export interface GroupInfo {
     lastMessageUserId?: string
     lastPassiveTriggerAt?: number
     passiveRetryCount?: number
+    currentIdleWaitSeconds?: number
     pendingNextReplies?: PendingNextReply[]
     pendingWakeUpReplies?: PendingWakeUpReply[]
 }

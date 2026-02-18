@@ -216,6 +216,7 @@ function createDefaultGroupInfo(config: Config, now: number): GroupInfo {
         currentActivityThreshold: config.messageActivityScoreLowerLimit,
         lastUserMessageTime: now,
         passiveRetryCount: 0,
+        currentIdleWaitSeconds: undefined,
         pendingNextReplies: [],
         pendingWakeUpReplies: []
     }
@@ -245,6 +246,18 @@ function getPassiveRetryIntervalSeconds(
     const maxMinutes = Math.max(config.idleTriggerMaxIntervalMinutes ?? 60 * 24, 1)
     const maxSeconds = maxMinutes * 60
     return Math.min(backoffSeconds, maxSeconds)
+}
+
+function applyIdleTriggerJitter(waitSeconds: number, config: Config): number {
+    if (!config.enableIdleTriggerJitter) {
+        return waitSeconds
+    }
+
+    const ratio = 0.05 + Math.random() * 0.05
+    const direction = Math.random() < 0.5 ? -1 : 1
+    const multiplier = 1 + direction * ratio
+
+    return Math.max(1, Math.round(waitSeconds * multiplier))
 }
 
 function getGroupConfig(config: Config, guildId: string) {
@@ -421,18 +434,22 @@ export async function apply(ctx: Context, config: Config) {
                     info.lastPassiveTriggerAt != null &&
                     info.lastPassiveTriggerAt >= info.lastUserMessageTime
 
-                const waitSeconds = hasTriggeredSinceLastMessage
-                    ? getPassiveRetryIntervalSeconds(info, copyOfConfig)
-                    : Math.max(
-                          copyOfConfig.idleTriggerIntervalMinutes,
-                          1
-                      ) * 60
+                if (info.currentIdleWaitSeconds == null) {
+                    const baseWaitSeconds = hasTriggeredSinceLastMessage
+                        ? getPassiveRetryIntervalSeconds(info, copyOfConfig)
+                        : Math.max(copyOfConfig.idleTriggerIntervalMinutes, 1) *
+                          60
+                    info.currentIdleWaitSeconds = applyIdleTriggerJitter(
+                        baseWaitSeconds,
+                        copyOfConfig
+                    )
+                }
 
-                const idleDuration = waitSeconds * 1000
-                const passiveReady =
-                    now - info.lastUserMessageTime >= idleDuration &&
-                    (info.lastPassiveTriggerAt == null ||
-                        now - info.lastPassiveTriggerAt >= idleDuration)
+                const waitSeconds = info.currentIdleWaitSeconds
+                const triggerAnchorTime = hasTriggeredSinceLastMessage
+                    ? (info.lastPassiveTriggerAt ?? info.lastUserMessageTime)
+                    : info.lastUserMessageTime
+                const passiveReady = now - triggerAnchorTime >= waitSeconds * 1000
 
                 if (passiveReady) {
                     const elapsedSeconds = Math.max(
@@ -472,6 +489,7 @@ export async function apply(ctx: Context, config: Config) {
                 info.passiveRetryCount = 1
             }
             info.lastPassiveTriggerAt = completedAt
+            info.currentIdleWaitSeconds = undefined
 
             markTriggered(info, copyOfConfig, completedAt)
             groupInfos[guildId] = info
@@ -521,6 +539,7 @@ export async function apply(ctx: Context, config: Config) {
         info.lastUserMessageTime = now
         info.lastPassiveTriggerAt = undefined
         info.passiveRetryCount = 0
+        info.currentIdleWaitSeconds = undefined
         info.lastMessageUserId = message.id
 
         const activity = calculateActivityScore(
