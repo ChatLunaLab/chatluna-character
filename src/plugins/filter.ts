@@ -479,7 +479,8 @@ function updateIncomingMessageStats(
     }
 
     if (now - info.lastUserMessageTime >= THRESHOLD_RESET_TIME) {
-        info.currentActivityThreshold = copyOfConfig.messageActivityScoreLowerLimit
+        info.currentActivityThreshold =
+            copyOfConfig.messageActivityScoreLowerLimit
     }
 
     info.lastUserMessageTime = now
@@ -532,7 +533,8 @@ function detectAppel(session: Session, botId: string) {
     let appel = session.stripped.appel
     if (!appel) {
         appel = session.elements.some(
-            (element) => element.type === 'at' && element.attrs?.['id'] === botId
+            (element) =>
+                element.type === 'at' && element.attrs?.['id'] === botId
         )
     }
 
@@ -718,7 +720,14 @@ export async function apply(ctx: Context, config: Config) {
             )}`
         )
 
-        if (shouldStopWhenDisableChatLuna(ctx, session, copyOfConfig, guildId)) {
+        if (
+            shouldStopWhenDisableChatLuna(
+                ctx,
+                session,
+                copyOfConfig,
+                guildId
+            )
+        ) {
             return
         }
 

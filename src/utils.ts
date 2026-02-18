@@ -186,9 +186,9 @@ export async function processElements(
         }
 
         if (config?.splitSentence) {
-            for (const text of splitSentence(he.decode(el.attrs.content)).filter(
-                Boolean
-            )) {
+            for (const text of splitSentence(
+                he.decode(el.attrs.content)
+            ).filter(Boolean)) {
                 appendOrPush([h.text(text)], pendingQuote)
             }
             return
