@@ -420,8 +420,42 @@ async function handleModelResponse(
     session: Session,
     config: Config,
     ctx: Context,
-    parsedResponse: Awaited<ReturnType<typeof parseResponse>>
+    parsedResponse: Awaited<ReturnType<typeof parseResponse>>,
+    responseMessage: BaseMessage,
+    guildId: string
 ): Promise<void> {
+    const rawContent = getMessageContent(responseMessage.content)
+    const nextReplyReasons = extractNextReplyReasons(rawContent)
+    const wakeUpReplies = extractWakeUpReplies(rawContent)
+
+    if (nextReplyReasons.length > 0) {
+        clearNextReplyTriggers(guildId)
+        for (const reason of nextReplyReasons) {
+            const accepted = registerNextReplyTrigger(guildId, reason, config)
+
+            if (!accepted) {
+                logger.warn(
+                    `Ignore invalid <next_reply reason="${reason}" /> for group ${guildId}`
+                )
+            }
+        }
+    }
+
+    for (const wakeUp of wakeUpReplies) {
+        const accepted = registerWakeUpReplyTrigger(
+            guildId,
+            wakeUp.time,
+            wakeUp.reason,
+            config
+        )
+
+        if (!accepted) {
+            logger.warn(
+                `Ignore invalid <wake_up_reply time="${wakeUp.time}" reason="${wakeUp.reason}" /> for group ${guildId}`
+            )
+        }
+    }
+
     let breakSay = false
 
     for (const elements of parsedResponse.elements) {
@@ -549,41 +583,6 @@ export async function apply(ctx: Context, config: Config) {
             if (!response) return
 
             const { responseMessage, parsedResponse } = response
-            const rawContent = getMessageContent(responseMessage.content)
-            const nextReplyReasons = extractNextReplyReasons(rawContent)
-            const wakeUpReplies = extractWakeUpReplies(rawContent)
-
-            if (nextReplyReasons.length > 0) {
-                clearNextReplyTriggers(guildId)
-                for (const reason of nextReplyReasons) {
-                    const accepted = registerNextReplyTrigger(
-                        guildId,
-                        reason,
-                        copyOfConfig
-                    )
-
-                    if (!accepted) {
-                        logger.warn(
-                            `Ignore invalid <next_reply reason="${reason}" /> for group ${guildId}`
-                        )
-                    }
-                }
-            }
-
-            for (const wakeUp of wakeUpReplies) {
-                const accepted = registerWakeUpReplyTrigger(
-                    guildId,
-                    wakeUp.time,
-                    wakeUp.reason,
-                    copyOfConfig
-                )
-
-                if (!accepted) {
-                    logger.warn(
-                        `Ignore invalid <wake_up_reply time="${wakeUp.time}" reason="${wakeUp.reason}" /> for group ${guildId}`
-                    )
-                }
-            }
 
             temp.status = parsedResponse.status
             if (parsedResponse.elements.length < 1) {
@@ -605,7 +604,9 @@ export async function apply(ctx: Context, config: Config) {
                 session,
                 copyOfConfig,
                 ctx,
-                parsedResponse
+                parsedResponse,
+                responseMessage,
+                guildId
             )
 
             service.muteAtLeast(session, copyOfConfig.coolDownTime * 1000)
