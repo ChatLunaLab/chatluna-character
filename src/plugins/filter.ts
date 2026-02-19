@@ -3,12 +3,12 @@ import { Config } from '..'
 import {
     ActivityScore,
     GroupInfo,
-    NextReplyPredicate,
     PendingNextReply,
     PendingNextReplyConditionGroup,
     PendingWakeUpReply,
     PresetTemplate
 } from '../types'
+import { parseNextReplyReason, parseWakeUpTimeToTimestamp } from '../utils'
 
 export const groupInfos: Record<string, GroupInfo> = {}
 
@@ -32,115 +32,6 @@ const BURST_RATE_SCALE = 4 // 突发活跃斜率
 const SMOOTHING_WINDOW = Time.second * 8 // 分数平滑窗口
 const FRESHNESS_HALF_LIFE = Time.second * 60 // 新鲜度半衰期：60秒
 
-function parseNextReplyToken(token: string): NextReplyPredicate | null {
-    const trimmed = token.trim()
-    if (!trimmed) return null
-
-    const timeMatch = trimmed.match(/^time_(\d+)s$/i)
-    if (timeMatch) {
-        const seconds = Number.parseInt(timeMatch[1], 10)
-        if (Number.isFinite(seconds) && seconds > 0) {
-            return { type: 'time', seconds }
-        }
-    }
-
-    const idMatch = trimmed.match(/^id_([\w-]+)$/i)
-    if (idMatch) {
-        return { type: 'id', userId: idMatch[1] }
-    }
-
-    return null
-}
-
-function parseWakeUpTimeToTimestamp(rawTime: string): number | null {
-    const matched = rawTime
-        .trim()
-        .match(/^(\d{4})\/(\d{2})\/(\d{2})-(\d{2}):(\d{2}):(\d{2})$/)
-    if (!matched) return null
-
-    const [, rawYear, rawMonth, rawDay, rawHour, rawMinute, rawSecond] = matched
-
-    const year = Number.parseInt(rawYear, 10)
-    const month = Number.parseInt(rawMonth, 10)
-    const day = Number.parseInt(rawDay, 10)
-    const hour = Number.parseInt(rawHour, 10)
-    const minute = Number.parseInt(rawMinute, 10)
-    const second = Number.parseInt(rawSecond, 10)
-
-    if (
-        !Number.isFinite(year) ||
-        !Number.isFinite(month) ||
-        !Number.isFinite(day) ||
-        !Number.isFinite(hour) ||
-        !Number.isFinite(minute) ||
-        !Number.isFinite(second)
-    ) {
-        return null
-    }
-
-    const date = new Date(year, month - 1, day, hour, minute, second, 0)
-    if (
-        date.getFullYear() !== year ||
-        date.getMonth() !== month - 1 ||
-        date.getDate() !== day ||
-        date.getHours() !== hour ||
-        date.getMinutes() !== minute ||
-        date.getSeconds() !== second
-    ) {
-        return null
-    }
-
-    return date.getTime()
-}
-
-function formatWakeUpDateTime(timestamp: number): string {
-    const date = new Date(timestamp)
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    const hour = String(date.getHours()).padStart(2, '0')
-    const minute = String(date.getMinutes()).padStart(2, '0')
-    const second = String(date.getSeconds()).padStart(2, '0')
-
-    return `${year}/${month}/${day}-${hour}:${minute}:${second}`
-}
-
-function buildNaturalReason(predicates: NextReplyPredicate[]): string {
-    return predicates
-        .map((predicate) => {
-            if (predicate.type === 'time') {
-                return `no new messages for ${predicate.seconds}s`
-            }
-
-            return `user ${predicate.userId} sent a message`
-        })
-        .join(' and ')
-}
-
-function parseNextReplyReason(
-    rawReason: string
-): PendingNextReplyConditionGroup[] {
-    const groups: PendingNextReplyConditionGroup[] = []
-
-    for (const branch of rawReason.split('|').map((it) => it.trim())) {
-        if (!branch) continue
-
-        const predicates = branch
-            .split('&')
-            .map((it) => parseNextReplyToken(it))
-            .filter((it): it is NextReplyPredicate => it != null)
-
-        if (predicates.length < 1) continue
-
-        groups.push({
-            predicates,
-            naturalReason: buildNaturalReason(predicates)
-        })
-    }
-
-    return groups
-}
-
 function evaluateNextReplyGroup(
     group: PendingNextReplyConditionGroup,
     info: GroupInfo,
@@ -157,22 +48,6 @@ function evaluateNextReplyGroup(
             info.lastUserMessageTime >= createdAt
         )
     })
-}
-
-function clearPendingNextReplies(info: GroupInfo) {
-    info.pendingNextReplies = []
-}
-
-function removePendingWakeUpReply(info: GroupInfo, target: PendingWakeUpReply) {
-    info.pendingWakeUpReplies = (info.pendingWakeUpReplies ?? []).filter(
-        (pending) =>
-            !(
-                pending.createdAt === target.createdAt &&
-                pending.triggerAt === target.triggerAt &&
-                pending.rawTime === target.rawTime &&
-                pending.reason === target.reason
-            )
-    )
 }
 
 function markTriggered(info: GroupInfo, config: Config, now: number) {
@@ -194,7 +69,7 @@ function markTriggered(info: GroupInfo, config: Config, now: number) {
         Math.min(lowerLimit, upperLimit)
     )
 
-    clearPendingNextReplies(info)
+    info.pendingNextReplies = []
 }
 
 function createDefaultGroupInfo(config: Config, now: number): GroupInfo {
@@ -292,7 +167,7 @@ export function clearNextReplyTriggers(groupId: string) {
     const info = groupInfos[groupId]
     if (!info) return
 
-    clearPendingNextReplies(info)
+    info.pendingNextReplies = []
     groupInfos[groupId] = info
 }
 
@@ -313,7 +188,8 @@ export function registerWakeUpReplyTrigger(
         createDefaultGroupInfo(getGroupConfig(config, groupId), now)
 
     const normalizedReason = reason.trim()
-    const configuredAtText = formatWakeUpDateTime(now)
+    const configuredAt = new Date(now)
+    const configuredAtText = `${configuredAt.getFullYear()}/${String(configuredAt.getMonth() + 1).padStart(2, '0')}/${String(configuredAt.getDate()).padStart(2, '0')}-${String(configuredAt.getHours()).padStart(2, '0')}:${String(configuredAt.getMinutes()).padStart(2, '0')}:${String(configuredAt.getSeconds()).padStart(2, '0')}`
     const pending: PendingWakeUpReply = {
         rawTime,
         reason: normalizedReason,
@@ -337,7 +213,7 @@ function clearStaleNextReplyTriggers(info: GroupInfo) {
         pending.length > 0 &&
         pending.some((trigger) => info.lastResponseTime > trigger.createdAt)
     ) {
-        clearPendingNextReplies(info)
+        info.pendingNextReplies = []
     }
 }
 
@@ -393,7 +269,7 @@ function findIdleTriggerReason(
 
     const waitSeconds = info.currentIdleWaitSeconds
     const triggerAnchorTime = hasTriggeredSinceLastMessage
-        ? info.lastPassiveTriggerAt ?? info.lastUserMessageTime
+        ? (info.lastPassiveTriggerAt ?? info.lastUserMessageTime)
         : info.lastUserMessageTime
     const passiveReady = now - triggerAnchorTime >= waitSeconds * 1000
 
@@ -527,33 +403,6 @@ function shouldStopWhenDisableChatLuna(
     return false
 }
 
-function detectAppel(session: Session, botId: string) {
-    let appel = session.stripped.appel
-    if (!appel) {
-        appel = session.elements.some(
-            (element) =>
-                element.type === 'at' && element.attrs?.['id'] === botId
-        )
-    }
-
-    if (!appel) {
-        appel = session.quote?.user?.id === botId
-    }
-
-    return Boolean(appel)
-}
-
-function buildPlainTextContent(session: Session, needPlainText: boolean) {
-    if (!needPlainText) {
-        return ''
-    }
-
-    return (session.elements ?? [])
-        .filter((element) => element.type === 'text')
-        .map((element) => element.attrs?.content ?? '')
-        .join('')
-}
-
 function resolveTriggerReason(
     info: GroupInfo,
     copyOfConfig: Config,
@@ -628,7 +477,15 @@ async function processSchedulerTickForGuild(
     // 以本次回复真正完成的时刻作为空闲重试锚点。
     const completedAt = Date.now()
     if (triggeredWakeUpReply) {
-        removePendingWakeUpReply(info, triggeredWakeUpReply)
+        info.pendingWakeUpReplies = (info.pendingWakeUpReplies ?? []).filter(
+            (pending) =>
+                !(
+                    pending.createdAt === triggeredWakeUpReply.createdAt &&
+                    pending.triggerAt === triggeredWakeUpReply.triggerAt &&
+                    pending.rawTime === triggeredWakeUpReply.rawTime &&
+                    pending.reason === triggeredWakeUpReply.reason
+                )
+        )
     }
 
     updatePassiveRetryStateAfterTriggered(
@@ -735,7 +592,18 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         const botId = session.bot.selfId
-        const isAppel = detectAppel(session, botId)
+        let appel = session.stripped.appel
+        if (!appel) {
+            appel = session.elements.some(
+                (element) =>
+                    element.type === 'at' && element.attrs?.['id'] === botId
+            )
+        }
+        if (!appel) {
+            appel = session.quote?.user?.id === botId
+        }
+        const isAppel = Boolean(appel)
+
         const muteKeywords = currentPreset.mute_keyword ?? []
         const forceMuteActive =
             copyOfConfig.isForceMute && isAppel && muteKeywords.length > 0
@@ -744,7 +612,12 @@ export async function apply(ctx: Context, config: Config) {
             copyOfConfig.isNickNameWithContent ||
             forceMuteActive
 
-        const plainTextContent = buildPlainTextContent(session, needPlainText)
+        const plainTextContent = needPlainText
+            ? (session.elements ?? [])
+                  .filter((element) => element.type === 'text')
+                  .map((element) => element.attrs?.content ?? '')
+                  .join('')
+            : ''
 
         if (forceMuteActive) {
             const needMute = muteKeywords.some((value) =>
