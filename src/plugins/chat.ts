@@ -41,19 +41,6 @@ interface ModelResponse {
     parsedResponse: Awaited<ReturnType<typeof parseResponse>>
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, tag: string) {
-    let timer: NodeJS.Timeout | undefined
-    const timeoutPromise = new Promise<T>((_resolve, reject) => {
-        timer = setTimeout(() => {
-            reject(new Error(`${tag} timeout after ${timeoutMs}ms`))
-        }, timeoutMs)
-    })
-
-    return Promise.race([promise, timeoutPromise]).finally(() => {
-        if (timer) clearTimeout(timer)
-    }) as Promise<T>
-}
-
 function stripInternalTriggerTags(content: string) {
     return content
         .replace(/<next_reply\b[^>]*\/>/gi, '')
@@ -414,43 +401,24 @@ async function handleMessageSending(
     try {
         switch (parsedResponse.messageType) {
             case 'text':
-                await withTimeout(
-                    session.send(elements),
-                    15_000,
-                    'session.send(text)'
-                )
+                await session.send(elements)
                 sent = true
                 break
             case 'voice':
-                await withTimeout(
-                    (async () => {
-                        const audio = await ctx.vits.say(
-                            Object.assign({ input: text }, { session })
-                        )
-                        await session.send(audio)
-                    })(),
-                    15_000,
-                    'session.send(voice)'
+                await session.send(
+                    await ctx.vits.say(Object.assign({ input: text }, { session }))
                 )
                 sent = true
                 break
             default:
-                await withTimeout(
-                    session.send(elements),
-                    15_000,
-                    'session.send(default)'
-                )
+                await session.send(elements)
                 sent = true
                 break
         }
     } catch (e) {
         logger.error(e)
         try {
-            await withTimeout(
-                session.send(elements),
-                10_000,
-                'session.send(fallback)'
-            )
+            await session.send(elements)
             sent = true
         } catch (fallbackError) {
             logger.error(fallbackError)
@@ -652,17 +620,13 @@ export async function apply(ctx: Context, config: Config) {
                 copyOfConfig.modelCompletionCount
             )
 
-            await withTimeout(
-                handleModelResponse(
-                    session,
-                    copyOfConfig,
-                    ctx,
-                    parsedResponse,
-                    responseMessage,
-                    guildId
-                ),
-                45_000,
-                'handleModelResponse'
+            await handleModelResponse(
+                session,
+                copyOfConfig,
+                ctx,
+                parsedResponse,
+                responseMessage,
+                guildId
             )
 
             service.muteAtLeast(session, copyOfConfig.coolDownTime * 1000)
