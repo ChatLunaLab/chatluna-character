@@ -43,7 +43,7 @@ interface ModelResponse {
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, tag: string) {
     let timer: NodeJS.Timeout | undefined
-    const timeoutPromise = new Promise<T>((_, reject) => {
+    const timeoutPromise = new Promise<T>((_resolve, reject) => {
         timer = setTimeout(() => {
             reject(new Error(`${tag} timeout after ${timeoutMs}ms`))
         }, timeoutMs)
@@ -423,11 +423,12 @@ async function handleMessageSending(
                 break
             case 'voice':
                 await withTimeout(
-                    session.send(
-                        await ctx.vits.say(
+                    (async () => {
+                        const audio = await ctx.vits.say(
                             Object.assign({ input: text }, { session })
                         )
-                    ),
+                        await session.send(audio)
+                    })(),
                     15_000,
                     'session.send(voice)'
                 )
@@ -514,7 +515,8 @@ async function handleModelResponse(
         return
     }
 
-    await ctx.chatluna_character.broadcastOnBot(session, parsedResponse.elements.flat())
+    const flattenedElements = parsedResponse.elements.flat()
+    await ctx.chatluna_character.broadcastOnBot(session, flattenedElements)
 
     if (nextReplyReasons.length > 0) {
         clearNextReplyTriggers(guildId)

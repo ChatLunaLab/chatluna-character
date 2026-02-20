@@ -34,7 +34,7 @@ const FRESHNESS_HALF_LIFE = Time.second * 60 // 新鲜度半衰期：60秒
 
 function runWithTimeout<T>(task: Promise<T>, ms: number): Promise<T> {
     let timer: NodeJS.Timeout | undefined
-    const timeout = new Promise<never>((_, reject) => {
+    const timeout = new Promise<never>((_resolve, reject) => {
         timer = setTimeout(() => {
             reject(new Error(`scheduler timeout after ${ms}ms`))
         }, ms)
@@ -364,7 +364,7 @@ function resolveGuildPresetContext(
 function updateIncomingMessageStats(
     info: GroupInfo,
     copyOfConfig: Config,
-    messageId: string,
+    userId: string,
     now: number
 ) {
     info.messageTimestamps.push(now)
@@ -381,9 +381,9 @@ function updateIncomingMessageStats(
     info.lastPassiveTriggerAt = undefined
     info.passiveRetryCount = 0
     info.currentIdleWaitSeconds = undefined
-    info.lastMessageUserId = messageId
+    info.lastMessageUserId = userId
     info.messageTimestampsByUserId = info.messageTimestampsByUserId ?? {}
-    info.messageTimestampsByUserId[messageId] = now
+    info.messageTimestampsByUserId[userId] = now
 }
 
 function shouldStopWhenDisableChatLuna(
