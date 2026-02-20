@@ -211,14 +211,14 @@ export function parseNextReplyReason(
             naturalReason: predicates
                 .map((predicate) => {
                     if (predicate.type === 'time_id') {
-                        return `time_${predicate.seconds}s_id_${predicate.userId}：接下来连续${predicate.seconds}秒没有收到id为${predicate.userId}的群友发送的新消息`
+                        return `time_${predicate.seconds}s_id_${predicate.userId}: no new messages from user ${predicate.userId} for ${predicate.seconds}s`
                     }
                     if (predicate.type === 'time') {
-                        return `time_${predicate.seconds}s：接下来连续${predicate.seconds}秒没有收到任何新消息`
+                        return `time_${predicate.seconds}s: no new messages for ${predicate.seconds}s`
                     }
-                    return `id_${predicate.userId}：接下来收到id为${predicate.userId}的群友发送的新消息`
+                    return `id_${predicate.userId}: received a new message from user ${predicate.userId}`
                 })
-                .join('，且')
+                .join(' and ')
         })
     }
 
