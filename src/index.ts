@@ -302,7 +302,7 @@ export const Config = Schema.intersect([
 
         defaultPreset: Schema.dynamic('character-preset')
             .description('使用的伪装预设')
-            .default('煕')
+            .default('CHARACTER')
     }).description('对话设置'),
 
     Schema.object({
@@ -462,7 +462,7 @@ export const Config = Schema.intersect([
                     .description('模型历史消息轮数，为 0 不发送之前的历史轮次'),
                 preset: Schema.dynamic('character-preset')
                     .description('使用的伪装预设')
-                    .default('煕')
+                    .default('CHARACTER')
             })
         )
             .role('table')
