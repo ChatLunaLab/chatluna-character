@@ -406,7 +406,9 @@ async function handleMessageSending(
                 break
             case 'voice':
                 await session.send(
-                    await ctx.vits.say(Object.assign({ input: text }, { session }))
+                    await ctx.vits.say(
+                        Object.assign({ input: text }, { session })
+                    )
                 )
                 sent = true
                 break
