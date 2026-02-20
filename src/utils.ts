@@ -125,6 +125,15 @@ export function parseNextReplyToken(token: string): NextReplyPredicate | null {
     const trimmed = token.trim()
     if (!trimmed) return null
 
+    const timeWithIdMatch = trimmed.match(/^time_(\d+)s_id_([\w-]+)$/i)
+    if (timeWithIdMatch) {
+        const seconds = Number.parseInt(timeWithIdMatch[1], 10)
+        const userId = timeWithIdMatch[2]
+        if (Number.isFinite(seconds) && seconds > 0 && userId.length > 0) {
+            return { type: 'time_id', seconds, userId }
+        }
+    }
+
     const timeMatch = trimmed.match(/^time_(\d+)s$/i)
     if (timeMatch) {
         const seconds = Number.parseInt(timeMatch[1], 10)
@@ -201,12 +210,15 @@ export function parseNextReplyReason(
             predicates,
             naturalReason: predicates
                 .map((predicate) => {
-                    if (predicate.type === 'time') {
-                        return `no new messages for ${predicate.seconds}s`
+                    if (predicate.type === 'time_id') {
+                        return `time_${predicate.seconds}s_id_${predicate.userId}：接下来连续${predicate.seconds}秒没有收到id为${predicate.userId}的群友发送的新消息`
                     }
-                    return `user ${predicate.userId} sent a message`
+                    if (predicate.type === 'time') {
+                        return `time_${predicate.seconds}s：接下来连续${predicate.seconds}秒没有收到任何新消息`
+                    }
+                    return `id_${predicate.userId}：接下来收到id为${predicate.userId}的群友发送的新消息`
                 })
-                .join(' and ')
+                .join('，且')
         })
     }
 

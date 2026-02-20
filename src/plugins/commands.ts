@@ -25,6 +25,7 @@ export function apply(ctx: Context, config: Config) {
         groupInfos[groupId] = {
             messageCount: 0,
             messageTimestamps: [],
+            messageTimestampsByUserId: {},
             lastActivityScore: 0,
             currentActivityThreshold: 0,
             lastUserMessageTime: 0,

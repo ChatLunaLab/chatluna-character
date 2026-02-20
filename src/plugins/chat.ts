@@ -41,6 +41,19 @@ interface ModelResponse {
     parsedResponse: Awaited<ReturnType<typeof parseResponse>>
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, tag: string) {
+    let timer: NodeJS.Timeout | undefined
+    const timeoutPromise = new Promise<T>((_, reject) => {
+        timer = setTimeout(() => {
+            reject(new Error(`${tag} timeout after ${timeoutMs}ms`))
+        }, timeoutMs)
+    })
+
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+        if (timer) clearTimeout(timer)
+    }) as Promise<T>
+}
+
 function stripInternalTriggerTags(content: string) {
     return content
         .replace(/<next_reply\b[^>]*\/>/gi, '')
@@ -343,16 +356,21 @@ async function handleVoiceMessage(
     ctx: Context,
     text: string,
     elements: h[]
-): Promise<boolean> {
+): Promise<{ breakSay: boolean; sent: boolean }> {
     try {
         await session.send(
             await ctx.vits.say(Object.assign({ input: text }, { session }))
         )
-        return true
+        return { breakSay: true, sent: true }
     } catch (e) {
         logger.error(e)
-        await session.send(elements)
-        return false
+        try {
+            await session.send(elements)
+            return { breakSay: false, sent: true }
+        } catch (fallbackError) {
+            logger.error(fallbackError)
+            return { breakSay: false, sent: false }
+        }
     }
 }
 
@@ -366,10 +384,10 @@ async function handleMessageSending(
     maxTime: number,
     emoticonStatement: string,
     breakSay: boolean
-): Promise<boolean> {
+): Promise<{ breakSay: boolean; sent: boolean }> {
     const isVoice = parsedResponse.messageType === 'voice'
     if (isVoice && emoticonStatement !== 'text') {
-        return false
+        return { breakSay: false, sent: false }
     }
 
     const random = new Random()
@@ -378,7 +396,7 @@ async function handleMessageSending(
         const fullMaxTime =
             parsedResponse.rawMessage.length * config.typingTime + 100
         await sleep(random.int(fullMaxTime / 4, fullMaxTime / 2))
-        return handleVoiceMessage(
+        return await handleVoiceMessage(
             session,
             ctx,
             parsedResponse.rawMessage,
@@ -392,28 +410,53 @@ async function handleMessageSending(
         await sleep(random.int(maxTime / 12, maxTime / 4))
     }
 
+    let sent = false
     try {
         switch (parsedResponse.messageType) {
             case 'text':
-                await session.send(elements)
+                await withTimeout(
+                    session.send(elements),
+                    15_000,
+                    'session.send(text)'
+                )
+                sent = true
                 break
             case 'voice':
-                await session.send(
-                    await ctx.vits.say(
-                        Object.assign({ input: text }, { session })
-                    )
+                await withTimeout(
+                    session.send(
+                        await ctx.vits.say(
+                            Object.assign({ input: text }, { session })
+                        )
+                    ),
+                    15_000,
+                    'session.send(voice)'
                 )
+                sent = true
                 break
             default:
-                await session.send(elements)
+                await withTimeout(
+                    session.send(elements),
+                    15_000,
+                    'session.send(default)'
+                )
+                sent = true
                 break
         }
     } catch (e) {
         logger.error(e)
-        await session.send(elements)
+        try {
+            await withTimeout(
+                session.send(elements),
+                10_000,
+                'session.send(fallback)'
+            )
+            sent = true
+        } catch (fallbackError) {
+            logger.error(fallbackError)
+        }
     }
 
-    return false
+    return { breakSay: false, sent }
 }
 
 async function handleModelResponse(
@@ -427,6 +470,51 @@ async function handleModelResponse(
     const rawContent = getMessageContent(responseMessage.content)
     const nextReplyReasons = extractNextReplyReasons(rawContent)
     const wakeUpReplies = extractWakeUpReplies(rawContent)
+
+    let breakSay = false
+    let sentAny = false
+
+    for (const elements of parsedResponse.elements) {
+        const text = elements
+            .map((element) => element.attrs.content ?? '')
+            .join('')
+
+        const emoticonStatement = isEmoticonStatement(text, elements)
+
+        if (elements.length < 1) continue
+
+        const maxTime =
+            text.length > config.largeTextSize
+                ? config.largeTextTypingTime
+                : calculateMessageDelay(text, elements, config.typingTime)
+
+        const result = await handleMessageSending(
+            session,
+            elements,
+            text,
+            parsedResponse,
+            config,
+            ctx,
+            maxTime,
+            emoticonStatement,
+            breakSay
+        )
+        breakSay = result.breakSay
+        sentAny = sentAny || result.sent
+
+        if (breakSay) {
+            break
+        }
+    }
+
+    if (!sentAny) {
+        logger.warn(
+            `Skip registering next_reply/wake_up_reply because no message sent in group ${guildId}`
+        )
+        return
+    }
+
+    await ctx.chatluna_character.broadcastOnBot(session, parsedResponse.elements.flat())
 
     if (nextReplyReasons.length > 0) {
         clearNextReplyTriggers(guildId)
@@ -455,44 +543,6 @@ async function handleModelResponse(
             )
         }
     }
-
-    let breakSay = false
-
-    for (const elements of parsedResponse.elements) {
-        const text = elements
-            .map((element) => element.attrs.content ?? '')
-            .join('')
-
-        const emoticonStatement = isEmoticonStatement(text, elements)
-
-        if (elements.length < 1) continue
-
-        const maxTime =
-            text.length > config.largeTextSize
-                ? config.largeTextTypingTime
-                : calculateMessageDelay(text, elements, config.typingTime)
-
-        breakSay = await handleMessageSending(
-            session,
-            elements,
-            text,
-            parsedResponse,
-            config,
-            ctx,
-            maxTime,
-            emoticonStatement,
-            breakSay
-        )
-
-        if (breakSay) {
-            break
-        }
-    }
-
-    await ctx.chatluna_character.broadcastOnBot(
-        session,
-        parsedResponse.elements.flat()
-    )
 }
 
 export async function apply(ctx: Context, config: Config) {
@@ -600,20 +650,24 @@ export async function apply(ctx: Context, config: Config) {
                 copyOfConfig.modelCompletionCount
             )
 
-            await handleModelResponse(
-                session,
-                copyOfConfig,
-                ctx,
-                parsedResponse,
-                responseMessage,
-                guildId
+            await withTimeout(
+                handleModelResponse(
+                    session,
+                    copyOfConfig,
+                    ctx,
+                    parsedResponse,
+                    responseMessage,
+                    guildId
+                ),
+                45_000,
+                'handleModelResponse'
             )
 
             service.muteAtLeast(session, copyOfConfig.coolDownTime * 1000)
         } catch (e) {
             logger.error(e)
         } finally {
-            service.releaseResponseLock(session)
+            await service.releaseResponseLock(session)
         }
     })
 }

@@ -16,6 +16,10 @@ import {
     isMessageContentImageUrl
 } from 'koishi-plugin-chatluna/utils/string'
 
+function delay(ms: number) {
+    return new Promise<void>((resolve) => setTimeout(resolve, ms))
+}
+
 export class MessageCollector extends Service {
     private _messages: Record<string, Message[]> = {}
 
@@ -236,43 +240,30 @@ export class MessageCollector extends Service {
         return Object.assign({}, config, config.configs[groupId])
     }
 
-    private _lock(session: Session) {
-        const groupLock = this._getGroupLocks(session.guildId)
-        return new Promise<void>((resolve) => {
-            const interval = setInterval(() => {
-                if (!groupLock.lock) {
-                    groupLock.lock = true
-                    clearInterval(interval)
-                    resolve()
-                }
-            }, 100)
-        })
+    private async _lock(session: Session) {
+        await this._lockByGroupId(session.guildId)
     }
 
-    private _unlock(session: Session) {
-        const groupLock = this._getGroupLocks(session.guildId)
-        return new Promise<void>((resolve) => {
-            const interval = setInterval(() => {
-                if (groupLock.lock) {
-                    groupLock.lock = false
-                    clearInterval(interval)
-                    resolve()
-                }
-            }, 100)
-        })
+    private async _unlock(session: Session) {
+        this._unlockByGroupId(session.guildId)
     }
 
-    private _lockByGroupId(groupId: string) {
+    private async _lockByGroupId(groupId: string) {
         const groupLock = this._getGroupLocks(groupId)
-        return new Promise<void>((resolve) => {
-            const interval = setInterval(() => {
-                if (!groupLock.lock) {
-                    groupLock.lock = true
-                    clearInterval(interval)
-                    resolve()
-                }
-            }, 100)
-        })
+        const startedAt = Date.now()
+        let warned = false
+
+        while (groupLock.lock) {
+            if (!warned && Date.now() - startedAt > 30_000) {
+                warned = true
+                this.logger.warn(
+                    `[lock] wait lock timeout, force continue waiting. group=${groupId}`
+                )
+            }
+            await delay(10)
+        }
+
+        groupLock.lock = true
     }
 
     private _unlockByGroupId(groupId: string) {
