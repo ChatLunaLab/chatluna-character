@@ -216,7 +216,11 @@ export function registerWakeUpReplyTrigger(
 
     const normalizedReason = reason.trim()
     const configuredAt = new Date(now)
-    const configuredAtText = `${configuredAt.getFullYear()}/${String(configuredAt.getMonth() + 1).padStart(2, '0')}/${String(configuredAt.getDate()).padStart(2, '0')}-${String(configuredAt.getHours()).padStart(2, '0')}:${String(configuredAt.getMinutes()).padStart(2, '0')}:${String(configuredAt.getSeconds()).padStart(2, '0')}`
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const configuredAtText =
+        `${configuredAt.getFullYear()}/${pad(configuredAt.getMonth() + 1)}` +
+        `/${pad(configuredAt.getDate())}-${pad(configuredAt.getHours())}` +
+        `:${pad(configuredAt.getMinutes())}:${pad(configuredAt.getSeconds())}`
     const pending: PendingWakeUpReply = {
         rawTime,
         reason: normalizedReason,
@@ -497,11 +501,11 @@ async function processSchedulerTickForGuild(
     let triggered = false
     try {
         triggered = await service.triggerCollect(
-                session,
-                triggerReason,
-                undefined,
-                signal
-            )
+            session,
+            triggerReason,
+            undefined,
+            signal
+        )
     } catch (e) {
         logger.error(`triggerCollect failed for guild ${guildId}`, e)
         groupInfos[guildId] = info
