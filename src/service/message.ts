@@ -260,7 +260,7 @@ export class MessageCollector extends Service {
                     `[lock] wait lock timeout, force continue waiting. group=${groupId}`
                 )
             }
-            await delay(10)
+            await delay(100)
         }
 
         groupLock.lock = true
