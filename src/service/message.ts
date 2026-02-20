@@ -250,16 +250,8 @@ export class MessageCollector extends Service {
 
     private async _lockByGroupId(groupId: string) {
         const groupLock = this._getGroupLocks(groupId)
-        const startedAt = Date.now()
-        let warned = false
 
         while (groupLock.lock) {
-            if (!warned && Date.now() - startedAt > 30_000) {
-                warned = true
-                this.logger.warn(
-                    `[lock] wait lock timeout, force continue waiting. group=${groupId}`
-                )
-            }
             await delay(100)
         }
 
