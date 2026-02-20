@@ -444,7 +444,6 @@ async function handleModelResponse(
 
     let breakSay = false
     let sentAny = false
-    const sentElements: h[] = []
 
     for (const elements of parsedResponse.elements) {
         const text = elements
@@ -473,9 +472,6 @@ async function handleModelResponse(
         )
         breakSay = result.breakSay
         sentAny = sentAny || result.sent
-        if (result.sent) {
-            sentElements.push(...elements)
-        }
 
         if (breakSay) {
             break
@@ -489,7 +485,8 @@ async function handleModelResponse(
         return
     }
 
-    await ctx.chatluna_character.broadcastOnBot(session, sentElements)
+    const flattenedElements = parsedResponse.elements.flat()
+    await ctx.chatluna_character.broadcastOnBot(session, flattenedElements)
 
     if (nextReplyReasons.length > 0) {
         clearNextReplyTriggers(guildId)
