@@ -1,6 +1,11 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { Context, h, Logger, Service, Session, Time } from 'koishi'
 import { createLogger } from 'koishi-plugin-chatluna/utils/logger'
+import { isForwardMessageElement } from 'koishi-plugin-chatluna/utils/koishi'
+import {
+    hashString,
+    isMessageContentImageUrl
+} from 'koishi-plugin-chatluna/utils/string'
 import { Config } from '..'
 import { Preset } from '../preset'
 import {
@@ -10,11 +15,6 @@ import {
     MessageCollectorFilter,
     MessageImage
 } from '../types'
-
-import {
-    hashString,
-    isMessageContentImageUrl
-} from 'koishi-plugin-chatluna/utils/string'
 
 function delay(ms: number) {
     return new Promise<void>((resolve) => setTimeout(resolve, ms))
@@ -641,6 +641,8 @@ function mapElementToString(
             const name = element.attrs['file'] ?? element.attrs['name']
 
             filteredBuffer.push(`[file:${name}:${url}]`)
+        } else if (isForwardMessageElement(element)) {
+            filteredBuffer.push('[聊天记录]')
         }
     }
 
