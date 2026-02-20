@@ -69,6 +69,7 @@ export interface PresetTemplate {
 export interface GroupInfo {
     messageCount: number
     messageTimestamps: number[]
+    messageTimestampsByUserId?: Record<string, number>
     lastActivityScore: number
     lastScoreUpdate: number
     lastResponseTime: number
@@ -90,6 +91,7 @@ export interface ActivityScore {
 export type NextReplyPredicate =
     | { type: 'time'; seconds: number }
     | { type: 'id'; userId: string }
+    | { type: 'time_id'; seconds: number; userId: string }
 
 export interface PendingNextReplyConditionGroup {
     predicates: NextReplyPredicate[]

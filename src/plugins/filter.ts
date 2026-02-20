@@ -32,6 +32,19 @@ const BURST_RATE_SCALE = 4 // 突发活跃斜率
 const SMOOTHING_WINDOW = Time.second * 8 // 分数平滑窗口
 const FRESHNESS_HALF_LIFE = Time.second * 60 // 新鲜度半衰期：60秒
 
+function runWithTimeout<T>(task: Promise<T>, ms: number): Promise<T> {
+    let timer: NodeJS.Timeout | undefined
+    const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+            reject(new Error(`scheduler timeout after ${ms}ms`))
+        }, ms)
+    })
+
+    return Promise.race([task, timeout]).finally(() => {
+        if (timer) clearTimeout(timer)
+    }) as Promise<T>
+}
+
 function evaluateNextReplyGroup(
     group: PendingNextReplyConditionGroup,
     info: GroupInfo,
@@ -39,14 +52,20 @@ function evaluateNextReplyGroup(
 ) {
     const now = Date.now()
     return group.predicates.every((predicate) => {
+        if (predicate.type === 'time_id') {
+            const lastMessageTimeByUserId =
+                info.messageTimestampsByUserId?.[predicate.userId] ?? 0
+            const anchor = Math.max(createdAt, lastMessageTimeByUserId)
+            return now - anchor >= predicate.seconds * 1000
+        }
+
         if (predicate.type === 'time') {
             return now - info.lastUserMessageTime >= predicate.seconds * 1000
         }
 
-        return (
-            info.lastMessageUserId === predicate.userId &&
-            info.lastUserMessageTime >= createdAt
-        )
+        const lastMessageTimeByUserId =
+            info.messageTimestampsByUserId?.[predicate.userId] ?? 0
+        return lastMessageTimeByUserId >= createdAt
     })
 }
 
@@ -76,6 +95,7 @@ function createDefaultGroupInfo(config: Config, now: number): GroupInfo {
     return {
         messageCount: 0,
         messageTimestamps: [],
+        messageTimestampsByUserId: {},
         lastActivityScore: 0,
         lastScoreUpdate: 0,
         lastResponseTime: 0,
@@ -237,7 +257,7 @@ function findNextReplyTriggerReason(info: GroupInfo): string | undefined {
         )
 
         if (matchedGroup) {
-            return `Scheduled next reply: ${matchedGroup.naturalReason}`
+            return `Scheduled next reply (${trigger.rawReason}): ${matchedGroup.naturalReason}`
         }
     }
 
@@ -362,6 +382,8 @@ function updateIncomingMessageStats(
     info.passiveRetryCount = 0
     info.currentIdleWaitSeconds = undefined
     info.lastMessageUserId = messageId
+    info.messageTimestampsByUserId = info.messageTimestampsByUserId ?? {}
+    info.messageTimestampsByUserId[messageId] = now
 }
 
 function shouldStopWhenDisableChatLuna(
@@ -438,7 +460,11 @@ async function processSchedulerTickForGuild(
         return
     }
 
-    if (service.isMute(session) || service.isResponseLocked(session)) {
+    if (service.isMute(session)) {
+        return
+    }
+
+    if (service.isResponseLocked(session)) {
         return
     }
 
@@ -543,7 +569,17 @@ export async function apply(ctx: Context, config: Config) {
 
     ctx.setInterval(async () => {
         for (const guildId of Object.keys(groupInfos)) {
-            await processSchedulerTickForGuild(ctx, config, guildId)
+            try {
+                await runWithTimeout(
+                    processSchedulerTickForGuild(ctx, config, guildId),
+                    20_000
+                )
+            } catch (e) {
+                logger.error(
+                    `[next_reply] scheduler failed guild=${guildId}`,
+                    e
+                )
+            }
         }
     }, SCHEDULER_TICK)
 
