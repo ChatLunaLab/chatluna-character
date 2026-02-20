@@ -124,7 +124,7 @@ export const Config = Schema.intersect([
         applyGroup: Schema.array(Schema.string()).description('应用到的群组'),
         maxMessages: Schema.number()
             .description('存储在内存里的最大消息数量')
-            .default(10)
+            .default(40)
             .min(3)
             .role('slider')
             .max(100),
@@ -145,7 +145,7 @@ export const Config = Schema.intersect([
             })
         ).description('针对某个群的模型设置，会覆盖上面的配置'),
         maxTokens: Schema.number()
-            .default(5000)
+            .default(42000)
             .min(1024)
             .max(42000)
             .description('聊天的最大 token 数'),
@@ -155,19 +155,21 @@ export const Config = Schema.intersect([
             )
             .default(false),
         imageInputMaxCount: Schema.number()
-            .default(3)
+            .default(9)
             .min(1)
             .max(15)
             .description('最大的输入图片数量'),
 
         imageInputMaxSize: Schema.number()
-            .default(3)
+            .default(20)
             .min(1)
             .max(20)
             .description('最大的输入图片大小（MB）'),
         toolCalling: Schema.boolean()
-            .description('是否启用工具调用功能')
-            .default(false)
+            .description(
+                '是否启用工具调用功能（可在[这里](https://cooksleep.github.io/newapi-special-test)测试你的API工具调用等能力是否正常）'
+            )
+            .default(true)
     }).description('模型配置'),
 
     Schema.object({
@@ -186,25 +188,23 @@ export const Config = Schema.intersect([
             .default(true),
         isAt: Schema.boolean()
             .description('是否允许 bot 艾特他人')
-            .default(true),
+            .default(false),
         splitVoice: Schema.boolean()
             .description('是否分段发送语音')
             .default(false),
         splitSentence: Schema.boolean()
-            .description(
-                '是否启用自分割发送消息 **注意请确保你的预设和模型在使用时支持自分割消息，否则请不要关闭**'
-            )
-            .default(true),
+            .description('是否启用自分割发送消息（仅旧版预设开启）')
+            .default(false),
         enableMessageId: Schema.boolean()
             .description('向模型暴露平台消息 ID，以允许发送引用消息。')
-            .default(false),
+            .default(true),
         markdownRender: Schema.boolean()
             .description(
-                '是否启用 Markdown 渲染。关闭后可能会损失分割消息的精度'
+                '是否启用 Markdown 渲染。关闭后可能会损失分割消息的精度（仅旧版预设开启）'
             )
-            .default(true),
+            .default(false),
         messageInterval: Schema.number()
-            .default(14)
+            .default(20)
             .min(0)
             .role('slider')
             .max(10000)
@@ -264,26 +264,26 @@ export const Config = Schema.intersect([
             ),
 
         coolDownTime: Schema.number()
-            .default(10)
+            .default(0)
             .min(0)
             .max(60 * 24)
             .description('冷却发言时间（秒）'),
 
         typingTime: Schema.number()
-            .default(440)
+            .default(200)
             .min(100)
             .role('slider')
             .max(1500)
             .description('模拟打字时的间隔（毫秒）'),
 
         largeTextSize: Schema.number()
-            .default(300)
+            .default(100)
             .min(100)
             .max(1000)
             .description('大文本消息的判断阈值（字符数）'),
 
         largeTextTypingTime: Schema.number()
-            .default(100)
+            .default(10)
             .min(10)
             .max(1500)
             .description('大文本消息的固定打字间隔（毫秒）'),
@@ -295,7 +295,7 @@ export const Config = Schema.intersect([
             .description('闭嘴时的禁言时间（毫秒）'),
 
         modelCompletionCount: Schema.number()
-            .default(3)
+            .default(1)
             .min(0)
             .max(6)
             .description('模型历史消息轮数，为 0 不发送之前的历史轮次'),
@@ -309,28 +309,26 @@ export const Config = Schema.intersect([
         configs: Schema.dict(
             Schema.object({
                 maxTokens: Schema.number()
-                    .default(4000)
+                    .default(20000)
                     .min(1024)
                     .max(20000)
                     .description('使用聊天的最大 token 数'),
 
                 enableMessageId: Schema.boolean()
                     .description('向模型暴露平台消息 ID，以允许发送引用消息。')
-                    .default(false),
-                isAt: Schema.boolean().description('是否启用@').default(true),
+                    .default(true),
+                isAt: Schema.boolean().description('是否启用@').default(false),
                 splitVoice: Schema.boolean()
                     .description('是否分段发送语音')
                     .default(false),
                 splitSentence: Schema.boolean()
-                    .description(
-                        '是否启用自分割发送消息 **注意请确保你的预设和模型在使用时支持自分割消息，否则请不要关闭**'
-                    )
-                    .default(true),
+                    .description('是否启用自分割发送消息（仅旧版预设开启）')
+                    .default(false),
                 markdownRender: Schema.boolean()
                     .description(
-                        '是否启用 Markdown 渲染。关闭后可能会损失分割消息的精度'
+                        '是否启用 Markdown 渲染。关闭后可能会损失分割消息的精度（仅旧版预设开启）'
                     )
-                    .default(true),
+                    .default(false),
                 isNickname: Schema.boolean()
                     .description('允许 bot 配置中的昵称引发回复')
                     .default(true),
@@ -345,7 +343,7 @@ export const Config = Schema.intersect([
                     )
                     .default(true),
                 messageInterval: Schema.number()
-                    .default(10)
+                    .default(20)
                     .min(0)
                     .role('slider')
                     .max(10000)
@@ -406,8 +404,10 @@ export const Config = Schema.intersect([
                         '消息活跃度分数的上限阈值。每次响应后，判断阈值会向此值靠拢。若下限 < 上限（如 0.1 → 0.9），则会越聊越少；若下限 > 上限（如 0.9 → 0.2），则会越聊越多。十分钟内无人回复时，会自动回退到下限。'
                     ),
                 toolCalling: Schema.boolean()
-                    .description('是否启用工具调用功能')
-                    .default(false),
+                    .description(
+                        '是否启用工具调用功能（可在[这里](https://cooksleep.github.io/newapi-special-test)测试你的API工具调用等能力是否正常）'
+                    )
+                    .default(true),
                 image: Schema.boolean()
                     .description(
                         '是否允许输入图片（注意表情包也会输入，目前仅支持原生多模态的模型）'
@@ -415,36 +415,36 @@ export const Config = Schema.intersect([
                     .default(false),
 
                 imageInputMaxCount: Schema.number()
-                    .default(3)
+                    .default(9)
                     .min(1)
                     .max(15)
                     .description('最大的输入图片数量'),
 
                 imageInputMaxSize: Schema.number()
-                    .default(1024 * 1024 * 10)
+                    .default(1024 * 1024 * 1)
                     .min(1024 * 1024 * 1)
                     .max(1024 * 1024 * 20)
                     .description('最大的输入图片大小（KB）'),
                 coolDownTime: Schema.number()
-                    .default(10)
+                    .default(0)
                     .min(0)
                     .max(60 * 24 * 24)
                     .description('冷却发言时间（秒）'),
 
                 typingTime: Schema.number()
-                    .default(440)
+                    .default(200)
                     .min(100)
                     .role('slider')
                     .max(1700)
                     .description('模拟打字时的间隔（毫秒）'),
                 largeTextSize: Schema.number()
-                    .default(300)
+                    .default(100)
                     .min(100)
                     .max(1000)
                     .description('大文本消息的判断阈值（每段分句的字符数）'),
 
                 largeTextTypingTime: Schema.number()
-                    .default(100)
+                    .default(10)
                     .min(10)
                     .max(1500)
                     .description('大文本消息的模拟打字间隔（毫秒）'),
@@ -456,7 +456,7 @@ export const Config = Schema.intersect([
                     .description('闭嘴时的禁言时间（毫秒）'),
 
                 modelCompletionCount: Schema.number()
-                    .default(3)
+                    .default(1)
                     .min(0)
                     .max(6)
                     .description('模型历史消息轮数，为 0 不发送之前的历史轮次'),
