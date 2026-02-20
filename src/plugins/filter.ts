@@ -257,7 +257,7 @@ function findNextReplyTriggerReason(info: GroupInfo): string | undefined {
         )
 
         if (matchedGroup) {
-            return `Triggered by next_reply (${trigger.rawReason}): ${matchedGroup.naturalReason}`
+            return `Triggered by next_reply: ${matchedGroup.naturalReason}`
         }
     }
 
