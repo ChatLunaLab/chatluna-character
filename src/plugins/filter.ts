@@ -32,17 +32,24 @@ const BURST_RATE_SCALE = 4 // 突发活跃斜率
 const SMOOTHING_WINDOW = Time.second * 8 // 分数平滑窗口
 const FRESHNESS_HALF_LIFE = Time.second * 60 // 新鲜度半衰期：60秒
 
-function runWithTimeout<T>(task: Promise<T>, ms: number): Promise<T> {
+function runWithTimeout<T>(
+    taskFactory: (signal: AbortSignal) => Promise<T>,
+    ms: number
+): Promise<T> {
+    const controller = new AbortController()
     let timer: NodeJS.Timeout | undefined
     const timeout = new Promise<never>((_resolve, reject) => {
         timer = setTimeout(() => {
+            controller.abort(new Error(`scheduler timeout after ${ms}ms`))
             reject(new Error(`scheduler timeout after ${ms}ms`))
         }, ms)
     })
 
-    return Promise.race([task, timeout]).finally(() => {
-        if (timer) clearTimeout(timer)
-    }) as Promise<T>
+    return Promise.race([taskFactory(controller.signal), timeout]).finally(
+        () => {
+            if (timer) clearTimeout(timer)
+        }
+    ) as Promise<T>
 }
 
 function evaluateNextReplyGroup(
@@ -449,7 +456,8 @@ function resolveTriggerReason(
 async function processSchedulerTickForGuild(
     ctx: Context,
     config: Config,
-    guildId: string
+    guildId: string,
+    signal: AbortSignal
 ) {
     const service = ctx.chatluna_character
     const logger = service.logger
@@ -488,7 +496,12 @@ async function processSchedulerTickForGuild(
     const triggerCollectStartedAt = Date.now()
     let triggered = false
     try {
-        triggered = await service.triggerCollect(session, triggerReason)
+        triggered = await service.triggerCollect(
+                session,
+                triggerReason,
+                undefined,
+                signal
+            )
     } catch (e) {
         logger.error(`triggerCollect failed for guild ${guildId}`, e)
         groupInfos[guildId] = info
@@ -571,7 +584,13 @@ export async function apply(ctx: Context, config: Config) {
         for (const guildId of Object.keys(groupInfos)) {
             try {
                 await runWithTimeout(
-                    processSchedulerTickForGuild(ctx, config, guildId),
+                    (signal) =>
+                        processSchedulerTickForGuild(
+                            ctx,
+                            config,
+                            guildId,
+                            signal
+                        ),
                     20_000
                 )
             } catch (e) {
