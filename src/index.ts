@@ -68,6 +68,18 @@ export const inject2 = {
     }
 }
 
+export const usage = `
+## chatluna-character
+
+请先阅读[**此文档**](https://chatluna.chat/ecosystem/other/character.html)了解使用方式。
+
+### 2026.2.21
+
+近期新增了一些让Bot可以在不被@的情况下主动维持对话状态的功能（如被动的闲时触发），部分需要搭配良好的预设提示词使用（主动的xml工具），文档中将提供最新的模板预设帮助你修改旧的预设。
+
+建议老用户将大部分配置恢复为更新后的默认值（是否允许输入图片、工具调用等与模型能力有关的请自行根据实际情况调整）
+`
+
 export interface Config extends ChatLunaPlugin.Config {
     model: string
     maxMessages: number
@@ -167,7 +179,7 @@ export const Config = Schema.intersect([
             .description('最大的输入图片大小（MB）'),
         toolCalling: Schema.boolean()
             .description(
-                '是否启用工具调用功能（可在[这里](https://cooksleep.github.io/newapi-special-test)测试你的API工具调用等能力是否正常）'
+                '是否启用工具调用功能（可在[**这里**](https://cooksleep.github.io/newapi-special-test)测试你的API工具调用等能力是否正常）'
             )
             .default(true)
     }).description('模型配置'),
@@ -267,7 +279,9 @@ export const Config = Schema.intersect([
             .default(0)
             .min(0)
             .max(60 * 24)
-            .description('冷却发言时间（秒）'),
+            .description(
+                '冷却发言时间（秒）。当上一条消息发送完成后的 n 秒内发出的请求将被丢弃。'
+            ),
 
         typingTime: Schema.number()
             .default(200)
@@ -405,7 +419,7 @@ export const Config = Schema.intersect([
                     ),
                 toolCalling: Schema.boolean()
                     .description(
-                        '是否启用工具调用功能（可在[这里](https://cooksleep.github.io/newapi-special-test)测试你的API工具调用等能力是否正常）'
+                        '是否启用工具调用功能（可在[**这里**](https://cooksleep.github.io/newapi-special-test)测试你的API工具调用等能力是否正常）'
                     )
                     .default(true),
                 image: Schema.boolean()
@@ -429,7 +443,9 @@ export const Config = Schema.intersect([
                     .default(0)
                     .min(0)
                     .max(60 * 24 * 24)
-                    .description('冷却发言时间（秒）'),
+                    .description(
+                        '冷却发言时间（秒）。当上一条消息发送完成后的 n 秒内发出的请求将被丢弃。'
+                    ),
 
                 typingTime: Schema.number()
                     .default(200)
