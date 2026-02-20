@@ -6,6 +6,7 @@ import {
     hashString,
     isMessageContentImageUrl
 } from 'koishi-plugin-chatluna/utils/string'
+import { ObjectLock } from 'koishi-plugin-chatluna/utils/lock'
 import { Config } from '..'
 import { Preset } from '../preset'
 import {
@@ -16,16 +17,14 @@ import {
     MessageImage
 } from '../types'
 
-function delay(ms: number) {
-    return new Promise<void>((resolve) => setTimeout(resolve, ms))
-}
-
 export class MessageCollector extends Service {
     private _messages: Record<string, Message[]> = {}
 
     private _filters: MessageCollectorFilter[] = []
 
     private _groupLocks: Record<string, GroupLock> = {}
+
+    private _groupMutexes: Record<string, ObjectLock> = {}
 
     private _groupTemp: Record<string, GroupTemp> = {}
 
@@ -72,12 +71,12 @@ export class MessageCollector extends Service {
 
     async muteAtLeast(session: Session, time: number) {
         const groupId = session.guildId
-        await this._lockByGroupId(groupId)
+        const unlock = await this._lockByGroupId(groupId)
         try {
             const groupLock = this._getGroupLocks(groupId)
             groupLock.mute = Math.max(groupLock.mute ?? 0, Date.now() + time)
         } finally {
-            this._unlockByGroupId(groupId)
+            unlock()
         }
     }
 
@@ -85,7 +84,8 @@ export class MessageCollector extends Service {
         func: (
             session: Session,
             messages: Message[],
-            triggerReason?: string
+            triggerReason?: string,
+            signal?: AbortSignal
         ) => Promise<void>
     ) {
         this.ctx.on('chatluna_character/message_collect', func)
@@ -120,13 +120,13 @@ export class MessageCollector extends Service {
     ): Promise<boolean> {
         const groupId = session.guildId
 
-        await this._lockByGroupId(groupId)
+        const unlock = await this._lockByGroupId(groupId)
 
         const lock = this._getGroupLocks(groupId)
 
         if (!lock.responseLock) {
             lock.responseLock = true
-            this._unlockByGroupId(groupId)
+            unlock()
             return true
         }
 
@@ -141,7 +141,7 @@ export class MessageCollector extends Service {
             })
         })
 
-        this._unlockByGroupId(groupId)
+        unlock()
 
         return waiterPromise
     }
@@ -154,7 +154,7 @@ export class MessageCollector extends Service {
     async releaseResponseLock(session: Session) {
         const groupId = session.guildId
 
-        await this._lockByGroupId(groupId)
+        const unlock = await this._lockByGroupId(groupId)
 
         try {
             const lock = this._getGroupLocks(groupId)
@@ -175,12 +175,12 @@ export class MessageCollector extends Service {
                 }
             }
         } finally {
-            this._unlockByGroupId(groupId)
+            unlock()
         }
     }
 
     async cancelPendingWaiters(groupId: string) {
-        await this._lockByGroupId(groupId)
+        const unlock = await this._lockByGroupId(groupId)
 
         try {
             const waiters = this._responseWaiters[groupId]
@@ -191,40 +191,37 @@ export class MessageCollector extends Service {
                 this._responseWaiters[groupId] = []
             }
         } finally {
-            this._unlockByGroupId(groupId)
+            unlock()
         }
     }
 
     async updateTemp(session: Session, temp: GroupTemp) {
-        await this._lock(session)
-
         const groupId = session.guildId
-
-        this._groupTemp[groupId] = temp
-
-        await this._unlock(session)
+        const unlock = await this._lockByGroupId(groupId)
+        try {
+            this._groupTemp[groupId] = temp
+        } finally {
+            unlock()
+        }
     }
 
     async getTemp(session: Session): Promise<GroupTemp> {
-        await this._lock(session)
-
         const groupId = session.guildId
-
-        const temp = this._groupTemp[groupId] ?? {
-            completionMessages: []
+        const unlock = await this._lockByGroupId(groupId)
+        try {
+            const temp = this._groupTemp[groupId] ?? {
+                completionMessages: []
+            }
+            this._groupTemp[groupId] = temp
+            return temp
+        } finally {
+            unlock()
         }
-
-        this._groupTemp[groupId] = temp
-
-        await this._unlock(session)
-
-        return temp
     }
 
     private _getGroupLocks(groupId: string) {
         if (!this._groupLocks[groupId]) {
             this._groupLocks[groupId] = {
-                lock: false,
                 mute: 0,
                 responseLock: false
             }
@@ -240,32 +237,20 @@ export class MessageCollector extends Service {
         return Object.assign({}, config, config.configs[groupId])
     }
 
-    private async _lock(session: Session) {
-        await this._lockByGroupId(session.guildId)
-    }
-
-    private async _unlock(session: Session) {
-        this._unlockByGroupId(session.guildId)
-    }
-
-    private async _lockByGroupId(groupId: string) {
-        const groupLock = this._getGroupLocks(groupId)
-
-        while (groupLock.lock) {
-            await delay(100)
+    private _getMutex(groupId: string): ObjectLock {
+        if (!this._groupMutexes[groupId]) {
+            this._groupMutexes[groupId] = new ObjectLock()
         }
-
-        groupLock.lock = true
+        return this._groupMutexes[groupId]
     }
 
-    private _unlockByGroupId(groupId: string) {
-        const groupLock = this._getGroupLocks(groupId)
-        groupLock.lock = false
+    private _lockByGroupId(groupId: string): Promise<() => void> {
+        return this._getMutex(groupId).lock()
     }
 
     async clear(groupId?: string) {
         if (groupId) {
-            await this._lockByGroupId(groupId)
+            const unlock = await this._lockByGroupId(groupId)
             try {
                 this._messages[groupId] = []
                 this._groupTemp[groupId] = {
@@ -281,15 +266,16 @@ export class MessageCollector extends Service {
                     this._responseWaiters[groupId] = []
                 }
             } finally {
-                this._unlockByGroupId(groupId)
+                unlock()
             }
             return
         }
 
         // For clear-all, acquire locks in sorted order to prevent deadlocks
         const groupIds = Object.keys(this._groupLocks).sort()
+        const unlocks: Array<() => void> = []
         for (const gid of groupIds) {
-            await this._lockByGroupId(gid)
+            unlocks.push(await this._lockByGroupId(gid))
         }
 
         try {
@@ -309,8 +295,8 @@ export class MessageCollector extends Service {
             }
         } finally {
             // Release in reverse order
-            for (let i = groupIds.length - 1; i >= 0; i--) {
-                this._unlockByGroupId(groupIds[i])
+            for (let i = unlocks.length - 1; i >= 0; i--) {
+                unlocks[i]()
             }
         }
     }
@@ -413,7 +399,8 @@ export class MessageCollector extends Service {
     async triggerCollect(
         session: Session,
         triggerReason: string,
-        message?: Message
+        message?: Message,
+        signal?: AbortSignal
     ) {
         const groupId = session.guildId
         const focusMessage = message ?? this._messages[groupId]?.at(-1)
@@ -434,7 +421,8 @@ export class MessageCollector extends Service {
             'chatluna_character/message_collect',
             session,
             this._messages[groupId] ?? [],
-            triggerReason
+            triggerReason,
+            signal
         )
 
         return true
@@ -448,7 +436,7 @@ export class MessageCollector extends Service {
             processImages?: Config
         }
     ): Promise<string | undefined> {
-        await this._lock(session)
+        const unlock = await this._lockByGroupId(session.guildId)
 
         try {
             const groupId = session.guildId
@@ -486,7 +474,7 @@ export class MessageCollector extends Service {
 
             return undefined
         } finally {
-            await this._unlock(session)
+            unlock()
         }
     }
 
@@ -702,7 +690,8 @@ declare module 'koishi' {
         'chatluna_character/message_collect': (
             session: Session,
             message: Message[],
-            triggerReason?: string
+            triggerReason?: string,
+            signal?: AbortSignal
         ) => void | Promise<void>
     }
 }

@@ -245,9 +245,11 @@ async function getModelResponse(
     model: ChatLunaChatModel,
     completionMessages: BaseMessage[],
     config: Config,
-    chain?: ChatLunaChain
+    chain?: ChatLunaChain,
+    signal?: AbortSignal
 ): Promise<ModelResponse | null> {
     for (let retryCount = 0; retryCount < 2; retryCount++) {
+        if (signal?.aborted) return null
         try {
             const lastMessage =
                 completionMessages[completionMessages.length - 1]
@@ -271,10 +273,11 @@ async function getModelResponse(
                               model,
                               userId: session.userId,
                               conversationId: session.guildId
-                          }
+                          },
+                          signal
                       }
                   )
-                : await model.invoke(completionMessages)
+                : await model.invoke(completionMessages, { signal })
 
             logger.debug('model response: ' + responseMessage.content)
 
@@ -318,6 +321,7 @@ async function getModelResponse(
             )
             return { responseMessage, parsedResponse }
         } catch (e) {
+            if (signal?.aborted) return null
             logger.error('model requests failed', e)
             if (retryCount === 1) return null
             await sleep(3000)
@@ -536,7 +540,7 @@ export async function apply(ctx: Context, config: Config) {
         presetPool = {}
     })
 
-    service.collect(async (session, messages, triggerReason) => {
+    service.collect(async (session, messages, triggerReason, signal) => {
         const guildId = session.event.guild?.id ?? session.guildId
 
         try {
@@ -599,7 +603,8 @@ export async function apply(ctx: Context, config: Config) {
                 model.value,
                 completionMessages,
                 copyOfConfig,
-                chainPool[guildId]?.value
+                chainPool[guildId]?.value,
+                signal
             )
 
             if (!response) return

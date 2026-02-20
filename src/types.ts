@@ -136,7 +136,6 @@ export type MessageCollectorFilter = (
 ) => string | false | undefined
 
 export interface GroupLock {
-    lock: boolean
     mute: number
     responseLock: boolean
 }
