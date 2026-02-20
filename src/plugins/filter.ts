@@ -257,7 +257,7 @@ function findNextReplyTriggerReason(info: GroupInfo): string | undefined {
         )
 
         if (matchedGroup) {
-            return `Scheduled next reply (${trigger.rawReason}): ${matchedGroup.naturalReason}`
+            return `Triggered by next_reply (${trigger.rawReason}): ${matchedGroup.naturalReason}`
         }
     }
 
@@ -474,7 +474,7 @@ async function processSchedulerTickForGuild(
     const triggeredWakeUpReply = findWakeUpTrigger(info, now)
     const triggerReason =
         (triggeredWakeUpReply
-            ? `Scheduled wake-up reply: ${triggeredWakeUpReply.naturalReason}`
+            ? `Triggered by wake_up_reply: ${triggeredWakeUpReply.naturalReason}`
             : undefined) ??
         findNextReplyTriggerReason(info) ??
         findIdleTriggerReason(info, copyOfConfig, now)
