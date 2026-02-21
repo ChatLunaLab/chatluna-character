@@ -421,10 +421,10 @@ export const Config = Schema.intersect([
                     .description('最大的输入图片数量'),
 
                 imageInputMaxSize: Schema.number()
-                    .default(1024 * 1024 * 1)
-                    .min(1024 * 1024 * 1)
-                    .max(1024 * 1024 * 20)
-                    .description('最大的输入图片大小（KB）'),
+                    .default(20)
+                    .min(1)
+                    .max(20)
+                    .description('最大的输入图片大小（MB）'),
                 coolDownTime: Schema.number()
                     .default(0)
                     .min(0)
