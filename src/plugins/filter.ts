@@ -562,16 +562,11 @@ export async function apply(ctx: Context, config: Config) {
     })
 
     ctx.setInterval(() => {
-        void Promise.allSettled(
-            Object.keys(groupInfos).map((guildId) =>
-                processSchedulerTickForGuild(ctx, config, guildId).catch((e) => {
-                    logger.error(
-                        `[next_reply] scheduler failed guild=${guildId}`,
-                        e
-                    )
-                })
-            )
-        )
+        for (const guildId of Object.keys(groupInfos)) {
+            processSchedulerTickForGuild(ctx, config, guildId).catch((e) => {
+                logger.error(`[next_reply] scheduler failed guild=${guildId}`, e)
+            })
+        }
     }, SCHEDULER_TICK)
 
     service.addFilter((session, message) => {
