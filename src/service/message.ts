@@ -356,11 +356,13 @@ export class MessageCollector extends Service {
             ? session.elements
             : [h.text(session.content)]
         attachGeminiExtraFileLimit(elements, config.geminiExtraFileInputMaxSize)
-        const mergedMessage = await this.ctx.chatluna.messageTransformer.transform(
-            session,
-            elements,
-            config.model
-        )
+        const mergedMessage = config.image
+            ? await this.ctx.chatluna.messageTransformer.transform(
+                  session,
+                  elements,
+                  config.model
+              )
+            : undefined
 
         const images = config.image
             ? await getImages(this.ctx, config.model, session, mergedMessage)
@@ -648,15 +650,17 @@ function mapElementToString(
             if (!url) {
                 continue
             }
+            let fallbackName = 'file'
+            if (element.type === 'video') {
+                fallbackName = 'video'
+            } else if (element.type === 'audio') {
+                fallbackName = 'audio'
+            }
             const name =
                 element.attrs['file'] ??
                 element.attrs['name'] ??
                 element.attrs['filename'] ??
-                (element.type === 'video'
-                    ? 'video'
-                    : element.type === 'audio'
-                    ? 'audio'
-                    : 'file')
+                fallbackName
 
             const marker = element.type === 'audio' ? 'voice' : 'file'
             filteredBuffer.push(`[${marker}:${name}:${url}]`)
