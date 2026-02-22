@@ -561,17 +561,17 @@ export async function apply(ctx: Context, config: Config) {
         ctx.chatluna_character.mute(session, duration)
     })
 
-    ctx.setInterval(async () => {
-        for (const guildId of Object.keys(groupInfos)) {
-            try {
-                await processSchedulerTickForGuild(ctx, config, guildId)
-            } catch (e) {
-                logger.error(
-                    `[next_reply] scheduler failed guild=${guildId}`,
-                    e
-                )
-            }
-        }
+    ctx.setInterval(() => {
+        void Promise.allSettled(
+            Object.keys(groupInfos).map((guildId) =>
+                processSchedulerTickForGuild(ctx, config, guildId).catch((e) => {
+                    logger.error(
+                        `[next_reply] scheduler failed guild=${guildId}`,
+                        e
+                    )
+                })
+            )
+        )
     }, SCHEDULER_TICK)
 
     service.addFilter((session, message) => {
