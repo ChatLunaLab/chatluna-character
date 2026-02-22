@@ -479,10 +479,7 @@ async function processSchedulerTickForGuild(
     const triggerCollectStartedAt = Date.now()
     let triggered = false
     try {
-        triggered = await service.triggerCollect(
-            session,
-            triggerReason
-        )
+        triggered = await service.triggerCollect(session, triggerReason)
     } catch (e) {
         logger.error(`triggerCollect failed for guild ${guildId}`, e)
         groupInfos[guildId] = info
@@ -564,7 +561,10 @@ export async function apply(ctx: Context, config: Config) {
     ctx.setInterval(() => {
         for (const guildId of Object.keys(groupInfos)) {
             processSchedulerTickForGuild(ctx, config, guildId).catch((e) => {
-                logger.error(`[next_reply] scheduler failed guild=${guildId}`, e)
+                logger.error(
+                    `[next_reply] scheduler failed guild=${guildId}`,
+                    e
+                )
             })
         }
     }, SCHEDULER_TICK)
