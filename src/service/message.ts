@@ -17,6 +17,26 @@ import {
     MessageImage
 } from '../types'
 
+const GEMINI_EXTRA_FILE_LIMIT_ATTR =
+    'chatluna_gemini_extra_file_input_max_size_mb'
+
+function attachGeminiExtraFileLimit(elements: h[], maxSizeMb: number) {
+    if (!Number.isFinite(maxSizeMb) || maxSizeMb <= 0) {
+        return
+    }
+
+    const limit = Math.floor(maxSizeMb)
+    for (const element of elements) {
+        if (
+            element.type === 'file' ||
+            element.type === 'video' ||
+            element.type === 'audio'
+        ) {
+            element.attrs[GEMINI_EXTRA_FILE_LIMIT_ATTR] = String(limit)
+        }
+    }
+}
+
 export class MessageCollector extends Service {
     private _messages: Record<string, Message[]> = {}
 
@@ -332,13 +352,19 @@ export class MessageCollector extends Service {
         this._lastSessions[groupId] = session
         const config = this._getGroupConfig(groupId)
 
-        const images = config.image
-            ? await getImages(this.ctx, config.model, session)
-            : undefined
-
         const elements = session.elements
             ? session.elements
             : [h.text(session.content)]
+        attachGeminiExtraFileLimit(elements, config.geminiExtraFileInputMaxSize)
+        const mergedMessage = await this.ctx.chatluna.messageTransformer.transform(
+            session,
+            elements,
+            config.model
+        )
+
+        const images = config.image
+            ? await getImages(this.ctx, config.model, session, mergedMessage)
+            : undefined
 
         const content = mapElementToString(
             session,
@@ -613,14 +639,27 @@ function mapElementToString(
             filteredBuffer.push(
                 `<face name='${element.attrs.name}'>${element.attrs.id}</face>`
             )
-        } else if (element.type === 'file') {
+        } else if (
+            element.type === 'file' ||
+            element.type === 'video' ||
+            element.type === 'audio'
+        ) {
             const url = element.attrs['chatluna_file_url']
             if (!url) {
                 continue
             }
-            const name = element.attrs['file'] ?? element.attrs['name']
+            const name =
+                element.attrs['file'] ??
+                element.attrs['name'] ??
+                element.attrs['filename'] ??
+                (element.type === 'video'
+                    ? 'video'
+                    : element.type === 'audio'
+                    ? 'audio'
+                    : 'file')
 
-            filteredBuffer.push(`[file:${name}:${url}]`)
+            const marker = element.type === 'audio' ? 'voice' : 'file'
+            filteredBuffer.push(`[${marker}:${name}:${url}]`)
         } else if (isForwardMessageElement(element)) {
             filteredBuffer.push('[聊天记录]')
         }
@@ -634,18 +673,27 @@ function mapElementToString(
 }
 
 // 返回 base64 的图片编码
-async function getImages(ctx: Context, model: string, session: Session) {
-    const mergedMessage = await ctx.chatluna.messageTransformer.transform(
-        session,
-        session.elements,
-        model
-    )
+async function getImages(
+    ctx: Context,
+    model: string,
+    session: Session,
+    mergedMessage?: Awaited<
+        ReturnType<Context['chatluna']['messageTransformer']['transform']>
+    >
+) {
+    const transformed =
+        mergedMessage ??
+        (await ctx.chatluna.messageTransformer.transform(
+            session,
+            session.elements,
+            model
+        ))
 
-    if (typeof mergedMessage.content === 'string') {
+    if (typeof transformed.content === 'string') {
         return undefined
     }
 
-    const images = mergedMessage.content.filter(isMessageContentImageUrl)
+    const images = transformed.content.filter(isMessageContentImageUrl)
 
     if (!images || images.length < 1) {
         return undefined
