@@ -115,6 +115,7 @@ export interface Config extends ChatLunaPlugin.Config {
     image: boolean
     imageInputMaxCount: number
     imageInputMaxSize: number
+    geminiExtraFileInputMaxSize: number
     modelCompletionCount: number
 
     coolDownTime: number
@@ -175,8 +176,15 @@ export const Config = Schema.intersect([
         imageInputMaxSize: Schema.number()
             .default(20)
             .min(1)
-            .max(20)
+            .max(100)
             .description('最大的输入图片大小（MB）'),
+        geminiExtraFileInputMaxSize: Schema.number()
+            .default(20)
+            .min(1)
+            .max(100)
+            .description(
+                '最大的输入 Gemini 额外文件类型大小（MB）：过大可能造成服务器卡顿、回复延迟'
+            ),
         toolCalling: Schema.boolean()
             .description(
                 '是否启用工具调用功能（可在[**这里**](https://cooksleep.github.io/newapi-special-test)测试你的API工具调用等能力是否正常）'
@@ -437,8 +445,15 @@ export const Config = Schema.intersect([
                 imageInputMaxSize: Schema.number()
                     .default(20)
                     .min(1)
-                    .max(20)
+                    .max(100)
                     .description('最大的输入图片大小（MB）'),
+                geminiExtraFileInputMaxSize: Schema.number()
+                    .default(20)
+                    .min(1)
+                    .max(100)
+                    .description(
+                        '最大的输入 Gemini 额外文件类型大小（MB）：过大可能造成服务器卡顿、回复延迟'
+                    ),
                 coolDownTime: Schema.number()
                     .default(0)
                     .min(0)
