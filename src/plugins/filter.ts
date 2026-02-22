@@ -32,26 +32,6 @@ const BURST_RATE_SCALE = 4 // 突发活跃斜率
 const SMOOTHING_WINDOW = Time.second * 8 // 分数平滑窗口
 const FRESHNESS_HALF_LIFE = Time.second * 60 // 新鲜度半衰期：60秒
 
-function runWithTimeout<T>(
-    taskFactory: (signal: AbortSignal) => Promise<T>,
-    ms: number
-): Promise<T> {
-    const controller = new AbortController()
-    let timer: NodeJS.Timeout | undefined
-    const timeout = new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => {
-            controller.abort(new Error(`scheduler timeout after ${ms}ms`))
-            reject(new Error(`scheduler timeout after ${ms}ms`))
-        }, ms)
-    })
-
-    return Promise.race([taskFactory(controller.signal), timeout]).finally(
-        () => {
-            if (timer) clearTimeout(timer)
-        }
-    ) as Promise<T>
-}
-
 function evaluateNextReplyGroup(
     group: PendingNextReplyConditionGroup,
     info: GroupInfo,
@@ -460,8 +440,7 @@ function resolveTriggerReason(
 async function processSchedulerTickForGuild(
     ctx: Context,
     config: Config,
-    guildId: string,
-    signal: AbortSignal
+    guildId: string
 ) {
     const service = ctx.chatluna_character
     const logger = service.logger
@@ -502,9 +481,7 @@ async function processSchedulerTickForGuild(
     try {
         triggered = await service.triggerCollect(
             session,
-            triggerReason,
-            undefined,
-            signal
+            triggerReason
         )
     } catch (e) {
         logger.error(`triggerCollect failed for guild ${guildId}`, e)
@@ -587,16 +564,7 @@ export async function apply(ctx: Context, config: Config) {
     ctx.setInterval(async () => {
         for (const guildId of Object.keys(groupInfos)) {
             try {
-                await runWithTimeout(
-                    (signal) =>
-                        processSchedulerTickForGuild(
-                            ctx,
-                            config,
-                            guildId,
-                            signal
-                        ),
-                    20_000
-                )
+                await processSchedulerTickForGuild(ctx, config, guildId)
             } catch (e) {
                 logger.error(
                     `[next_reply] scheduler failed guild=${guildId}`,
