@@ -14,7 +14,10 @@ import {
 import { Context, Element, h, Logger, Session } from 'koishi'
 import { marked, Token } from 'marked'
 import he from 'he'
-import { getMessageContent } from 'koishi-plugin-chatluna/utils/string'
+import {
+    getMessageContent,
+    sanitizeToolLogValue
+} from 'koishi-plugin-chatluna/utils/string'
 import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
 import type {} from 'koishi-plugin-chatluna/services/chat'
 import { PresetTemplate } from 'koishi-plugin-chatluna/llm-core/prompt'
@@ -1028,10 +1031,16 @@ export async function createChatLunaChain(
                     callbacks: [
                         {
                             handleAgentAction(action) {
-                                logger.debug('Agent Action:', action)
+                                logger.debug(
+                                    'Agent Action:',
+                                    sanitizeToolLogValue(action)
+                                )
                             },
                             handleToolEnd(output, runId, parentRunId, tags) {
-                                logger.debug(`Tool End: `, output)
+                                logger.debug(
+                                    `Tool End: `,
+                                    sanitizeToolLogValue(output)
+                                )
                             }
                         }
                     ],
