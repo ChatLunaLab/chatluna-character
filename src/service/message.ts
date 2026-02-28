@@ -16,26 +16,7 @@ import {
     MessageCollectorFilter,
     MessageImage
 } from '../types'
-
-const GEMINI_EXTRA_FILE_LIMIT_ATTR =
-    'chatluna_gemini_extra_file_input_max_size_mb'
-
-function attachGeminiExtraFileLimit(elements: h[], maxSizeMb: number) {
-    if (!Number.isFinite(maxSizeMb) || maxSizeMb <= 0) {
-        return
-    }
-
-    const limit = Math.floor(maxSizeMb)
-    for (const element of elements) {
-        if (
-            element.type === 'file' ||
-            element.type === 'video' ||
-            element.type === 'audio'
-        ) {
-            element.attrs[GEMINI_EXTRA_FILE_LIMIT_ATTR] = String(limit)
-        }
-    }
-}
+import { attachMultimodalFileLimit } from '../utils'
 
 export class MessageCollector extends Service {
     private _messages: Record<string, Message[]> = {}
@@ -293,7 +274,7 @@ export class MessageCollector extends Service {
 
         // For clear-all, acquire locks in sorted order to prevent deadlocks
         const groupIds = Object.keys(this._groupLocks).sort()
-        const unlocks: Array<() => void> = []
+        const unlocks: (() => void)[] = []
         for (const gid of groupIds) {
             unlocks.push(await this._lockByGroupId(gid))
         }
@@ -355,8 +336,10 @@ export class MessageCollector extends Service {
         const elements = session.elements
             ? session.elements
             : [h.text(session.content)]
-        attachGeminiExtraFileLimit(elements, config.geminiExtraFileInputMaxSize)
-        const mergedMessage = config.image
+
+        attachMultimodalFileLimit(elements, config.multimodalFileInputMaxSize)
+
+        const preMessage = config.image
             ? await this.ctx.chatluna.messageTransformer.transform(
                   session,
                   elements,
@@ -365,7 +348,7 @@ export class MessageCollector extends Service {
             : undefined
 
         const images = config.image
-            ? await getImages(this.ctx, config.model, session, mergedMessage)
+            ? await getImages(this.ctx, config.model, session, preMessage)
             : undefined
 
         const content = mapElementToString(
@@ -662,7 +645,7 @@ function mapElementToString(
                 element.attrs['filename'] ??
                 fallbackName
 
-            const marker = element.type === 'audio' ? 'voice' : 'file'
+            const marker = element.type
             filteredBuffer.push(`[${marker}:${name}:${url}]`)
         } else if (isForwardMessageElement(element)) {
             filteredBuffer.push('[聊天记录]')

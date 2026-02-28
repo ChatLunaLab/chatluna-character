@@ -985,6 +985,7 @@ export async function createChatLunaChain(
             sendTokenLimit:
                 llm.invocationParams().maxTokenLimit ??
                 llm.getModelMaxContextSize(),
+            contextManager: ctx.chatluna.contextManager,
             promptRenderService: ctx.chatluna.promptRenderer
         })
     })
@@ -1295,6 +1296,25 @@ export function transform(source: any, ...args: any[]) {
             source[args.length]
     }
     return render(marked.lexer(source))
+}
+
+const MULTIMODAL_FILE_LIMIT_ATTR = 'chatluna_multimodal_file_input_max_size_mb'
+
+export function attachMultimodalFileLimit(elements: h[], maxSizeMb: number) {
+    if (!Number.isFinite(maxSizeMb) || maxSizeMb <= 0) {
+        return
+    }
+
+    const limit = Math.floor(maxSizeMb)
+    for (const element of elements) {
+        if (
+            element.type === 'file' ||
+            element.type === 'video' ||
+            element.type === 'audio'
+        ) {
+            element.attrs[MULTIMODAL_FILE_LIMIT_ATTR] = limit
+        }
+    }
 }
 
 let logger: Logger
