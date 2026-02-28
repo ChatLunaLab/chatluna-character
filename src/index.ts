@@ -115,7 +115,7 @@ export interface Config extends ChatLunaPlugin.Config {
     image: boolean
     imageInputMaxCount: number
     imageInputMaxSize: number
-    geminiExtraFileInputMaxSize: number
+    multimodalFileInputMaxSize: number
     modelCompletionCount: number
 
     coolDownTime: number
@@ -178,12 +178,12 @@ export const Config = Schema.intersect([
             .min(1)
             .max(100)
             .description('最大的输入图片大小（MB）'),
-        geminiExtraFileInputMaxSize: Schema.number()
+        multimodalFileInputMaxSize: Schema.number()
             .default(20)
             .min(1)
             .max(100)
             .description(
-                '最大的输入 Gemini 额外文件类型大小（MB）：过大可能造成服务器卡顿、回复延迟'
+                '最大的多模态文件输入大小（MB）：过大可能造成服务器卡顿、回复延迟'
             ),
         toolCalling: Schema.boolean()
             .description(
@@ -447,12 +447,12 @@ export const Config = Schema.intersect([
                     .min(1)
                     .max(100)
                     .description('最大的输入图片大小（MB）'),
-                geminiExtraFileInputMaxSize: Schema.number()
+                multimodalFileInputMaxSize: Schema.number()
                     .default(20)
                     .min(1)
                     .max(100)
                     .description(
-                        '最大的输入 Gemini 额外文件类型大小（MB）：过大可能造成服务器卡顿、回复延迟'
+                        '最大的多模态文件输入大小（MB）：过大可能造成服务器卡顿、回复延迟'
                     ),
                 coolDownTime: Schema.number()
                     .default(0)

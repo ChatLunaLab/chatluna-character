@@ -43,7 +43,7 @@ export interface GuildConfig {
     image: boolean
     imageInputMaxCount: number
     imageInputMaxSize: number
-    geminiExtraFileInputMaxSize: number
+    multimodalFileInputMaxSize: number
     splitSentence: boolean
     markdownRender: boolean
     largeTextSize: number

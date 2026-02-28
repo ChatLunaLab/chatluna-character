@@ -265,7 +265,11 @@ async function getModelResponse(
                               systemMessage.content
                           ),
                           chat_history: historyMessages,
-                          input: lastMessage
+                          input: lastMessage,
+                          configurable: {
+                              session,
+                              conversationId: session.guildId
+                          }
                       },
                       {
                           configurable: {
