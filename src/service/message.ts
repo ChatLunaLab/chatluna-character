@@ -645,7 +645,7 @@ function mapElementToString(
                 element.attrs['filename'] ??
                 fallbackName
 
-            const marker = element.type
+            const marker = element.type === 'audio' ? 'voice' : element.type
             filteredBuffer.push(`[${marker}:${name}:${url}]`)
         } else if (isForwardMessageElement(element)) {
             filteredBuffer.push('[聊天记录]')
