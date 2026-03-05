@@ -245,6 +245,7 @@ async function getModelResponse(
     model: ChatLunaChatModel,
     completionMessages: BaseMessage[],
     config: Config,
+    presetName: string,
     chain?: ChatLunaChain,
     signal?: AbortSignal
 ): Promise<ModelResponse | null> {
@@ -268,7 +269,8 @@ async function getModelResponse(
                           input: lastMessage,
                           configurable: {
                               session,
-                              conversationId: session.guildId
+                              conversationId: session.guildId,
+                              preset: presetName
                           }
                       },
                       {
@@ -276,7 +278,8 @@ async function getModelResponse(
                               session,
                               model,
                               userId: session.userId,
-                              conversationId: session.guildId
+                              conversationId: session.guildId,
+                              preset: presetName
                           },
                           signal
                       }
@@ -607,6 +610,7 @@ export async function apply(ctx: Context, config: Config) {
                 model.value,
                 completionMessages,
                 copyOfConfig,
+                currentPreset.name,
                 chainPool[guildId]?.value,
                 signal
             )
