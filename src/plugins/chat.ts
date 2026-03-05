@@ -134,6 +134,7 @@ async function parseResponseContent(
 function createStreamConfig(
     session: Session,
     model: ChatLunaChatModel,
+    presetName: string,
     signal?: AbortSignal
 ) {
     return {
@@ -141,7 +142,8 @@ function createStreamConfig(
             session,
             model,
             userId: session.userId,
-            conversationId: session.guildId
+            conversationId: session.guildId,
+            preset: presetName
         },
         signal
     }
@@ -152,6 +154,7 @@ async function* streamAgentResponseContents(
     chain: ChatLunaChain,
     session: Session,
     model: ChatLunaChatModel,
+    presetName: string,
     systemMessage: BaseMessage | undefined,
     historyMessages: BaseMessage[],
     lastMessage: BaseMessage,
@@ -164,10 +167,11 @@ async function* streamAgentResponseContents(
             input: lastMessage,
             configurable: {
                 session,
-                conversationId: session.guildId
+                conversationId: session.guildId,
+                preset: presetName
             }
         },
-        createStreamConfig(session, model, signal)
+        createStreamConfig(session, model, presetName, signal)
     )
 
     for await (const responseMessage of responseStream) {
@@ -449,6 +453,7 @@ async function* streamModelResponse(
                     chain,
                     session,
                     model,
+                    presetName,
                     systemMessage,
                     historyMessages,
                     lastMessage,
@@ -467,9 +472,10 @@ async function* streamModelResponse(
                 return
             }
 
-            const responseMessage = await model.invoke(completionMessages, {
-                signal
-            })
+            const responseMessage = await model.invoke(
+                completionMessages,
+                createStreamConfig(session, model, presetName, signal)
+            )
             const responseContent = getMessageContent(responseMessage.content)
             if (responseContent.trim().length < 1) {
                 return
