@@ -1,8 +1,11 @@
 import { AIMessageChunk, BaseMessage } from '@langchain/core/messages'
-import { Runnable, RunnableConfig } from '@langchain/core/runnables'
+import { RunnableConfig } from '@langchain/core/runnables'
 import { ChatLunaService } from 'koishi-plugin-chatluna/services/chat'
 import { ChatLunaChatPromptFormat } from 'koishi-plugin-chatluna/llm-core/chain/prompt'
 import { Session } from 'koishi'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ChatLunaRunnableConfig = RunnableConfig<Record<string, any>>
 
 export interface Message {
     content: string
@@ -113,12 +116,23 @@ export interface PendingWakeUpReply {
     createdAt: number
 }
 
-export type ChatLunaChain = Runnable<
-    ChatLunaChatPromptFormat,
-    AIMessageChunk,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    RunnableConfig<Record<string, any>>
->
+export interface ChatLunaChain {
+    invoke(
+        input: ChatLunaChatPromptFormat,
+        options?: ChatLunaRunnableConfig
+    ): Promise<AIMessageChunk>
+    stream(
+        input: ChatLunaChatPromptFormat,
+        options?: ChatLunaRunnableConfig
+    ): AsyncGenerator<AIMessageChunk>
+}
+
+export interface StreamedModelResponseChunk<TParsed = unknown> {
+    responseMessage: BaseMessage
+    responseContent: string
+    parsedResponse: TParsed
+}
+
 export interface ChatLunaCharacterPromptTemplate {
     rawString: string
     format(

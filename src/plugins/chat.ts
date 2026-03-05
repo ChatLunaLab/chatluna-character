@@ -1,3 +1,4 @@
+/* eslint-disable generator-star-spacing */
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import {} from '@initencounter/vits'
@@ -10,8 +11,15 @@ import { Context, h, Logger, Random, Session, sleep } from 'koishi'
 import { ChatLunaChatModel } from 'koishi-plugin-chatluna/llm-core/platform/model'
 import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
 import { Config } from '..'
-import { ChatLunaChain, GroupTemp, Message, PresetTemplate } from '../types'
 import {
+    ChatLunaChain,
+    GroupTemp,
+    Message,
+    PresetTemplate,
+    StreamedModelResponseChunk
+} from '../types'
+import {
+    AGENT_INTERMEDIATE_FLAG,
     createChatLunaChain,
     extractNextReplyReasons,
     extractWakeUpReplies,
@@ -36,9 +44,13 @@ import { ComputedRef } from 'koishi-plugin-chatluna'
 
 let logger: Logger
 
-interface ModelResponse {
+type ParsedResponse = Awaited<ReturnType<typeof parseResponse>>
+type StreamedParsedResponseChunk = StreamedModelResponseChunk<ParsedResponse>
+
+interface StreamedResponseContentChunk {
     responseMessage: BaseMessage
-    parsedResponse: Awaited<ReturnType<typeof parseResponse>>
+    responseContent: string
+    isIntermediate: boolean
 }
 
 function stripInternalTriggerTags(content: string) {
@@ -46,6 +58,177 @@ function stripInternalTriggerTags(content: string) {
         .replace(/<next_reply\b[^>]*\/>/gi, '')
         .replace(/<wake_up_reply\b[^>]*\/>/gi, '')
 }
+
+async function parseResponseContent(
+    ctx: Context,
+    session: Session,
+    config: Config,
+    chunk: StreamedResponseContentChunk
+): Promise<StreamedParsedResponseChunk> {
+    let parsedResponse: ParsedResponse
+    const { responseMessage, responseContent, isIntermediate } = chunk
+
+    try {
+        parsedResponse = await parseResponse(
+            stripInternalTriggerTags(responseContent),
+            config.isAt,
+            async (element) => {
+                logger.debug('voice render element: ' + JSON.stringify(element))
+                try {
+                    const content = element.attrs['content']
+                    const extra = element.attrs['extra']
+                    if (extra) {
+                        const { id } = extra
+                        if (id) {
+                            return [
+                                await ctx.vits.say(
+                                    Object.assign(
+                                        {
+                                            speaker_id: Number.parseInt(id, 10),
+                                            input: content
+                                        },
+                                        { session }
+                                    )
+                                )
+                            ]
+                        }
+                    }
+                    return [
+                        await ctx.vits.say(
+                            Object.assign({ input: content }, { session })
+                        )
+                    ]
+                } catch (e) {
+                    logger.error('voice render failed', e)
+                    return [element]
+                }
+            },
+            config
+        )
+    } catch (error) {
+        if (!isIntermediate || responseMessage.content == null) {
+            throw error
+        }
+
+        logger.warn(
+            'Failed to parse intermediate agent content, fallback to raw send: %s',
+            responseContent
+        )
+
+        parsedResponse = {
+            elements: [[h.text(responseContent)]],
+            rawMessage: responseContent,
+            status: undefined,
+            sticker: undefined,
+            messageType: 'text'
+        }
+    }
+
+    return {
+        responseMessage,
+        responseContent,
+        parsedResponse
+    }
+}
+
+function createStreamConfig(
+    session: Session,
+    model: ChatLunaChatModel,
+    signal?: AbortSignal
+) {
+    return {
+        configurable: {
+            session,
+            model,
+            userId: session.userId,
+            conversationId: session.guildId
+        },
+        signal
+    }
+}
+
+// eslint-disable-next-line prettier/prettier
+async function* streamAgentResponseContents(
+    chain: ChatLunaChain,
+    session: Session,
+    model: ChatLunaChatModel,
+    systemMessage: BaseMessage | undefined,
+    historyMessages: BaseMessage[],
+    lastMessage: BaseMessage,
+    signal?: AbortSignal
+): AsyncGenerator<StreamedResponseContentChunk> {
+    const responseStream = chain.stream(
+        {
+            instructions: getMessageContent(systemMessage?.content ?? ''),
+            chat_history: historyMessages,
+            input: lastMessage,
+            configurable: {
+                session,
+                conversationId: session.guildId
+            }
+        },
+        createStreamConfig(session, model, signal)
+    )
+
+    for await (const responseMessage of responseStream) {
+        const responseContent = getMessageContent(responseMessage.content)
+        if (responseContent.trim().length < 1) {
+            continue
+        }
+
+        const isIntermediate =
+            responseMessage.additional_kwargs?.[AGENT_INTERMEDIATE_FLAG] ===
+            true
+
+        if (isIntermediate) {
+            logger.debug(`agent intermediate response: ${responseContent}`)
+        } else {
+            logger.debug(`model response: ${responseContent}`)
+        }
+
+        yield {
+            responseMessage,
+            responseContent,
+            isIntermediate
+        }
+    }
+}
+
+function registerResponseTriggers(
+    guildId: string,
+    config: Config,
+    nextReplyReasons: string[],
+    wakeUpReplies: ReturnType<typeof extractWakeUpReplies>
+) {
+    if (nextReplyReasons.length > 0) {
+        clearNextReplyTriggers(guildId)
+        for (const reason of nextReplyReasons) {
+            const accepted = registerNextReplyTrigger(guildId, reason, config)
+
+            if (!accepted) {
+                logger.warn(
+                    `Ignore invalid <next_reply reason="${reason}" /> for group ${guildId}`
+                )
+            }
+        }
+    }
+
+    for (const wakeUp of wakeUpReplies) {
+        const accepted = registerWakeUpReplyTrigger(
+            guildId,
+            wakeUp.time,
+            wakeUp.reason,
+            config
+        )
+
+        if (!accepted) {
+            logger.warn(
+                `Ignore invalid <wake_up_reply time="${wakeUp.time}" reason="${wakeUp.reason}" /> for group ${guildId}`
+            )
+        }
+    }
+}
+
 
 async function initializeModel(
     ctx: Context,
@@ -239,7 +422,8 @@ async function prepareMessages(
     )
 }
 
-async function getModelResponse(
+// eslint-disable-next-line prettier/prettier
+async function* streamModelResponse(
     ctx: Context,
     session: Session,
     model: ChatLunaChatModel,
@@ -248,9 +432,11 @@ async function getModelResponse(
     presetName: string,
     chain?: ChatLunaChain,
     signal?: AbortSignal
-): Promise<ModelResponse | null> {
+): AsyncGenerator<StreamedParsedResponseChunk> {
     for (let retryCount = 0; retryCount < 2; retryCount++) {
-        if (signal?.aborted) return null
+        if (signal?.aborted) return
+        let emittedAny = false
+
         try {
             const lastMessage =
                 completionMessages[completionMessages.length - 1]
@@ -259,82 +445,53 @@ async function getModelResponse(
             const systemMessage =
                 chain != null ? historyMessages.shift() : undefined
 
-            const responseMessage = chain
-                ? await chain.invoke(
-                      {
-                          instructions: getMessageContent(
-                              systemMessage.content
-                          ),
-                          chat_history: historyMessages,
-                          input: lastMessage,
-                          configurable: {
-                              session,
-                              conversationId: session.guildId,
-                              preset: presetName
-                          }
-                      },
-                      {
-                          configurable: {
-                              session,
-                              model,
-                              userId: session.userId,
-                              conversationId: session.guildId,
-                              preset: presetName
-                          },
-                          signal
-                      }
-                  )
-                : await model.invoke(completionMessages, { signal })
+            if (chain) {
+                for await (const responseChunk of streamAgentResponseContents(
+                    chain,
+                    session,
+                    model,
+                    systemMessage,
+                    historyMessages,
+                    lastMessage,
+                    signal
+                )) {
+                    emittedAny = true
 
-            logger.debug('model response: ' + responseMessage.content)
-
-            const parsedResponse = await parseResponse(
-                stripInternalTriggerTags(responseMessage.content as string),
-                config.isAt,
-                async (element) => {
-                    logger.debug(
-                        'voice render element: ' + JSON.stringify(element)
+                    yield await parseResponseContent(
+                        ctx,
+                        session,
+                        config,
+                        responseChunk
                     )
-                    try {
-                        const content = element.attrs['content']
-                        const extra = element.attrs['extra']
-                        if (extra) {
-                            const { id } = extra
-                            if (id) {
-                                return [
-                                    await ctx.vits.say(
-                                        Object.assign(
-                                            {
-                                                speaker_id: parseInt(id),
-                                                input: content
-                                            },
-                                            { session }
-                                        )
-                                    )
-                                ]
-                            }
-                        }
-                        return [
-                            await ctx.vits.say(
-                                Object.assign({ input: content }, { session })
-                            )
-                        ]
-                    } catch (e) {
-                        logger.error('voice render failed', e)
-                        return [element]
-                    }
-                },
-                config
-            )
-            return { responseMessage, parsedResponse }
+                }
+
+                return
+            }
+
+            const responseMessage = await model.invoke(completionMessages, {
+                signal
+            })
+            const responseContent = getMessageContent(responseMessage.content)
+            if (responseContent.trim().length < 1) {
+                return
+            }
+
+            logger.debug(`model response: ${responseContent}`)
+            emittedAny = true
+
+            yield await parseResponseContent(ctx, session, config, {
+                responseMessage,
+                responseContent,
+                isIntermediate: false
+            })
+            return
         } catch (e) {
-            if (signal?.aborted) return null
+            if (signal?.aborted) return
             logger.error('model requests failed', e)
-            if (retryCount === 1) return null
+            if (emittedAny || retryCount === 1) return
             await sleep(3000)
         }
     }
-    return null
 }
 
 function calculateMessageDelay(
@@ -441,18 +598,12 @@ async function handleMessageSending(
     return { breakSay: false, sent }
 }
 
-async function handleModelResponse(
+async function handleParsedResponseChunk(
     session: Session,
     config: Config,
     ctx: Context,
-    parsedResponse: Awaited<ReturnType<typeof parseResponse>>,
-    responseMessage: BaseMessage,
-    guildId: string
-): Promise<void> {
-    const rawContent = getMessageContent(responseMessage.content)
-    const nextReplyReasons = extractNextReplyReasons(rawContent)
-    const wakeUpReplies = extractWakeUpReplies(rawContent)
-
+    parsedResponse: ParsedResponse
+): Promise<{ breakSay: boolean; sentAny: boolean }> {
     let breakSay = false
     let sentAny = false
 
@@ -460,7 +611,6 @@ async function handleModelResponse(
         const text = elements
             .map((element) => element.attrs.content ?? '')
             .join('')
-
         const emoticonStatement = isEmoticonStatement(text, elements)
 
         if (elements.length < 1) continue
@@ -489,43 +639,7 @@ async function handleModelResponse(
         }
     }
 
-    if (!sentAny) {
-        logger.warn(
-            `Skip registering next_reply/wake_up_reply because no message sent in group ${guildId}`
-        )
-        return
-    }
-
-    const flattenedElements = parsedResponse.elements.flat()
-    await ctx.chatluna_character.broadcastOnBot(session, flattenedElements)
-
-    if (nextReplyReasons.length > 0) {
-        clearNextReplyTriggers(guildId)
-        for (const reason of nextReplyReasons) {
-            const accepted = registerNextReplyTrigger(guildId, reason, config)
-
-            if (!accepted) {
-                logger.warn(
-                    `Ignore invalid <next_reply reason="${reason}" /> for group ${guildId}`
-                )
-            }
-        }
-    }
-
-    for (const wakeUp of wakeUpReplies) {
-        const accepted = registerWakeUpReplyTrigger(
-            guildId,
-            wakeUp.time,
-            wakeUp.reason,
-            config
-        )
-
-        if (!accepted) {
-            logger.warn(
-                `Ignore invalid <wake_up_reply time="${wakeUp.time}" reason="${wakeUp.reason}" /> for group ${guildId}`
-            )
-        }
-    }
+    return { breakSay, sentAny }
 }
 
 export async function apply(ctx: Context, config: Config) {
@@ -604,7 +718,13 @@ export async function apply(ctx: Context, config: Config) {
                 )
             }
 
-            const response = await getModelResponse(
+            let lastResponseMessage: BaseMessage | undefined
+            const nextReplyReasons: string[] = []
+            const wakeUpReplies: ReturnType<typeof extractWakeUpReplies> = []
+            let latestStatus = temp.status
+            let sentAny = false
+
+            for await (const chunk of streamModelResponse(
                 ctx,
                 session,
                 model.value,
@@ -613,14 +733,40 @@ export async function apply(ctx: Context, config: Config) {
                 currentPreset.name,
                 chainPool[guildId]?.value,
                 signal
-            )
+            )) {
+                latestStatus = chunk.parsedResponse.status ?? latestStatus
 
-            if (!response) return
+                const sendResult = await handleParsedResponseChunk(
+                    session,
+                    copyOfConfig,
+                    ctx,
+                    chunk.parsedResponse
+                )
 
-            const { responseMessage, parsedResponse } = response
+                if (!sendResult.sentAny) {
+                    continue
+                }
 
-            temp.status = parsedResponse.status
-            if (parsedResponse.elements.length < 1) {
+                sentAny = true
+                lastResponseMessage = chunk.responseMessage
+                await ctx.chatluna_character.broadcastOnBot(
+                    session,
+                    chunk.parsedResponse.elements.flat()
+                )
+                nextReplyReasons.push(
+                    ...extractNextReplyReasons(chunk.responseContent)
+                )
+                wakeUpReplies.push(
+                    ...extractWakeUpReplies(chunk.responseContent)
+                )
+
+                if (sendResult.breakSay) {
+                    break
+                }
+            }
+
+            temp.status = latestStatus
+            if (!sentAny) {
                 service.mute(session, copyOfConfig.muteTime)
                 return
             }
@@ -628,20 +774,20 @@ export async function apply(ctx: Context, config: Config) {
             temp.completionMessages.push(
                 completionMessages[completionMessages.length - 1]
             )
-            temp.completionMessages.push(responseMessage)
+            if (lastResponseMessage) {
+                temp.completionMessages.push(lastResponseMessage)
+            }
 
             trimCompletionMessages(
                 temp.completionMessages,
                 copyOfConfig.modelCompletionCount
             )
 
-            await handleModelResponse(
-                session,
+            registerResponseTriggers(
+                guildId,
                 copyOfConfig,
-                ctx,
-                parsedResponse,
-                responseMessage,
-                guildId
+                nextReplyReasons,
+                wakeUpReplies
             )
 
             service.muteAtLeast(session, copyOfConfig.coolDownTime * 1000)
