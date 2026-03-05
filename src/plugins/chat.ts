@@ -229,7 +229,6 @@ function registerResponseTriggers(
     }
 }
 
-
 async function initializeModel(
     ctx: Context,
     platform: string,
