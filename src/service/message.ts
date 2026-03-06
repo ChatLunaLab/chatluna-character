@@ -18,6 +18,8 @@ import {
 } from '../types'
 import { attachMultimodalFileLimit } from '../utils'
 
+const IMAGE_SIZE_CACHE_LIMIT = 512
+
 export class MessageCollector extends Service {
     private _messages: Record<string, Message[]> = {}
 
@@ -38,6 +40,10 @@ export class MessageCollector extends Service {
     > = {}
 
     private _lastSessions: Record<string, Session> = {}
+
+    private _imageSizeCache: Record<string, number> = {}
+
+    private _imageSizeCacheCount = 0
 
     preset: Preset
 
@@ -506,7 +512,7 @@ export class MessageCollector extends Service {
             const validImages: Awaited<ReturnType<typeof getImages>> = []
 
             for (const image of message.images) {
-                const imageSize = await this._getImageSize(image.url)
+                const imageSize = await this._getCachedImageSize(image)
 
                 if (
                     currentCount < maxCount &&
@@ -535,6 +541,25 @@ export class MessageCollector extends Service {
                 break
             }
         }
+    }
+
+    private async _getCachedImageSize(image: MessageImage): Promise<number> {
+        const cacheKey = image.hash || image.url
+        const cachedSize = this._imageSizeCache[cacheKey]
+        if (cachedSize != null) {
+            return cachedSize
+        }
+
+        const imageSize = await this._getImageSize(image.url)
+
+        if (this._imageSizeCacheCount >= IMAGE_SIZE_CACHE_LIMIT) {
+            this._imageSizeCache = {}
+            this._imageSizeCacheCount = 0
+        }
+
+        this._imageSizeCache[cacheKey] = imageSize
+        this._imageSizeCacheCount++
+        return imageSize
     }
 
     private async _getImageSize(base64Image: string): Promise<number> {

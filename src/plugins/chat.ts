@@ -19,7 +19,6 @@ import {
     StreamedModelResponseChunk
 } from '../types'
 import {
-    AGENT_INTERMEDIATE_FLAG,
     createChatLunaChain,
     extractNextReplyReasons,
     extractWakeUpReplies,
@@ -174,15 +173,14 @@ async function* streamAgentResponseContents(
         createStreamConfig(session, model, presetName, signal)
     )
 
-    for await (const responseMessage of responseStream) {
+    for await (const responseChunk of responseStream) {
+        const responseMessage = responseChunk.message
         const responseContent = getMessageContent(responseMessage.content)
         if (responseContent.trim().length < 1) {
             continue
         }
 
-        const isIntermediate =
-            responseMessage.additional_kwargs?.[AGENT_INTERMEDIATE_FLAG] ===
-            true
+        const isIntermediate = responseChunk.phase === 'intermediate'
 
         if (isIntermediate) {
             logger.debug(`agent intermediate response: ${responseContent}`)

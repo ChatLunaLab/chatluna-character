@@ -3,6 +3,7 @@ import { ChatLunaChatModel } from 'koishi-plugin-chatluna/llm-core/platform/mode
 import { Config } from '.'
 import {
     ChatLunaChain,
+    ChatLunaChainStreamChunk,
     ChatLunaRunnableConfig,
     Message,
     NextReplyPredicate,
@@ -16,10 +17,7 @@ import {
 import { Context, Element, h, Logger, Session } from 'koishi'
 import { marked, Token } from 'marked'
 import he from 'he'
-import {
-    getMessageContent,
-    sanitizeToolLogValue
-} from 'koishi-plugin-chatluna/utils/string'
+import { getMessageContent } from 'koishi-plugin-chatluna/utils/string'
 import { parseRawModelName } from 'koishi-plugin-chatluna/llm-core/utils/count_tokens'
 import type {} from 'koishi-plugin-chatluna/services/chat'
 import { PresetTemplate } from 'koishi-plugin-chatluna/llm-core/prompt'
@@ -36,26 +34,122 @@ import { computed, ComputedRef } from 'koishi-plugin-chatluna'
 
 interface AgentExecutorStreamChunk {
     output?: BaseMessage['content']
-    intermediateSteps?: AgentStep[]
 }
 
-export const AGENT_INTERMEDIATE_FLAG = '__chatluna_agent_intermediate'
+interface AsyncChunkQueue<T> {
+    push(value: T): void
+    end(): void
+    fail(error: unknown): void
+    next(): Promise<IteratorResult<T>>
+}
 
 function createAgentResponseChunk(
-    content: BaseMessage['content'] | undefined,
-    isIntermediate: boolean
-) {
+    content: BaseMessage['content'] | undefined
+): AIMessageChunk | undefined {
     if (content == null) return
 
     const text = getMessageContent(content)
     if (text.trim().length < 1) return
 
     return new AIMessageChunk({
-        content,
-        additional_kwargs: {
-            [AGENT_INTERMEDIATE_FLAG]: isIntermediate
-        }
+        content
     })
+}
+
+function createAsyncChunkQueue<T>(): AsyncChunkQueue<T> {
+    const values: T[] = []
+    const waiters: {
+        resolve: (result: IteratorResult<T>) => void
+        reject: (error: unknown) => void
+    }[] = []
+
+    let ended = false
+    let failure: unknown
+
+    const flush = () => {
+        while (values.length > 0 && waiters.length > 0) {
+            const waiter = waiters.shift()
+            if (waiter == null) {
+                break
+            }
+
+            waiter.resolve({
+                value: values.shift()!,
+                done: false
+            })
+        }
+
+        if (!ended || values.length > 0) {
+            return
+        }
+
+        while (waiters.length > 0) {
+            const waiter = waiters.shift()
+            if (waiter == null) {
+                break
+            }
+
+            if (failure != null) {
+                waiter.reject(failure)
+            } else {
+                waiter.resolve({
+                    value: undefined,
+                    done: true
+                })
+            }
+        }
+    }
+
+    return {
+        push(value) {
+            if (ended) {
+                return
+            }
+
+            values.push(value)
+            flush()
+        },
+        end() {
+            if (ended) {
+                return
+            }
+
+            ended = true
+            flush()
+        },
+        fail(error) {
+            if (ended) {
+                return
+            }
+
+            failure = error
+            ended = true
+            flush()
+        },
+        async next() {
+            if (values.length > 0) {
+                return {
+                    value: values.shift()!,
+                    done: false
+                }
+            }
+
+            if (ended) {
+                if (failure != null) {
+                    throw failure
+                }
+
+                return {
+                    value: undefined,
+                    done: true
+                }
+            }
+
+            return new Promise<IteratorResult<T>>((resolve, reject) => {
+                waiters.push({ resolve, reject })
+            })
+        }
+    }
 }
 
 export function isEmoticonStatement(
@@ -1035,7 +1129,7 @@ export async function createChatLunaChain(
         tools: toolsRef.tools,
         prompt: chatPrompt.value,
         agentMode: 'tool-calling',
-        returnIntermediateSteps: true,
+        returnIntermediateSteps: false,
         handleParsingErrors: true,
         instructions: computed(() => undefined)
     })
@@ -1063,60 +1157,105 @@ export async function createChatLunaChain(
         async function* stream(
             input: ChatLunaChatPromptFormat,
             options?: ChatLunaRunnableConfig
-        ) {
+        ): AsyncGenerator<ChatLunaChainStreamChunk> {
             updateToolsIfNeeded(input, options)
 
-            const executorStream = await executorRef.value.stream(
-                input,
-                options ?? {}
-            )
+            const chunkQueue = createAsyncChunkQueue<ChatLunaChainStreamChunk>()
+            let bufferedActionText = ''
 
-            for await (const chunk of executorStream as AsyncIterable<AgentExecutorStreamChunk>) {
-                if (!('output' in chunk)) {
-                    for (const step of chunk.intermediateSteps ?? []) {
-                        logger.debug(
-                            'Agent Step Action:',
-                            sanitizeToolLogValue(step.action)
-                        )
-                        logger.debug(
-                            'Tool Observation:',
-                            sanitizeToolLogValue(step.observation)
-                        )
+            const emitEarlyIntermediate = (action: AgentStep['action']) => {
+                const content =
+                    bufferedActionText.length > 0
+                        ? bufferedActionText
+                        : (action.content ?? action.log)
+                const responseChunk = createAgentResponseChunk(content)
 
+                bufferedActionText = ''
+
+                if (responseChunk == null) {
+                    return
+                }
+
+                chunkQueue.push({
+                    message: responseChunk,
+                    phase: 'intermediate'
+                })
+            }
+
+            const streamOptions: ChatLunaRunnableConfig = {
+                ...(options ?? {}),
+                callbacks: [
+                    ...(Array.isArray(options?.callbacks)
+                        ? options.callbacks
+                        : options?.callbacks != null
+                          ? [options.callbacks]
+                          : []),
+                    {
+                        handleLLMNewToken(token: string) {
+                            bufferedActionText += token
+                        },
+                        handleAgentAction(action: AgentStep['action']) {
+                            emitEarlyIntermediate(action)
+                        }
+                    }
+                ]
+            }
+
+            const producer = (async () => {
+                try {
+                    const response = (await executorRef.value.invoke(
+                        input,
+                        streamOptions
+                    )) as AgentExecutorStreamChunk
+
+                    bufferedActionText = ''
+
+                    if ('output' in response) {
                         const responseChunk = createAgentResponseChunk(
-                            step.action.content,
-                            true
+                            response.output
                         )
 
                         if (responseChunk) {
-                            yield responseChunk
+                            chunkQueue.push({
+                                message: responseChunk,
+                                phase: 'final'
+                            })
                         }
                     }
+
+                    chunkQueue.end()
+                } catch (error) {
+                    chunkQueue.fail(error)
                 }
+            })()
 
-                if ('output' in chunk) {
-                    const responseChunk = createAgentResponseChunk(
-                        chunk.output,
-                        false
-                    )
+            try {
+                while (true) {
+                    const { value, done } = await chunkQueue.next()
+                    if (done) {
+                        break
+                    }
 
-                    if (responseChunk) {
-                        yield responseChunk
+                    if (value) {
+                        yield value
                     }
                 }
+            } finally {
+                await producer
             }
         }
 
         return {
             async invoke(input, options) {
-                let lastContent = ''
+                updateToolsIfNeeded(input, options)
 
-                for await (const chunk of stream(input, options)) {
-                    lastContent = getMessageContent(chunk.content)
-                }
+                const response = (await executorRef.value.invoke(
+                    input,
+                    options ?? {}
+                )) as AgentExecutorStreamChunk
 
                 return new AIMessageChunk({
-                    content: lastContent
+                    content: response.output ?? ''
                 })
             },
             stream

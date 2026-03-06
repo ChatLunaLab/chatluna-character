@@ -124,7 +124,12 @@ export interface ChatLunaChain {
     stream(
         input: ChatLunaChatPromptFormat,
         options?: ChatLunaRunnableConfig
-    ): AsyncGenerator<AIMessageChunk>
+    ): AsyncGenerator<ChatLunaChainStreamChunk>
+}
+
+export interface ChatLunaChainStreamChunk {
+    message: AIMessageChunk
+    phase: 'intermediate' | 'final'
 }
 
 export interface StreamedModelResponseChunk<TParsed = unknown> {
