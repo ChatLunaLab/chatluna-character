@@ -699,6 +699,7 @@ export async function apply(ctx: Context, config: Config) {
             }
 
             const latestMessages = service.getMessages(guildId) ?? messages
+            const count = latestMessages.length
             const temp = await service.getTemp(session, latestMessages)
             const focusMessage = latestMessages[latestMessages.length - 1]
 
@@ -770,17 +771,20 @@ export async function apply(ctx: Context, config: Config) {
                 }
             }
 
-            temp.status = latestStatus
-            const persistedMessages =
-                service.getMessages(guildId) ?? latestMessages
-            await service.persistStatus(
-                session,
-                latestStatus,
-                persistedMessages[persistedMessages.length - 1]
-            )
             if (!sentAny) {
                 service.mute(session, copyOfConfig.muteTime)
                 return
+            }
+
+            const persistedMessages =
+                service.getMessages(guildId) ?? latestMessages
+            if (persistedMessages.length > count) {
+                temp.status = latestStatus
+                await service.persistStatus(
+                    session,
+                    latestStatus,
+                    persistedMessages[persistedMessages.length - 1]
+                )
             }
 
             temp.completionMessages.push(

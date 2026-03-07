@@ -571,6 +571,7 @@ export class MessageCollector extends Service {
         }
 
         const temp = await this.getTemp(session)
+        const cutoff = temp.historyClearedAt?.getTime()
         const msgs = this._messages[groupId] ?? []
         const count = Math.max(0, max - msgs.length)
 
@@ -591,26 +592,32 @@ export class MessageCollector extends Service {
             session,
             count,
             focusMessage,
-            temp.historyClearedAt?.getTime()
-        )
-
-        temp.historyPulled = true
-
-        if (list.length < 1) {
-            this.logger.debug(
-                `No history messages pulled for guild ${groupId}. ` +
-                    `Cutoff: ${formatLogDate(temp.historyClearedAt)}.`
-            )
-            return
-        }
-
-        this.logger.debug(
-            `Pulled ${list.length} history message(s) for guild ${groupId}. ` +
-                `Cutoff: ${formatLogDate(temp.historyClearedAt)}.`
+            cutoff
         )
 
         const unlock = await this._lockByGroupId(groupId)
         try {
+            const current = this._groupTemp[groupId] ?? temp
+            if (current.historyClearedAt?.getTime() !== cutoff) {
+                return
+            }
+
+            current.historyPulled = true
+            this._groupTemp[groupId] = current
+
+            if (list.length < 1) {
+                this.logger.debug(
+                    `No history messages pulled for guild ${groupId}. ` +
+                        `Cutoff: ${formatLogDate(current.historyClearedAt)}.`
+                )
+                return
+            }
+
+            this.logger.debug(
+                `Pulled ${list.length} history message(s) for guild ${groupId}. ` +
+                    `Cutoff: ${formatLogDate(current.historyClearedAt)}.`
+            )
+
             this._messages[groupId] = mergeMessages(
                 this._messages[groupId] ?? [],
                 list,
@@ -874,7 +881,7 @@ export class MessageCollector extends Service {
                     message.time < 1_000_000_000_000
                         ? message.time * 1000
                         : message.time
-                return messageTimestamp <= focusTimestamp
+                return messageTimestamp < focusTimestamp
             })
 
             results.unshift(...filteredBatch)
