@@ -308,28 +308,10 @@ export class MessageCollector extends Service {
         const groupId = session.guildId
         const unlock = await this._lockByGroupId(groupId)
         try {
-            const temp = this._groupTemp[groupId] ?? {
-                completionMessages: [],
-                historyPulled: false,
-                recordLoaded: false
-            }
+            const temp = this._getOrCreateGroupTemp(groupId)
 
             if (!temp.recordLoaded) {
-                const record = await this.ctx.database.get(
-                    'chathub_character_variable',
-                    [groupId]
-                )
-                temp.status = record[0]?.status
-                temp.historyClearedAt = normalizeDateValue(
-                    record[0]?.historyClearedAt
-                )
-                temp.statusMessageId = record[0]?.statusMessageId
-                temp.statusMessageTimestamp = normalizeNumberValue(
-                    record[0]?.statusMessageTimestamp
-                )
-                temp.statusMessageContent = record[0]?.statusMessageContent
-                temp.statusMessageUserId = record[0]?.statusMessageUserId
-                temp.recordLoaded = true
+                await this._loadTempRecord(groupId, temp)
             }
 
             this._groupTemp[groupId] = temp
@@ -343,26 +325,9 @@ export class MessageCollector extends Service {
         const groupId = session.guildId
         const unlock = await this._lockByGroupId(groupId)
         try {
-            const temp = this._groupTemp[groupId] ?? {
-                completionMessages: [],
-                historyPulled: false,
-                recordLoaded: false
-            }
+            const temp = this._getOrCreateGroupTemp(groupId)
 
-            const record = await this.ctx.database.get(
-                'chathub_character_variable',
-                [groupId]
-            )
-
-            temp.status = record[0]?.status
-            temp.historyClearedAt = normalizeDateValue(record[0]?.historyClearedAt)
-            temp.statusMessageId = record[0]?.statusMessageId
-            temp.statusMessageTimestamp = normalizeNumberValue(
-                record[0]?.statusMessageTimestamp
-            )
-            temp.statusMessageContent = record[0]?.statusMessageContent
-            temp.statusMessageUserId = record[0]?.statusMessageUserId
-            temp.recordLoaded = true
+            await this._loadTempRecord(groupId, temp)
 
             this._groupTemp[groupId] = temp
             return temp
@@ -440,6 +405,33 @@ export class MessageCollector extends Service {
             }
         }
         return this._groupLocks[groupId]
+    }
+
+    private _getOrCreateGroupTemp(groupId: string): GroupTemp {
+        return (
+            this._groupTemp[groupId] ?? {
+                completionMessages: [],
+                historyPulled: false,
+                recordLoaded: false
+            }
+        )
+    }
+
+    private async _loadTempRecord(groupId: string, temp: GroupTemp) {
+        const record = await this.ctx.database.get(
+            'chathub_character_variable',
+            [groupId]
+        )
+
+        temp.status = record[0]?.status
+        temp.historyClearedAt = normalizeDateValue(record[0]?.historyClearedAt)
+        temp.statusMessageId = record[0]?.statusMessageId
+        temp.statusMessageTimestamp = normalizeNumberValue(
+            record[0]?.statusMessageTimestamp
+        )
+        temp.statusMessageContent = record[0]?.statusMessageContent
+        temp.statusMessageUserId = record[0]?.statusMessageUserId
+        temp.recordLoaded = true
     }
 
     private _getGroupConfig(groupId: string) {
