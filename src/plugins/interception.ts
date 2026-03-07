@@ -3,8 +3,20 @@ import { Config } from '..'
 
 export function apply(ctx: Context, config: Config) {
     ctx.on('chatluna/before-check-sender', async (session) => {
-        const guildId = session.guildId
-        if (!config.applyGroup.includes(guildId) || session.isDirect) {
+        const id = session.isDirect ? session.userId : session.guildId
+
+        if (session.isDirect) {
+            if (!config.applyPrivate.includes(id)) {
+                return false
+            }
+
+            return (
+                config.disableChatLuna &&
+                !config.whiteListDisableChatLunaPrivate?.includes(id)
+            )
+        }
+
+        if (!config.applyGroup.includes(id)) {
             return false
         }
 
@@ -33,13 +45,15 @@ export function apply(ctx: Context, config: Config) {
         // 检查是否在名单里面
         if (
             config.disableChatLuna &&
-            config.whiteListDisableChatLuna?.includes(guildId)
+            config.whiteListDisableChatLuna?.includes(id)
         ) {
             // check to last five message is send for bot
 
             const selfId = session.bot.userId ?? session.bot.selfId ?? '0'
 
-            const guildMessages = ctx.chatluna_character.getMessages(guildId)
+            const guildMessages = ctx.chatluna_character.getMessages(
+                `${session.isDirect ? 'private' : 'group'}:${id}`
+            )
 
             if (guildMessages == null || guildMessages.length === 0) {
                 return true

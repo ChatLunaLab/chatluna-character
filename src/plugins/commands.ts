@@ -1,36 +1,28 @@
-import { Context, Session } from 'koishi'
+import { Context } from 'koishi'
 import { Config } from '..'
 import { groupInfos } from './filter'
 
 export function apply(ctx: Context, config: Config) {
     ctx.command('chatluna.character', '角色扮演相关命令')
 
-    ctx.command('chatluna.character.clear [group]', '清除群组的聊天记录', {
+    ctx.command('chatluna.character.clear [group]', '清除当前会话或指定群组的聊天记录', {
         authority: 3
     }).action(async ({ session }, group) => {
-        const groupId = group ?? session.guildId
-        const messages = groupId
-            ? ctx.chatluna_character.getMessages(groupId)
-            : undefined
+        const groupId = group ?? (session.isDirect ? session.userId : session.guildId)
+        const key = group
+            ? `group:${group}`
+            : `${session.isDirect ? 'private' : 'group'}:${groupId}`
 
         if (!groupId) {
-            await sendMessageToPrivate(session, '请检查你是否提供了群组 id')
+            await session.send('请检查你是否提供了群组或私聊用户 ID')
             return
         }
 
-        const groupInfo = groupInfos[groupId]
+        const isDirect = session.isDirect && group == null
+        const label = isDirect ? '私聊' : '群组'
 
-        if (!groupInfo && (!messages || messages.length < 1)) {
-            await sendMessageToPrivate(session, '未找到该群组的聊天记录')
-            return
-        }
-
-        delete groupInfos[groupId]
-        await ctx.chatluna_character.clear(groupId)
-        await sendMessageToPrivate(session, `已清除群组 ${groupId} 的聊天记录`)
+        await session.send(`已清除${label} ${groupId} 的聊天记录`)
+        delete groupInfos[key]
+        await ctx.chatluna_character.clear(key)
     })
-}
-
-async function sendMessageToPrivate(session: Session, message: string) {
-    await session.bot.sendPrivateMessage(session.userId, message)
 }

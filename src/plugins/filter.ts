@@ -57,7 +57,12 @@ function evaluateNextReplyGroup(
     })
 }
 
-function markTriggered(info: GroupInfo, config: Config, now: number) {
+function markTriggered(
+    info: GroupInfo,
+    config: Config,
+    now: number,
+    isDirect = false
+) {
     info.messageCount = 0
     info.lastActivityScore = Math.max(
         0,
@@ -65,16 +70,18 @@ function markTriggered(info: GroupInfo, config: Config, now: number) {
     )
     info.lastResponseTime = now
 
-    const lowerLimit = config.messageActivityScoreLowerLimit
-    const upperLimit = config.messageActivityScoreUpperLimit
-    const step = (upperLimit - lowerLimit) * 0.1
-    info.currentActivityThreshold = Math.max(
-        Math.min(
-            info.currentActivityThreshold + step,
-            Math.max(lowerLimit, upperLimit)
-        ),
-        Math.min(lowerLimit, upperLimit)
-    )
+    if (!isDirect) {
+        const lowerLimit = config.messageActivityScoreLowerLimit
+        const upperLimit = config.messageActivityScoreUpperLimit
+        const step = (upperLimit - lowerLimit) * 0.1
+        info.currentActivityThreshold = Math.max(
+            Math.min(
+                info.currentActivityThreshold + step,
+                Math.max(lowerLimit, upperLimit)
+            ),
+            Math.min(lowerLimit, upperLimit)
+        )
+    }
 
     info.pendingNextReplies = []
 }
@@ -134,17 +141,8 @@ function applyIdleTriggerJitter(waitSeconds: number, config: Config): number {
     return Math.max(1, Math.round(waitSeconds * multiplier))
 }
 
-function getGroupConfig(config: Config, guildId: string) {
-    const currentGuildConfig = config.configs[guildId]
-    if (currentGuildConfig == null) {
-        return Object.assign({}, config)
-    }
-
-    return Object.assign({}, config, currentGuildConfig)
-}
-
 export function registerNextReplyTrigger(
-    groupId: string,
+    key: string,
     rawReason: string,
     config: Config
 ) {
@@ -155,8 +153,22 @@ export function registerNextReplyTrigger(
 
     const now = Date.now()
     const info =
-        groupInfos[groupId] ??
-        createDefaultGroupInfo(getGroupConfig(config, groupId), now)
+        groupInfos[key] ??
+        (() => {
+            const isDirect = key.startsWith('private:')
+            const id = isDirect
+                ? key.slice('private:'.length)
+                : key.startsWith('group:')
+                  ? key.slice('group:'.length)
+                  : key
+            const guildConfig = isDirect
+                ? config.privateConfigs[id]
+                : config.configs[id]
+            return createDefaultGroupInfo(
+                Object.assign({}, config, guildConfig),
+                now
+            )
+        })()
 
     const pending: PendingNextReply = {
         rawReason,
@@ -167,20 +179,20 @@ export function registerNextReplyTrigger(
     // `next_reply` 设计为单次触发槽位：后设置会覆盖先设置。
     info.pendingNextReplies = [pending]
 
-    groupInfos[groupId] = info
+    groupInfos[key] = info
     return true
 }
 
-export function clearNextReplyTriggers(groupId: string) {
-    const info = groupInfos[groupId]
+export function clearNextReplyTriggers(key: string) {
+    const info = groupInfos[key]
     if (!info) return
 
     info.pendingNextReplies = []
-    groupInfos[groupId] = info
+    groupInfos[key] = info
 }
 
 export function registerWakeUpReplyTrigger(
-    groupId: string,
+    key: string,
     rawTime: string,
     reason: string,
     config: Config
@@ -192,8 +204,22 @@ export function registerWakeUpReplyTrigger(
 
     const now = Date.now()
     const info =
-        groupInfos[groupId] ??
-        createDefaultGroupInfo(getGroupConfig(config, groupId), now)
+        groupInfos[key] ??
+        (() => {
+            const isDirect = key.startsWith('private:')
+            const id = isDirect
+                ? key.slice('private:'.length)
+                : key.startsWith('group:')
+                  ? key.slice('group:'.length)
+                  : key
+            const guildConfig = isDirect
+                ? config.privateConfigs[id]
+                : config.configs[id]
+            return createDefaultGroupInfo(
+                Object.assign({}, config, guildConfig),
+                now
+            )
+        })()
 
     const normalizedReason = reason.trim()
     const configuredAt = new Date(now)
@@ -215,7 +241,7 @@ export function registerWakeUpReplyTrigger(
     info.pendingWakeUpReplies = info.pendingWakeUpReplies ?? []
     info.pendingWakeUpReplies.push(pending)
 
-    groupInfos[groupId] = info
+    groupInfos[key] = info
     return true
 }
 
@@ -323,6 +349,8 @@ function updatePassiveRetryStateAfterTriggered(
 
 function resolveGuildPresetContext(
     guildId: string,
+    key: string,
+    isDirect: boolean,
     config: Config,
     globalPreset: PresetTemplate,
     presetPool: Record<string, PresetTemplate>,
@@ -330,8 +358,10 @@ function resolveGuildPresetContext(
         getPresetForCache: (name: string) => PresetTemplate
     }
 ) {
-    const copyOfConfig = getGroupConfig(config, guildId)
-    const currentGuildConfig = config.configs[guildId]
+    const currentGuildConfig = isDirect
+        ? config.privateConfigs[guildId]
+        : config.configs[guildId]
+    const copyOfConfig = Object.assign({}, config, currentGuildConfig)
     if (currentGuildConfig == null) {
         return {
             copyOfConfig,
@@ -340,10 +370,10 @@ function resolveGuildPresetContext(
     }
 
     const currentPreset =
-        presetPool[guildId] ??
+        presetPool[key] ??
         (() => {
             const template = preset.getPresetForCache(currentGuildConfig.preset)
-            presetPool[guildId] = template
+            presetPool[key] = template
             return template
         })()
 
@@ -357,16 +387,19 @@ function updateIncomingMessageStats(
     info: GroupInfo,
     copyOfConfig: Config,
     userId: string,
-    now: number
+    now: number,
+    isDirect: boolean
 ) {
-    info.messageTimestamps.push(now)
-    if (info.messageTimestamps.length > WINDOW_SIZE) {
-        info.messageTimestamps.shift()
-    }
+    if (!isDirect) {
+        info.messageTimestamps.push(now)
+        if (info.messageTimestamps.length > WINDOW_SIZE) {
+            info.messageTimestamps.shift()
+        }
 
-    if (now - info.lastUserMessageTime >= THRESHOLD_RESET_TIME) {
-        info.currentActivityThreshold =
-            copyOfConfig.messageActivityScoreLowerLimit
+        if (now - info.lastUserMessageTime >= THRESHOLD_RESET_TIME) {
+            info.currentActivityThreshold =
+                copyOfConfig.messageActivityScoreLowerLimit
+        }
     }
 
     info.lastUserMessageTime = now
@@ -382,17 +415,25 @@ function shouldStopWhenDisableChatLuna(
     ctx: Context,
     session: Session,
     copyOfConfig: Config,
-    guildId: string
+    key: string,
+    id: string
 ) {
+    if (session.isDirect) {
+        return (
+            copyOfConfig.disableChatLuna &&
+            copyOfConfig.whiteListDisableChatLunaPrivate.includes(id)
+        )
+    }
+
     if (
         !copyOfConfig.disableChatLuna ||
-        !copyOfConfig.whiteListDisableChatLuna.includes(guildId)
+        !copyOfConfig.whiteListDisableChatLuna.includes(id)
     ) {
         return false
     }
 
     const selfId = session.bot.userId ?? session.bot.selfId ?? '0'
-    const guildMessages = ctx.chatluna_character.getMessages(guildId)
+    const guildMessages = ctx.chatluna_character.getMessages(key)
 
     let maxRecentMessage = 0
     if (guildMessages == null || guildMessages.length === 0) {
@@ -438,7 +479,8 @@ function resolveTriggerReason(
     info: GroupInfo,
     copyOfConfig: Config,
     isDirectTrigger: boolean,
-    isAppel: boolean
+    isAppel: boolean,
+    isDirect: boolean
 ) {
     const immediateTriggerReason = resolveImmediateTriggerReason(
         info,
@@ -448,6 +490,10 @@ function resolveTriggerReason(
     )
     if (immediateTriggerReason) {
         return immediateTriggerReason
+    }
+
+    if (isDirect) {
+        return undefined
     }
 
     if (info.lastActivityScore >= info.currentActivityThreshold) {
@@ -474,14 +520,24 @@ function getGroupInfoLastActiveAt(info: GroupInfo) {
 }
 
 function shouldRecycleGroupInfo(
-    guildId: string,
+    key: string,
     info: GroupInfo,
     copyOfConfig: Config,
     hasLastSession: boolean,
     now: number,
     config: Config
 ) {
-    if (!config.applyGroup.includes(guildId)) {
+    const isDirect = key.startsWith('private:')
+    const id = isDirect
+        ? key.slice('private:'.length)
+        : key.startsWith('group:')
+          ? key.slice('group:'.length)
+          : key
+
+    if (
+        (!isDirect && !config.applyGroup.includes(id)) ||
+        (isDirect && !config.applyPrivate.includes(id))
+    ) {
         return true
     }
 
@@ -504,18 +560,33 @@ function shouldRecycleGroupInfo(
 async function processSchedulerTickForGuild(
     ctx: Context,
     config: Config,
-    guildId: string
+    key: string
 ) {
     const service = ctx.chatluna_character
     const logger = service.logger
-    const info = groupInfos[guildId]
+    const info = groupInfos[key]
     if (info == null) {
         return
     }
 
-    const copyOfConfig = getGroupConfig(config, guildId)
-    const session = service.getLastSession(guildId)
+    const session = service.getLastSession(key)
     if (session == null) {
+        return
+    }
+
+    const id = session.isDirect ? session.userId : session.guildId
+    const guildConfig = session.isDirect
+        ? config.privateConfigs[id]
+        : config.configs[id]
+    const copyOfConfig = Object.assign({}, config, guildConfig)
+
+    clearStaleNextReplyTriggers(info)
+
+    const now = Date.now()
+    const triggeredWakeUpReply = findWakeUpTrigger(info, now)
+
+    if (triggeredWakeUpReply && (service.getMessages(key)?.length ?? 0) < 1) {
+        groupInfos[key] = info
         return
     }
 
@@ -527,10 +598,6 @@ async function processSchedulerTickForGuild(
         return
     }
 
-    clearStaleNextReplyTriggers(info)
-
-    const now = Date.now()
-    const triggeredWakeUpReply = findWakeUpTrigger(info, now)
     const triggerReason =
         (triggeredWakeUpReply
             ? `Triggered by wake_up_reply: ${triggeredWakeUpReply.naturalReason}`
@@ -539,7 +606,7 @@ async function processSchedulerTickForGuild(
         findIdleTriggerReason(info, copyOfConfig, now)
 
     if (!triggerReason) {
-        groupInfos[guildId] = info
+        groupInfos[key] = info
         return
     }
 
@@ -549,13 +616,13 @@ async function processSchedulerTickForGuild(
     try {
         triggered = await service.triggerCollect(session, triggerReason)
     } catch (e) {
-        logger.error(`triggerCollect failed for guild ${guildId}`, e)
-        groupInfos[guildId] = info
+        logger.error(`triggerCollect failed for session ${key}`, e)
+        groupInfos[key] = info
         return
     }
 
     if (!triggered) {
-        groupInfos[guildId] = info
+        groupInfos[key] = info
         return
     }
 
@@ -571,6 +638,11 @@ async function processSchedulerTickForGuild(
                     pending.reason === triggeredWakeUpReply.reason
                 )
         )
+
+        await service.persistWakeUpReplies(
+            session,
+            info.pendingWakeUpReplies ?? []
+        )
     }
 
     updatePassiveRetryStateAfterTriggered(
@@ -583,12 +655,12 @@ async function processSchedulerTickForGuild(
         info.pendingNextReplies ?? []
     ).filter((pending) => pending.createdAt >= triggerCollectStartedAt)
 
-    markTriggered(info, copyOfConfig, completedAt)
+    markTriggered(info, copyOfConfig, completedAt, session.isDirect)
     if (nextRepliesRegisteredDuringCollect.length > 0) {
         info.pendingNextReplies = nextRepliesRegisteredDuringCollect
     }
 
-    groupInfos[guildId] = info
+    groupInfos[key] = info
 }
 
 export async function apply(ctx: Context, config: Config) {
@@ -626,21 +698,71 @@ export async function apply(ctx: Context, config: Config) {
         ctx.chatluna_character.mute(session, duration)
     })
 
+    ctx.on('ready', () => {
+        const keys = Object.keys(service.getLoadedTemps())
+
+        for (const key of Object.keys(groupInfos)) {
+            if (!keys.includes(key)) {
+                keys.push(key)
+            }
+        }
+
+        for (const key of keys) {
+            const wakeUps = service.getLoadedWakeUpReplies(key)
+            if (wakeUps.length < 1) {
+                continue
+            }
+
+            const isDirect = key.startsWith('private:')
+            const id = isDirect
+                ? key.slice('private:'.length)
+                : key.startsWith('group:')
+                  ? key.slice('group:'.length)
+                  : key
+            const guildConfig = isDirect
+                ? config.privateConfigs[id]
+                : config.configs[id]
+            const copyOfConfig = Object.assign({}, config, guildConfig)
+            const info =
+                groupInfos[key] ??
+                createDefaultGroupInfo(copyOfConfig, Date.now())
+
+            info.pendingWakeUpReplies = [...wakeUps]
+            groupInfos[key] = info
+        }
+    })
+
     ctx.setInterval(() => {
         const now = Date.now()
 
-        for (const guildId of Object.keys(groupInfos)) {
-            const info = groupInfos[guildId]
+        for (const key of Object.keys(groupInfos)) {
+            const info = groupInfos[key]
             if (info == null) {
                 continue
             }
 
-            const copyOfConfig = getGroupConfig(config, guildId)
-            const hasLastSession = service.getLastSession(guildId) != null
+            const session = service.getLastSession(key)
+            const isDirect = session
+                ? session.isDirect
+                : key.startsWith('private:')
+            const id = session
+                ? session.isDirect
+                    ? session.userId
+                    : session.guildId
+                : key.startsWith('private:')
+                  ? key.slice('private:'.length)
+                  : key.startsWith('group:')
+                    ? key.slice('group:'.length)
+                    : key
+            const guildConfig = isDirect
+                ? config.privateConfigs[id]
+                : config.configs[id]
+            const copyOfConfig = Object.assign({}, config, guildConfig)
+            const hasLastSession = session != null
 
             if (
                 shouldRecycleGroupInfo(
-                    guildId,
+                    key,
                     info,
                     copyOfConfig,
                     hasLastSession,
@@ -648,7 +770,7 @@ export async function apply(ctx: Context, config: Config) {
                     config
                 )
             ) {
-                delete groupInfos[guildId]
+                delete groupInfos[key]
                 continue
             }
 
@@ -656,9 +778,9 @@ export async function apply(ctx: Context, config: Config) {
                 continue
             }
 
-            processSchedulerTickForGuild(ctx, config, guildId).catch((e) => {
+            processSchedulerTickForGuild(ctx, config, key).catch((e) => {
                 logger.error(
-                    `[next_reply] scheduler failed guild=${guildId}`,
+                    `[next_reply] scheduler failed session=${key}`,
                     e
                 )
             })
@@ -666,32 +788,74 @@ export async function apply(ctx: Context, config: Config) {
     }, SCHEDULER_TICK)
 
     service.addFilter((session, message) => {
-        const guildId = session.guildId
+        const id = session.isDirect ? session.userId : session.guildId
+        const key = `${session.isDirect ? 'private' : 'group'}:${id}`
         const now = Date.now()
         const { copyOfConfig, currentPreset } = resolveGuildPresetContext(
-            guildId,
+            id,
+            key,
+            session.isDirect,
             config,
             globalPreset,
             presetPool,
             preset
         )
 
-        const info =
-            groupInfos[guildId] ?? createDefaultGroupInfo(copyOfConfig, now)
+        const info = groupInfos[key] ?? (() => {
+            const info = createDefaultGroupInfo(copyOfConfig, now)
+            const wakeUps = service.getLoadedWakeUpReplies(key)
+
+            if (wakeUps.length > 0) {
+                info.pendingWakeUpReplies = [...wakeUps]
+            }
+
+            return info
+        })()
+
+        if (
+            !service.isResponseLocked(session) &&
+            (service.getMessages(key)?.length ?? 0) > 1
+        ) {
+            const pendingWakeUpReplies = info.pendingWakeUpReplies ?? []
+            const nextWakeUpReplies = pendingWakeUpReplies.filter(
+                (pending) => pending.triggerAt > now
+            )
+
+            if (nextWakeUpReplies.length !== pendingWakeUpReplies.length) {
+                info.pendingWakeUpReplies = nextWakeUpReplies
+                void service.persistWakeUpReplies(session, nextWakeUpReplies).catch(
+                    (e) => {
+                        logger.error(e)
+                    }
+                )
+            }
+        }
 
         const selfId = session.bot.selfId ?? session.bot.userId ?? '0'
         if (message.id === selfId) {
-            groupInfos[guildId] = info
+            groupInfos[key] = info
             return
         }
 
         if (
-            shouldStopWhenDisableChatLuna(ctx, session, copyOfConfig, guildId)
+            shouldStopWhenDisableChatLuna(
+                ctx,
+                session,
+                copyOfConfig,
+                key,
+                id
+            )
         ) {
             return
         }
 
-        updateIncomingMessageStats(info, copyOfConfig, message.id, now)
+        updateIncomingMessageStats(
+            info,
+            copyOfConfig,
+            message.id,
+            now,
+            session.isDirect
+        )
 
         const botId = session.bot.selfId
         let appel = session.stripped.appel
@@ -745,6 +909,16 @@ export async function apply(ctx: Context, config: Config) {
                     plainTextContent.includes(value)
                 ))
 
+        logger.debug(
+            session.isDirect
+                ? `messageCount: ${info.messageCount}. content: ${JSON.stringify(
+                      Object.assign({}, message, { images: undefined })
+                  )}`
+                : `messageCount: ${info.messageCount}, activityScore: ${info.lastActivityScore.toFixed(3)}. content: ${JSON.stringify(
+                      Object.assign({}, message, { images: undefined })
+                  )}`
+        )
+
         const immediateTriggerReason = resolveImmediateTriggerReason(
             info,
             copyOfConfig,
@@ -754,47 +928,44 @@ export async function apply(ctx: Context, config: Config) {
 
         if (immediateTriggerReason) {
             if (!isMute) {
-                markTriggered(info, copyOfConfig, now)
-                groupInfos[session.guildId] = info
+                markTriggered(info, copyOfConfig, now, session.isDirect)
+                groupInfos[key] = info
                 return immediateTriggerReason
             }
 
             info.messageCount++
-            groupInfos[session.guildId] = info
+            groupInfos[key] = info
             return
         }
 
-        const activity = calculateActivityScore(
-            info.messageTimestamps,
-            info.lastResponseTime,
-            copyOfConfig.maxMessages,
-            info.lastActivityScore,
-            info.lastScoreUpdate
-        )
-        info.lastActivityScore = activity.score
-        info.lastScoreUpdate = activity.timestamp
-
-        logger.debug(
-            `messageCount: ${info.messageCount}, activityScore: ${activity.score.toFixed(3)}. content: ${JSON.stringify(
-                Object.assign({}, message, { images: undefined })
-            )}`
-        )
+        if (!session.isDirect) {
+            const activity = calculateActivityScore(
+                info.messageTimestamps,
+                info.lastResponseTime,
+                copyOfConfig.maxMessages,
+                info.lastActivityScore,
+                info.lastScoreUpdate
+            )
+            info.lastActivityScore = activity.score
+            info.lastScoreUpdate = activity.timestamp
+        }
 
         const triggerReason = resolveTriggerReason(
             info,
             copyOfConfig,
             isDirectTrigger,
-            isAppel
+            isAppel,
+            session.isDirect
         )
 
         if (triggerReason && !isMute) {
-            markTriggered(info, copyOfConfig, now)
-            groupInfos[session.guildId] = info
+            markTriggered(info, copyOfConfig, now, session.isDirect)
+            groupInfos[key] = info
             return triggerReason
         }
 
         info.messageCount++
-        groupInfos[session.guildId] = info
+        groupInfos[key] = info
     })
 }
 
