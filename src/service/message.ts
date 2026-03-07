@@ -12,16 +12,15 @@ import { Preset } from '../preset'
 import {
     GroupLock,
     GroupTemp,
+    IMAGE_SIZE_CACHE_LIMIT,
     Message,
     MessageCollectorFilter,
     MessageImage,
     OneBotHistoryMessage
 } from '../types'
 import { parseCQCode } from '../onebot/cqcode'
-import { TempStore } from './store'
+import { VariableStore } from './variable_store'
 import { attachMultimodalFileLimit } from '../utils'
-
-const IMAGE_SIZE_CACHE_LIMIT = 512
 
 interface BotAPIMessage {
     id?: string
@@ -80,7 +79,7 @@ export class MessageCollector extends Service {
 
     private _imageSizeCacheCount = 0
 
-    private _store: TempStore
+    private _store: VariableStore
 
     preset: Preset
 
@@ -93,7 +92,7 @@ export class MessageCollector extends Service {
         super(ctx, 'chatluna_character')
         this.logger = createLogger(ctx, 'chatluna-character')
         this.preset = new Preset(ctx)
-        this._store = new TempStore(ctx)
+        this._store = new VariableStore(ctx)
     }
 
     addFilter(filter: MessageCollectorFilter) {
@@ -305,7 +304,7 @@ export class MessageCollector extends Service {
         const groupId = session.guildId
         const config = this._getGroupConfig(groupId)
 
-        if (!config.enableStatusPersistence) {
+        if (!config.statusPersistence) {
             return
         }
 
@@ -333,21 +332,7 @@ export class MessageCollector extends Service {
     }
 
     private _getOrCreateGroupTemp(groupId: string): GroupTemp {
-        return this._groupTemp[groupId] ?? this._newTemp()
-    }
-
-    private _newTemp(clearedAt?: Date): GroupTemp {
-        return {
-            completionMessages: [],
-            historyPulled: false,
-            historyClearedAt: clearedAt,
-            status: null,
-            statusMessageId: null,
-            statusMessageTimestamp: null,
-            statusMessageContent: null,
-            statusMessageUserId: null,
-            recordLoaded: clearedAt != null
-        }
+        return this._groupTemp[groupId] ?? newTemp()
     }
 
     private _getGroupConfig(groupId: string) {
@@ -376,7 +361,7 @@ export class MessageCollector extends Service {
             const unlock = await this._lockByGroupId(groupId)
             try {
                 this._messages[groupId] = []
-                this._groupTemp[groupId] = this._newTemp(clearedAt)
+                this._groupTemp[groupId] = newTemp(clearedAt)
                 delete this._lastSessions[groupId]
                 // Cancel waiters directly while holding lock
                 const waiters = this._responseWaiters[groupId]
@@ -387,7 +372,7 @@ export class MessageCollector extends Service {
                     this._responseWaiters[groupId] = []
                 }
 
-                if (config.enableStatusPersistence || config.enableHistoryPull) {
+                if (config.statusPersistence || config.historyPull) {
                     await this._store.clear(groupId, clearedAt)
                 }
             } finally {
@@ -407,7 +392,7 @@ export class MessageCollector extends Service {
             const clearedAt = new Date()
             this._messages = {}
             this._groupTemp = Object.fromEntries(
-                groupIds.map((groupId) => [groupId, this._newTemp(clearedAt)])
+                groupIds.map((groupId) => [groupId, newTemp(clearedAt)])
             )
             this._lastSessions = {}
 
@@ -425,10 +410,7 @@ export class MessageCollector extends Service {
             await Promise.all(
                 groupIds.map(async (groupId) => {
                     const config = this._getGroupConfig(groupId)
-                    if (
-                        config.enableStatusPersistence ||
-                        config.enableHistoryPull
-                    ) {
+                    if (config.statusPersistence || config.historyPull) {
                         await this._store.clear(groupId, clearedAt)
                     }
                 })
@@ -584,7 +566,7 @@ export class MessageCollector extends Service {
         const cfg = this._getGroupConfig(groupId)
         const max = cfg.maxMessages
 
-        if (!cfg.enableHistoryPull) {
+        if (!cfg.historyPull) {
             return
         }
 
@@ -629,7 +611,7 @@ export class MessageCollector extends Service {
 
         const unlock = await this._lockByGroupId(groupId)
         try {
-            this._messages[groupId] = this._merge(
+            this._messages[groupId] = mergeMessages(
                 this._messages[groupId] ?? [],
                 list,
                 max
@@ -699,10 +681,7 @@ export class MessageCollector extends Service {
             return this._pullOneBot(session, count, focusMessage, clearedAfter)
         }
 
-        if (
-            typeof (session.bot as Bot & { getMessageList?: unknown })
-                .getMessageList === 'function'
-        ) {
+        if (typeof session.bot.getMessageList === 'function') {
             return this._pullBot(session, count, focusMessage, clearedAfter)
         }
 
@@ -719,12 +698,8 @@ export class MessageCollector extends Service {
         focusMessage: Message,
         clearedAfter?: number
     ): Promise<Message[]> {
-        const bot = session.bot as unknown as Bot & {
-            getMessageList?: (
-                channelId: string,
-                next?: string,
-                direction?: 'before' | 'after'
-            ) => Promise<{ data?: unknown[]; prev?: string }>
+        const bot = session.bot as Bot & {
+            getMessageList: Bot['getMessageList']
         }
 
         const targetId = session.channelId ?? session.guildId
@@ -742,7 +717,7 @@ export class MessageCollector extends Service {
         let previousNextId: string | undefined
 
         while (results.length < count) {
-            let response: { data?: unknown[]; prev?: string }
+            let response: Awaited<ReturnType<typeof bot.getMessageList>>
             try {
                 response = await bot.getMessageList(targetId, nextId, 'before')
             } catch (error) {
@@ -753,15 +728,15 @@ export class MessageCollector extends Service {
                 return []
             }
 
-            const batch = (response.data ?? []) as BotAPIMessage[]
+            const batch = response.data ?? []
             if (batch.length < 1) {
                 break
             }
 
             const list = batch
-                .map((msg) => this._toBotMsg(session, msg))
+                .map((msg) => toBotMsg(session, msg))
                 .filter((message): message is Message => message != null)
-                .filter((message) => !this._same(message, focusMessage))
+                .filter((message) => !sameMessage(message, focusMessage))
                 .filter(
                     (message) =>
                         clearedAfter == null ||
@@ -777,7 +752,7 @@ export class MessageCollector extends Service {
             if (clearedAfter != null && oldestTimestamp <= clearedAfter) {
                 break
             }
-            nextId = response.prev ?? oldestMessage?.messageId
+            nextId = response.prev ?? oldestMessage?.id
             if (nextId == null || nextId.length < 1) {
                 break
             }
@@ -789,7 +764,7 @@ export class MessageCollector extends Service {
             previousNextId = nextId
         }
 
-        return this._merge([], results, count)
+        return mergeMessages([], results, count)
     }
 
     private async _pullOneBot(
@@ -955,92 +930,14 @@ export class MessageCollector extends Service {
                 } as Message
             })
             .filter((message): message is Message => message != null)
-            .filter((message) => !this._same(message, focusMessage))
+            .filter((message) => !sameMessage(message, focusMessage))
             .filter(
                 (message) =>
                     clearedAfter == null ||
-                    (message.timestamp != null && message.timestamp > clearedAfter)
+                    (message.timestamp != null &&
+                        message.timestamp > clearedAfter)
             )
             .slice(-count)
-    }
-
-    private _toBotMsg(session: Session, msg: BotAPIMessage): Message | null {
-        const text = msg.content ?? ''
-        const id = msg.userId ?? msg.user?.id ?? '0'
-        const content = mapElementToString(
-            session,
-            text,
-            msg.elements ?? h.parse(text)
-        )
-
-        if (content.length < 1) {
-            return null
-        }
-
-        return {
-            content,
-            name: getNotEmptyString(
-                msg.member?.name,
-                msg.user?.nick,
-                msg.user?.name,
-                id
-            ),
-            id,
-            messageId: msg.messageId ?? msg.id,
-            timestamp: msg.timestamp ?? msg.createdAt,
-            quote: msg.quote
-                ? {
-                      content: mapElementToString(
-                          session,
-                          msg.quote.content ?? '',
-                          msg.quote.elements ?? h.parse(msg.quote.content ?? '')
-                      ),
-                      name: getNotEmptyString(
-                          msg.quote.user?.name,
-                          msg.quote.user?.nick,
-                          msg.quote.user?.id
-                      ),
-                      id: msg.quote.user?.id,
-                      messageId: msg.quote.id
-                  }
-                : undefined
-        }
-    }
-
-    private _same(left: Message, right: Message) {
-        if (left.messageId != null && right.messageId != null) {
-            return left.messageId === right.messageId
-        }
-
-        return (
-            left.id === right.id &&
-            left.timestamp === right.timestamp &&
-            left.content === right.content
-        )
-    }
-
-    private _merge(list: Message[], add: Message[], max: number) {
-        const keyedMessages = new Map<string, Message>()
-
-        for (const message of list.concat(add)) {
-            const key =
-                message.messageId != null
-                    ? `message:${message.messageId}`
-                    : `fallback:${message.id}:${message.timestamp}:${message.content}`
-            keyedMessages.set(key, message)
-        }
-
-        const merged = [...keyedMessages.values()].sort((a, b) => {
-            const left = a.timestamp ?? 0
-            const right = b.timestamp ?? 0
-            return left - right
-        })
-
-        while (merged.length > max) {
-            merged.shift()
-        }
-
-        return merged
     }
 
     private async _processImages(groupArray: Message[], config: Config) {
@@ -1128,6 +1025,99 @@ export class MessageCollector extends Service {
             return 0
         }
     }
+}
+
+function newTemp(clearedAt?: Date): GroupTemp {
+    return {
+        completionMessages: [],
+        historyPulled: false,
+        historyClearedAt: clearedAt,
+        status: null,
+        statusMessageId: null,
+        statusMessageTimestamp: null,
+        statusMessageContent: null,
+        statusMessageUserId: null,
+        recordLoaded: clearedAt != null
+    }
+}
+
+function toBotMsg(session: Session, msg: BotAPIMessage): Message | null {
+    const text = msg.content ?? ''
+    const id = msg.userId ?? msg.user?.id ?? '0'
+    const content = mapElementToString(
+        session,
+        text,
+        msg.elements ?? h.parse(text)
+    )
+
+    if (content.length < 1) {
+        return null
+    }
+
+    return {
+        content,
+        name: getNotEmptyString(
+            msg.member?.name,
+            msg.user?.nick,
+            msg.user?.name,
+            id
+        ),
+        id,
+        messageId: msg.messageId ?? msg.id,
+        timestamp: msg.timestamp ?? msg.createdAt,
+        quote: msg.quote
+            ? {
+                  content: mapElementToString(
+                      session,
+                      msg.quote.content ?? '',
+                      msg.quote.elements ?? h.parse(msg.quote.content ?? '')
+                  ),
+                  name: getNotEmptyString(
+                      msg.quote.user?.name,
+                      msg.quote.user?.nick,
+                      msg.quote.user?.id
+                  ),
+                  id: msg.quote.user?.id,
+                  messageId: msg.quote.id
+              }
+            : undefined
+    }
+}
+
+function sameMessage(left: Message, right: Message) {
+    if (left.messageId != null && right.messageId != null) {
+        return left.messageId === right.messageId
+    }
+
+    return (
+        left.id === right.id &&
+        left.timestamp === right.timestamp &&
+        left.content === right.content
+    )
+}
+
+function mergeMessages(list: Message[], add: Message[], max: number) {
+    const map = new Map<string, Message>()
+
+    for (const msg of list.concat(add)) {
+        const key =
+            msg.messageId != null
+                ? `message:${msg.messageId}`
+                : `fallback:${msg.id}:${msg.timestamp}:${msg.content}`
+        map.set(key, msg)
+    }
+
+    const merged = [...map.values()].sort((a, b) => {
+        const left = a.timestamp ?? 0
+        const right = b.timestamp ?? 0
+        return left - right
+    })
+
+    while (merged.length > max) {
+        merged.shift()
+    }
+
+    return merged
 }
 
 function formatLogDate(value?: Date | null) {

@@ -2,7 +2,7 @@ import { AIMessageChunk, BaseMessage } from '@langchain/core/messages'
 import { RunnableConfig } from '@langchain/core/runnables'
 import { ChatLunaService } from 'koishi-plugin-chatluna/services/chat'
 import { ChatLunaChatPromptFormat } from 'koishi-plugin-chatluna/llm-core/chain/prompt'
-import { Session } from 'koishi'
+import { Bot, Session } from 'koishi'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type ChatLunaRunnableConfig = RunnableConfig<Record<string, any>>
@@ -65,8 +65,8 @@ export interface GuildConfig {
     muteTime: number
     modelCompletionCount: number
     toolCalling: boolean
-    enableHistoryPull: boolean
-    enableStatusPersistence: boolean
+    historyPull: boolean
+    statusPersistence: boolean
 }
 
 export interface CharacterVariableRecord {
@@ -197,6 +197,10 @@ export type MessageImage = {
     hash: string
     formatted: string
 }
+
+export type KoishiMessage = Awaited<ReturnType<Bot['getMessage']>>
+
+export const IMAGE_SIZE_CACHE_LIMIT = 512
 
 declare module 'koishi' {
     interface Tables {

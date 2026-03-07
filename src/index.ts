@@ -120,8 +120,8 @@ export interface Config extends ChatLunaPlugin.Config {
     imageInputMaxSize: number
     multimodalFileInputMaxSize: number
     modelCompletionCount: number
-    enableHistoryPull: boolean
-    enableStatusPersistence: boolean
+    historyPull: boolean
+    statusPersistence: boolean
 
     coolDownTime: number
     typingTime: number
@@ -236,12 +236,12 @@ export const Config = Schema.intersect([
             .role('slider')
             .max(10000)
             .description('随机发送消息的最大间隔'),
-        enableStatusPersistence: Schema.boolean()
+        statusPersistence: Schema.boolean()
             .default(true)
             .description(
                 '是否将状态变量持久化到数据库，使重启时可以恢复上次的状态'
             ),
-        enableHistoryPull: Schema.boolean()
+        historyPull: Schema.boolean()
             .default(true)
             .description(
                 '是否在缺失历史消息时自动从支持的 API ' +
@@ -394,12 +394,12 @@ export const Config = Schema.intersect([
                     .description(
                         '随机发送消息的间隔。群越活跃，这个值就会越高。'
                     ),
-                enableStatusPersistence: Schema.boolean()
+                statusPersistence: Schema.boolean()
                     .default(true)
                     .description(
                         '是否将状态变量持久化到数据库，使重启时可以恢复上次的状态'
                     ),
-                enableHistoryPull: Schema.boolean()
+                historyPull: Schema.boolean()
                     .default(true)
                     .description(
                         '是否在缺失历史消息时自动从支持的 API ' +
