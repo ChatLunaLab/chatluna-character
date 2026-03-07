@@ -103,7 +103,8 @@
         },
         "service": {
             "required": [
-                "chatluna"
+                "chatluna",
+                "database"
             ],
             "optional": [
                 "vits"

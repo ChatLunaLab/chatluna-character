@@ -1167,7 +1167,7 @@ export async function createChatLunaChain(
                 const content =
                     bufferedActionText.length > 0
                         ? bufferedActionText
-                        : (action.content ?? action.log)
+                        : action.log
                 const responseChunk = createAgentResponseChunk(content)
 
                 bufferedActionText = ''

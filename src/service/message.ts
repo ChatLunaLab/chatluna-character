@@ -10,12 +10,15 @@ import { ObjectLock } from 'koishi-plugin-chatluna/utils/lock'
 import { Config } from '..'
 import { Preset } from '../preset'
 import {
+    CharacterVariableRecord,
     GroupLock,
     GroupTemp,
     Message,
     MessageCollectorFilter,
-    MessageImage
+    MessageImage,
+    OneBotHistoryMessage
 } from '../types'
+import { parseCQCode } from '../onebot/cqcode'
 import { attachMultimodalFileLimit } from '../utils'
 
 const IMAGE_SIZE_CACHE_LIMIT = 512
@@ -56,6 +59,33 @@ export class MessageCollector extends Service {
         super(ctx, 'chatluna_character')
         this.logger = createLogger(ctx, 'chatluna-character')
         this.preset = new Preset(ctx)
+        this._defineDatabase()
+    }
+
+    private _defineDatabase() {
+        this.ctx.database.extend(
+            'chathub_character_variable',
+            {
+                groupId: {
+                    type: 'string',
+                    length: 255
+                },
+                status: {
+                    type: 'text',
+                    nullable: true
+                },
+                updatedAt: {
+                    type: 'timestamp',
+                    nullable: false,
+                    initial: new Date()
+                }
+            },
+            {
+                autoInc: false,
+                primary: 'groupId',
+                unique: ['groupId']
+            }
+        )
     }
 
     addFilter(filter: MessageCollectorFilter) {
@@ -217,13 +247,45 @@ export class MessageCollector extends Service {
         const unlock = await this._lockByGroupId(groupId)
         try {
             const temp = this._groupTemp[groupId] ?? {
-                completionMessages: []
+                completionMessages: [],
+                historyPulled: false,
+                statusLoaded: false
             }
+
+            if (
+                this._getGroupConfig(groupId).enableStatusPersistence &&
+                !temp.statusLoaded
+            ) {
+                const record = await this.ctx.database.get(
+                    'chathub_character_variable',
+                    [groupId]
+                )
+                temp.status = record[0]?.status
+                temp.statusLoaded = true
+            }
+
             this._groupTemp[groupId] = temp
             return temp
         } finally {
             unlock()
         }
+    }
+
+    async persistStatus(session: Session, status?: string) {
+        const groupId = session.guildId
+        const config = this._getGroupConfig(groupId)
+
+        if (!config.enableStatusPersistence) {
+            return
+        }
+
+        await this.ctx.database.upsert('chathub_character_variable', [
+            {
+                groupId,
+                status,
+                updatedAt: new Date()
+            } satisfies CharacterVariableRecord
+        ])
     }
 
     private _getGroupLocks(groupId: string) {
@@ -257,11 +319,14 @@ export class MessageCollector extends Service {
 
     async clear(groupId?: string) {
         if (groupId) {
+            const config = this._getGroupConfig(groupId)
             const unlock = await this._lockByGroupId(groupId)
             try {
                 this._messages[groupId] = []
                 this._groupTemp[groupId] = {
-                    completionMessages: []
+                    completionMessages: [],
+                    historyPulled: false,
+                    statusLoaded: !config.enableStatusPersistence
                 }
                 delete this._lastSessions[groupId]
                 // Cancel waiters directly while holding lock
@@ -271,6 +336,12 @@ export class MessageCollector extends Service {
                         waiter.reject('cancelled')
                     }
                     this._responseWaiters[groupId] = []
+                }
+
+                if (config.enableStatusPersistence) {
+                    await this.ctx.database.remove('chathub_character_variable', [
+                        groupId
+                    ])
                 }
             } finally {
                 unlock()
@@ -299,6 +370,10 @@ export class MessageCollector extends Service {
                     }
                     this._responseWaiters[gid] = []
                 }
+            }
+
+            if (this._config.enableStatusPersistence) {
+                await this.ctx.database.remove('chathub_character_variable', {})
             }
         } finally {
             // Release in reverse order
@@ -402,6 +477,7 @@ export class MessageCollector extends Service {
         })
 
         if (triggerReason && !this.isMute(session)) {
+            await this.ensureHistoryPulled(session, message)
             const triggered = await this.triggerCollect(
                 session,
                 triggerReason,
@@ -443,6 +519,51 @@ export class MessageCollector extends Service {
         )
 
         return true
+    }
+
+    async ensureHistoryPulled(session: Session, focusMessage: Message) {
+        const groupId = session.guildId
+        const config = this._getGroupConfig(groupId)
+
+        if (!config.enableHistoryPull) {
+            return
+        }
+
+        const temp = await this.getTemp(session)
+        const groupMessages = this._messages[groupId] ?? []
+        const hasHistory = groupMessages.some((message) => message !== focusMessage)
+
+        if (hasHistory) {
+            temp.historyPulled = true
+            return
+        }
+
+        if (temp.historyPulled) {
+            return
+        }
+
+        const historyMessages = await this._fetchOneBotGroupHistory(
+            session,
+            this._config.maxMessages,
+            focusMessage
+        )
+
+        temp.historyPulled = true
+
+        if (historyMessages.length < 1) {
+            return
+        }
+
+        const unlock = await this._lockByGroupId(groupId)
+        try {
+            this._messages[groupId] = this._mergeMessages(
+                this._messages[groupId] ?? [],
+                historyMessages,
+                this._config.maxMessages
+            )
+        } finally {
+            unlock()
+        }
     }
 
     private async _addMessage(
@@ -493,6 +614,203 @@ export class MessageCollector extends Service {
         } finally {
             unlock()
         }
+    }
+
+    private async _fetchOneBotGroupHistory(
+        session: Session,
+        count: number,
+        focusMessage: Message
+    ): Promise<Message[]> {
+        const bot = session.bot as Session['bot'] & {
+            platform: string
+            internal?: {
+                _request: (
+                    action: string,
+                    params: Record<string, unknown>
+                ) => Promise<{ data?: Record<string, unknown> }>
+            }
+        }
+
+        if (bot.platform !== 'onebot' || bot.internal?._request == null) {
+            this.logger.debug(
+                `Skip history pull for guild ${session.guildId}: current adapter is not OneBot.`
+            )
+            return []
+        }
+
+        const targetId = Number(session.guildId)
+        if (!Number.isFinite(targetId)) {
+            this.logger.warn(
+                `Skip history pull for guild ${session.guildId}: invalid group id.`
+            )
+            return []
+        }
+
+        let isNapCat = false
+        try {
+            const versionInfo = await bot.internal._request('get_version_info', {})
+            const appName = String(versionInfo.data?.['app_name'] ?? '').toLowerCase()
+            isNapCat = appName.includes('napcat')
+        } catch (error) {
+            this.logger.debug('Failed to detect OneBot app info', error)
+        }
+
+        const results: OneBotHistoryMessage[] = []
+        let fetchedCount = 0
+        let messageSeq: number | undefined
+        let messageId: number | undefined
+        let oldestMessageTime = Number.MAX_SAFE_INTEGER
+        const focusTimestamp = focusMessage.timestamp
+
+        while (fetchedCount < count) {
+            const requestPackage: Record<string, unknown> = {
+                group_id: targetId,
+                message_seq: messageSeq,
+                message_id: messageId,
+                count: Math.min(count - fetchedCount + 1, isNapCat ? 50 : 30),
+                reverseOrder: typeof messageSeq === 'number'
+            }
+
+            if (!isNapCat) {
+                delete requestPackage.reverseOrder
+            }
+
+            if (messageSeq == null) {
+                delete requestPackage.message_seq
+                delete requestPackage.message_id
+            }
+
+            let batch: OneBotHistoryMessage[] = []
+            try {
+                const response = await bot.internal._request(
+                    'get_group_msg_history',
+                    requestPackage
+                )
+                batch = (response.data?.['messages'] as OneBotHistoryMessage[]) ?? []
+            } catch (error) {
+                this.logger.warn(
+                    `Failed to pull OneBot history for guild ${session.guildId}`,
+                    error
+                )
+                return []
+            }
+
+            if (batch.length < 1) {
+                break
+            }
+
+            const filteredBatch = batch.filter((message) => {
+                if (message.message_id != null && focusMessage.messageId != null) {
+                    return String(message.message_id) !== focusMessage.messageId
+                }
+
+                if (focusTimestamp == null || message.time == null) {
+                    return true
+                }
+
+                return message.time * 1000 <= focusTimestamp
+            })
+
+            results.unshift(...filteredBatch)
+            fetchedCount = results.length
+
+            const oldest = batch[0]
+            if (oldest == null || oldest.time == null) {
+                break
+            }
+
+            if (oldest.time >= oldestMessageTime) {
+                break
+            }
+
+            oldestMessageTime = oldest.time
+            messageSeq = oldest.message_seq
+            messageId = oldest.message_id
+        }
+
+        return this._normalizeOneBotMessages(session, results, focusMessage).slice(
+            -count
+        )
+    }
+
+    private _normalizeOneBotMessages(
+        session: Session,
+        messages: OneBotHistoryMessage[],
+        focusMessage: Message
+    ): Message[] {
+        const normalized = messages
+            .map((message) => {
+                const rawContent = message.raw_message ?? ''
+                const elements = parseCQCode(rawContent)
+                const content = mapElementToString(session, rawContent, elements)
+
+                if (content.length < 1) {
+                    return null
+                }
+
+                const userId = message.sender?.user_id
+                const messageId =
+                    message.message_id != null
+                        ? String(message.message_id)
+                        : undefined
+
+                return {
+                    content,
+                    name:
+                        message.sender?.card ??
+                        message.sender?.nickname ??
+                        String(userId ?? '0'),
+                    id: userId != null ? String(userId) : '0',
+                    messageId,
+                    timestamp:
+                        message.time != null ? message.time * 1000 : undefined
+                } as Message
+            })
+            .filter((message): message is Message => message != null)
+
+        return normalized.filter((message) => {
+            if (
+                focusMessage.messageId != null &&
+                message.messageId != null &&
+                focusMessage.messageId === message.messageId
+            ) {
+                return false
+            }
+
+            return !(
+                message.id === focusMessage.id &&
+                message.timestamp === focusMessage.timestamp &&
+                message.content === focusMessage.content
+            )
+        })
+    }
+
+    private _mergeMessages(
+        currentMessages: Message[],
+        incomingMessages: Message[],
+        maxMessageSize: number
+    ) {
+        const keyedMessages = new Map<string, Message>()
+
+        for (const message of currentMessages.concat(incomingMessages)) {
+            const key =
+                message.messageId != null
+                    ? `message:${message.messageId}`
+                    : `fallback:${message.id}:${message.timestamp}:${message.content}`
+            keyedMessages.set(key, message)
+        }
+
+        const merged = [...keyedMessages.values()].sort((a, b) => {
+            const left = a.timestamp ?? 0
+            const right = b.timestamp ?? 0
+            return left - right
+        })
+
+        while (merged.length > maxMessageSize) {
+            merged.shift()
+        }
+
+        return merged
     }
 
     private async _processImages(groupArray: Message[], config: Config) {
