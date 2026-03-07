@@ -61,7 +61,8 @@ export function parseCQCode(source: string) {
                 elements.push(
                     h('img', {
                         imageUrl: data.url ?? data.file ?? data.path,
-                        imageHash: data.file
+                        imageHash: data.file,
+                        sticker: false
                     })
                 )
                 break
