@@ -379,12 +379,13 @@ export class MessageCollector extends Service {
             return
         }
 
-        const temp = await this.refreshTempRecord(session)
+        const temp = await this.getTemp(session)
+        const normalizedStatus = status ?? null
 
         await this.ctx.database.upsert('chathub_character_variable', [
             {
                 groupId,
-                status,
+                status: normalizedStatus,
                 historyClearedAt: temp.historyClearedAt,
                 statusMessageId: anchorMessage?.messageId,
                 statusMessageTimestamp: anchorMessage?.timestamp,
@@ -394,7 +395,7 @@ export class MessageCollector extends Service {
             } satisfies CharacterVariableRecord
         ])
 
-        temp.status = status
+        temp.status = normalizedStatus
         temp.statusMessageId = anchorMessage?.messageId
         temp.statusMessageTimestamp = anchorMessage?.timestamp
         temp.statusMessageContent = anchorMessage?.content

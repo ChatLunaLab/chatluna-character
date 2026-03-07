@@ -236,10 +236,14 @@ export const Config = Schema.intersect([
             .description('随机发送消息的最大间隔'),
         enableStatusPersistence: Schema.boolean()
             .default(true)
-            .description('是否将状态变量持久化到数据库，使重启时可以恢复上次的状态'),
+            .description(
+                '是否将状态变量持久化到数据库，使重启时可以恢复上次的状态'
+            ),
         enableHistoryPull: Schema.boolean()
             .default(true)
-            .description('是否在缺失历史消息时自动从支持的 API（如 OneBot及所有支持 getMessageList 的适配器）获取历史消息，使重启插件时可以获取刚刚的上下文'),
+            .description(
+                '是否在缺失历史消息时自动从支持的 API（如 OneBot及所有支持 getMessageList 的适配器）获取历史消息，使重启插件时可以获取刚刚的上下文'
+            ),
         enableLongWaitTrigger: Schema.boolean()
             .default(false)
             .description('是否启用空闲触发'),
@@ -385,10 +389,14 @@ export const Config = Schema.intersect([
                     ),
                 enableStatusPersistence: Schema.boolean()
                     .default(true)
-                    .description('是否将状态变量持久化到数据库，使重启时可以恢复上次的状态'),
+                    .description(
+                        '是否将状态变量持久化到数据库，使重启时可以恢复上次的状态'
+                    ),
                 enableHistoryPull: Schema.boolean()
                     .default(true)
-                    .description('是否在缺失历史消息时自动从支持的 API（如 OneBot及所有支持 getMessageList 的适配器）获取历史消息，使重启插件时可以获取刚刚的上下文'),
+                    .description(
+                        '是否在缺失历史消息时自动从支持的 API（如 OneBot及所有支持 getMessageList 的适配器）获取历史消息，使重启插件时可以获取刚刚的上下文'
+                    ),
                 enableLongWaitTrigger: Schema.boolean()
                     .default(false)
                     .description('是否启用空闲触发'),
