@@ -344,27 +344,36 @@ export class MessageCollector extends Service {
             return
         }
 
-        const temp = await this.getTemp(session)
-        const normalizedStatus = status ?? null
+        const unlock = await this._lockByGroupId(groupId)
+        try {
+            const temp = this._getOrCreateGroupTemp(groupId)
+            if (!temp.recordLoaded) {
+                await this._loadTempRecord(groupId, temp)
+            }
+            this._groupTemp[groupId] = temp
+            const normalizedStatus = status ?? null
 
-        await this.ctx.database.upsert('chathub_character_variable', [
-            {
-                groupId,
-                status: normalizedStatus,
-                historyClearedAt: temp.historyClearedAt,
-                statusMessageId: anchorMessage?.messageId,
-                statusMessageTimestamp: anchorMessage?.timestamp,
-                statusMessageContent: anchorMessage?.content,
-                statusMessageUserId: anchorMessage?.id,
-                updatedAt: new Date()
-            } satisfies CharacterVariableRecord
-        ])
+            await this.ctx.database.upsert('chathub_character_variable', [
+                {
+                    groupId,
+                    status: normalizedStatus,
+                    historyClearedAt: temp.historyClearedAt,
+                    statusMessageId: anchorMessage?.messageId,
+                    statusMessageTimestamp: anchorMessage?.timestamp,
+                    statusMessageContent: anchorMessage?.content,
+                    statusMessageUserId: anchorMessage?.id,
+                    updatedAt: new Date()
+                } satisfies CharacterVariableRecord
+            ])
 
-        temp.status = normalizedStatus
-        temp.statusMessageId = anchorMessage?.messageId
-        temp.statusMessageTimestamp = anchorMessage?.timestamp
-        temp.statusMessageContent = anchorMessage?.content
-        temp.statusMessageUserId = anchorMessage?.id
+            temp.status = normalizedStatus
+            temp.statusMessageId = anchorMessage?.messageId
+            temp.statusMessageTimestamp = anchorMessage?.timestamp
+            temp.statusMessageContent = anchorMessage?.content
+            temp.statusMessageUserId = anchorMessage?.id
+        } finally {
+            unlock()
+        }
     }
 
     async persistClearState(groupId: string, clearedAt: Date) {
@@ -849,6 +858,7 @@ export class MessageCollector extends Service {
 
         const results: Message[] = []
         let nextId: string | undefined
+        let previousNextId: string | undefined
 
         while (results.length < count) {
             let response: { data?: unknown[]; prev?: string }
@@ -892,6 +902,12 @@ export class MessageCollector extends Service {
             if (nextId == null || nextId.length < 1) {
                 break
             }
+
+            if (nextId === previousNextId) {
+                break
+            }
+
+            previousNextId = nextId
         }
 
         return this._mergeMessages([], results, count)
