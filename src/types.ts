@@ -69,14 +69,34 @@ export interface GuildConfig {
     statusPersistence: boolean
 }
 
+export type PrivateConfig = Omit<
+    GuildConfig,
+    'messageActivityScoreLowerLimit' | 'messageActivityScoreUpperLimit'
+>
+
 export interface CharacterVariableRecord {
-    groupId: string
+    sessionKey: string
     status?: string | null
     historyClearedAt?: Date
     statusMessageId?: string | null
     statusMessageTimestamp?: number | null
     statusMessageContent?: string | null
     statusMessageUserId?: string | null
+    updatedAt: Date
+}
+
+export interface WakeUpReplyRecord {
+    id?: number
+    sessionKey: string
+    botId: string
+    channelId: string
+    guildId?: string | null
+    userId: string
+    rawTime: string
+    reason: string
+    naturalReason: string
+    triggerAt: number
+    createdAt: number
     updatedAt: Date
 }
 
@@ -205,5 +225,6 @@ export const IMAGE_SIZE_CACHE_LIMIT = 512
 declare module 'koishi' {
     interface Tables {
         chathub_character_variable: CharacterVariableRecord
+        chathub_character_wake_up_reply: WakeUpReplyRecord
     }
 }

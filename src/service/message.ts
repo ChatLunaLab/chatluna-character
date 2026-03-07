@@ -17,14 +17,50 @@ import {
     Message,
     MessageCollectorFilter,
     MessageImage,
-    OneBotHistoryMessage
+    OneBotHistoryMessage,
+    PendingWakeUpReply,
+    WakeUpReplyRecord
 } from '../types'
 import { parseCQCode } from '../onebot/cqcode'
 import { VariableStore } from './variable_store'
 import { attachMultimodalFileLimit } from '../utils'
 
+function createStoredSession(bot: Bot, temp: WakeUpReplyRecord) {
+    const isDirect = temp.sessionKey.startsWith('private:')
+    if (temp.userId == null) {
+        return null
+    }
+
+    const channelId = temp.channelId ?? temp.userId
+
+    return bot.session({
+        channel: {
+            id: channelId,
+            type: isDirect ? 1 : 0
+        },
+        guild: isDirect
+            ? undefined
+            : {
+                  id: temp.guildId
+              },
+        message: {
+            id: '0',
+            content: ''
+        },
+        selfId: bot.selfId,
+        timestamp: Date.now(),
+        type: 'message',
+        user: {
+            id: temp.userId,
+            name: temp.userId
+        }
+    }) as Session
+}
+
 export class MessageCollector extends Service {
     private _messages: Record<string, Message[]> = {}
+
+    private _wakeUpReplies: Record<string, PendingWakeUpReply[]> = {}
 
     private _filters: MessageCollectorFilter[] = []
 
@@ -62,6 +98,64 @@ export class MessageCollector extends Service {
         this.logger = createLogger(ctx, 'chatluna-character')
         this.preset = new Preset(ctx)
         this._store = new VariableStore(ctx)
+
+        ctx.on('ready', async () => {
+            const rows = await this._store.list()
+
+            for (const row of rows) {
+                this._groupTemp[row.sessionKey] = {
+                    completionMessages: [],
+                    status: row.status,
+                    recordLoaded: true,
+                    historyPulled: false,
+                    historyClearedAt: row.historyClearedAt,
+                    statusMessageId: row.statusMessageId,
+                    statusMessageTimestamp: row.statusMessageTimestamp,
+                    statusMessageContent: row.statusMessageContent,
+                    statusMessageUserId: row.statusMessageUserId
+                }
+            }
+
+            const wakeUpRows = await this._store.listWakeUpReplies()
+
+            for (const row of wakeUpRows) {
+                ;(this._wakeUpReplies[row.sessionKey] ??= []).push({
+                    rawTime: row.rawTime,
+                    reason: row.reason,
+                    naturalReason: row.naturalReason,
+                    triggerAt: row.triggerAt,
+                    createdAt: row.createdAt
+                })
+
+                const bot = ctx.bots[row.botId]
+
+                if (!bot || this._lastSessions[row.sessionKey]) {
+                    continue
+                }
+
+                const session = createStoredSession(bot, row)
+
+                if (session) {
+                    this._lastSessions[row.sessionKey] = session
+                }
+            }
+        })
+
+        ctx.on('bot-status-updated', async (bot) => {
+            const rows = await this._store.listWakeUpReplies()
+
+            for (const row of rows) {
+                if (row.botId !== bot.sid || this._lastSessions[row.sessionKey]) {
+                    continue
+                }
+
+                const session = createStoredSession(bot, row)
+
+                if (session) {
+                    this._lastSessions[row.sessionKey] = session
+                }
+            }
+        })
     }
 
     addFilter(filter: MessageCollectorFilter) {
@@ -69,7 +163,9 @@ export class MessageCollector extends Service {
     }
 
     mute(session: Session, time: number) {
-        const lock = this._getGroupLocks(session.guildId)
+        const lock = this._getGroupLocks(
+            `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
+        )
         let mute = lock.mute ?? 0
 
         if (time === 0) {
@@ -83,10 +179,10 @@ export class MessageCollector extends Service {
     }
 
     async muteAtLeast(session: Session, time: number) {
-        const groupId = session.guildId
-        const unlock = await this._lockByGroupId(groupId)
+        const key = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
+        const unlock = await this._lockByGroupId(key)
         try {
-            const groupLock = this._getGroupLocks(groupId)
+            const groupLock = this._getGroupLocks(key)
             groupLock.mute = Math.max(groupLock.mute ?? 0, Date.now() + time)
         } finally {
             unlock()
@@ -112,14 +208,30 @@ export class MessageCollector extends Service {
         return this._lastSessions[groupId]
     }
 
+    getLoadedTemp(groupId: string) {
+        return this._groupTemp[groupId]
+    }
+
+    getLoadedTemps() {
+        return this._groupTemp
+    }
+
+    getLoadedWakeUpReplies(groupId: string) {
+        return this._wakeUpReplies[groupId] ?? []
+    }
+
     isMute(session: Session) {
-        const lock = this._getGroupLocks(session.guildId)
+        const lock = this._getGroupLocks(
+            `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
+        )
 
         return lock.mute > new Date().getTime()
     }
 
     isResponseLocked(session: Session) {
-        const lock = this._getGroupLocks(session.guildId)
+        const lock = this._getGroupLocks(
+            `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
+        )
         return lock.responseLock
     }
 
@@ -132,7 +244,7 @@ export class MessageCollector extends Service {
         session: Session,
         message: Message
     ): Promise<boolean> {
-        const groupId = session.guildId
+        const groupId = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
 
         const unlock = await this._lockByGroupId(groupId)
 
@@ -161,12 +273,14 @@ export class MessageCollector extends Service {
     }
 
     setResponseLock(session: Session) {
-        const lock = this._getGroupLocks(session.guildId)
+        const lock = this._getGroupLocks(
+            `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
+        )
         lock.responseLock = true
     }
 
     async releaseResponseLock(session: Session) {
-        const groupId = session.guildId
+        const groupId = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
 
         const unlock = await this._lockByGroupId(groupId)
 
@@ -210,7 +324,7 @@ export class MessageCollector extends Service {
     }
 
     async updateTemp(session: Session, temp: GroupTemp) {
-        const groupId = session.guildId
+        const groupId = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
         const unlock = await this._lockByGroupId(groupId)
         try {
             this._groupTemp[groupId] = temp
@@ -220,7 +334,7 @@ export class MessageCollector extends Service {
     }
 
     async getTemp(session: Session, msgs?: Message[]): Promise<GroupTemp> {
-        const groupId = session.guildId
+        const groupId = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
         const unlock = await this._lockByGroupId(groupId)
         try {
             const temp = this._getOrCreateGroupTemp(groupId)
@@ -270,8 +384,11 @@ export class MessageCollector extends Service {
         status?: string,
         anchorMessage?: Message
     ) {
-        const groupId = session.guildId
-        const config = this._getGroupConfig(groupId)
+        const groupId = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
+        const guildConfig = session.isDirect
+            ? this._config.privateConfigs[session.userId]
+            : this._config.configs[session.guildId]
+        const config = Object.assign({}, this._config, guildConfig)
 
         if (!config.statusPersistence) {
             return
@@ -290,6 +407,24 @@ export class MessageCollector extends Service {
         }
     }
 
+    async persistWakeUpReplies(
+        session: Session,
+        wakeUpReplies: PendingWakeUpReply[]
+    ) {
+        const groupId = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
+
+        this._wakeUpReplies[groupId] = wakeUpReplies
+
+        await this._store.saveWakeUpReplies(
+            groupId,
+            session.bot.sid,
+            session.channelId ?? session.userId,
+            session.guildId,
+            session.userId,
+            wakeUpReplies
+        )
+    }
+
     private _getGroupLocks(groupId: string) {
         if (!this._groupLocks[groupId]) {
             this._groupLocks[groupId] = {
@@ -302,14 +437,6 @@ export class MessageCollector extends Service {
 
     private _getOrCreateGroupTemp(groupId: string): GroupTemp {
         return this._groupTemp[groupId] ?? newTemp()
-    }
-
-    private _getGroupConfig(groupId: string) {
-        const config = this._config
-        if (!config.configs[groupId]) {
-            return config
-        }
-        return Object.assign({}, config, config.configs[groupId])
     }
 
     private _getMutex(groupId: string): ObjectLock {
@@ -325,7 +452,16 @@ export class MessageCollector extends Service {
 
     async clear(groupId?: string) {
         if (groupId) {
-            const config = this._getGroupConfig(groupId)
+            const isDirect = groupId.startsWith('private:')
+            const id = isDirect
+                ? groupId.slice('private:'.length)
+                : groupId.startsWith('group:')
+                  ? groupId.slice('group:'.length)
+                  : groupId
+            const guildConfig = isDirect
+                ? this._config.privateConfigs[id]
+                : this._config.configs[id]
+            const config = Object.assign({}, this._config, guildConfig)
             const clearedAt = new Date()
             const unlock = await this._lockByGroupId(groupId)
             try {
@@ -378,7 +514,16 @@ export class MessageCollector extends Service {
 
             await Promise.all(
                 groupIds.map(async (groupId) => {
-                    const config = this._getGroupConfig(groupId)
+                    const isDirect = groupId.startsWith('private:')
+                    const id = isDirect
+                        ? groupId.slice('private:'.length)
+                        : groupId.startsWith('group:')
+                          ? groupId.slice('group:'.length)
+                          : groupId
+                    const guildConfig = isDirect
+                        ? this._config.privateConfigs[id]
+                        : this._config.configs[id]
+                    const config = Object.assign({}, this._config, guildConfig)
                     if (config.statusPersistence || config.historyPull) {
                         await this._store.clear(groupId, clearedAt)
                     }
@@ -393,10 +538,6 @@ export class MessageCollector extends Service {
     }
 
     async broadcastOnBot(session: Session, elements: h[]) {
-        if (session.isDirect) {
-            return
-        }
-
         const content = mapElementToString(session, session.content, elements)
 
         if (content.length < 1) {
@@ -415,13 +556,12 @@ export class MessageCollector extends Service {
     }
 
     async broadcast(session: Session) {
-        if (session.isDirect) {
-            return
-        }
-
-        const groupId = session.guildId
+        const groupId = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
         this._lastSessions[groupId] = session
-        const config = this._getGroupConfig(groupId)
+        const guildConfig = session.isDirect
+            ? this._config.privateConfigs[session.userId]
+            : this._config.configs[session.guildId]
+        const config = Object.assign({}, this._config, guildConfig)
 
         const elements = session.elements
             ? session.elements
@@ -429,7 +569,14 @@ export class MessageCollector extends Service {
 
         attachMultimodalFileLimit(elements, config.multimodalFileInputMaxSize)
 
-        const preMessage = config.image
+        const hasMultimodalFile = elements.some(
+            (element) =>
+                element.type === 'file' ||
+                element.type === 'video' ||
+                element.type === 'audio'
+        )
+
+        const preMessage = config.image || hasMultimodalFile
             ? await this.ctx.chatluna.messageTransformer.transform(
                   session,
                   elements,
@@ -452,6 +599,62 @@ export class MessageCollector extends Service {
             return
         }
 
+        const quote = session.quote
+            ? {
+                  content: await (async () => {
+                      const quoted = (this._messages[groupId] ?? []).find(
+                          (msg) =>
+                              msg.messageId != null &&
+                              String(msg.messageId) ===
+                                  String(session.quote.id)
+                      )
+                      if (quoted) {
+                          return quoted.content
+                      }
+
+                      const quotedElements = session.quote.elements ?? [
+                          h.text(session.quote.content)
+                      ]
+
+                      if (session.isDirect) {
+                          await this.ctx.chatluna.messageTransformer.transform(
+                              session,
+                              quotedElements,
+                              config.model
+                          )
+
+                          for (const element of quotedElements) {
+                              if (
+                                  element.type === 'file' ||
+                                  element.type === 'video' ||
+                                  element.type === 'audio'
+                              ) {
+                                  element.attrs.chatluna_file_url ??=
+                                      element.attrs.src ??
+                                      element.attrs.url
+                              }
+
+                              if (element.type === 'img') {
+                                  element.attrs.imageUrl ??=
+                                      element.attrs.src ??
+                                      element.attrs.url
+                              }
+                          }
+                      }
+
+                      return mapElementToString(
+                          session,
+                          session.quote.content,
+                          quotedElements
+                      )
+                  })(),
+                  name: session.quote?.user?.name,
+                  id: session.quote?.user?.id,
+                  messageId: session.quote.id,
+                  timestamp: session.quote.timestamp
+              }
+            : undefined
+
         const message: Message = {
             content,
             name: getNotEmptyString(
@@ -463,20 +666,7 @@ export class MessageCollector extends Service {
             id: session.author.id,
             messageId: session.messageId,
             timestamp: session.event.timestamp,
-            quote: session.quote
-                ? {
-                      content: mapElementToString(
-                          session,
-                          session.quote.content,
-                          session.quote.elements ?? [
-                              h.text(session.quote.content)
-                          ]
-                      ),
-                      name: session.quote?.user?.name,
-                      id: session.quote?.user?.id,
-                      messageId: session.quote.id
-                  }
-                : undefined,
+            quote,
             images
         }
 
@@ -504,7 +694,7 @@ export class MessageCollector extends Service {
         message?: Message,
         signal?: AbortSignal
     ) {
-        const groupId = session.guildId
+        const groupId = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
         const focusMessage = message ?? this._messages[groupId]?.at(-1)
         const acquired = await this.acquireResponseLock(
             session,
@@ -531,8 +721,11 @@ export class MessageCollector extends Service {
     }
 
     async pullHistory(session: Session, focusMessage: Message) {
-        const groupId = session.guildId
-        const cfg = this._getGroupConfig(groupId)
+        const groupId = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
+        const guildConfig = session.isDirect
+            ? this._config.privateConfigs[session.userId]
+            : this._config.configs[session.guildId]
+        const cfg = Object.assign({}, this._config, guildConfig)
         const max = cfg.maxMessages
 
         if (!cfg.historyPull) {
@@ -554,7 +747,7 @@ export class MessageCollector extends Service {
         }
 
         this.logger.debug(
-            `Try to pull ${count} history message(s) for guild ${groupId}.`
+            `Try to pull ${count} history message(s) for session ${groupId}.`
         )
 
         const list = await this._pull(session, count, focusMessage, cutoff)
@@ -571,14 +764,14 @@ export class MessageCollector extends Service {
 
             if (list.length < 1) {
                 this.logger.debug(
-                    `No history messages pulled for guild ${groupId}. ` +
+                    `No history messages pulled for session ${groupId}. ` +
                         `Cutoff: ${formatLogDate(current.historyClearedAt)}.`
                 )
                 return
             }
 
             this.logger.debug(
-                `Pulled ${list.length} history message(s) for guild ${groupId}. ` +
+                `Pulled ${list.length} history message(s) for session ${groupId}. ` +
                     `Cutoff: ${formatLogDate(current.historyClearedAt)}.`
             )
 
@@ -600,10 +793,12 @@ export class MessageCollector extends Service {
             processImages?: Config
         }
     ): Promise<string | undefined> {
-        const unlock = await this._lockByGroupId(session.guildId)
+        const unlock = await this._lockByGroupId(
+            `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
+        )
 
         try {
-            const groupId = session.guildId
+            const groupId = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
             const maxMessageSize = this._config.maxMessages
             let groupArray = this._messages[groupId] ?? []
 
@@ -648,16 +843,24 @@ export class MessageCollector extends Service {
         focusMessage: Message,
         clearedAfter?: number
     ): Promise<Message[]> {
+        const bot = session.bot as unknown as Bot & {
+            getMessageList?: (
+                channelId: string,
+                next?: string,
+                direction?: 'before' | 'after'
+            ) => Promise<{ data?: unknown[]; prev?: string }>
+        }
+
         if (session.platform === 'onebot') {
             return this._pullOneBot(session, count, focusMessage, clearedAfter)
         }
 
-        if (typeof session.bot.getMessageList === 'function') {
+        if (typeof bot.getMessageList === 'function') {
             return this._pullBot(session, count, focusMessage, clearedAfter)
         }
 
         this.logger.debug(
-            `Skip history pull for guild ${session.guildId}: ` +
+            `Skip history pull for session ${session.isDirect ? session.userId : session.guildId}: ` +
                 'current adapter does not support history API.'
         )
         return []
@@ -673,11 +876,11 @@ export class MessageCollector extends Service {
             getMessageList: Bot['getMessageList']
         }
 
-        const targetId = session.channelId ?? session.guildId
+        const channelId = session.channelId ?? session.guildId
 
-        if (targetId == null || bot.getMessageList == null) {
+        if (channelId == null || bot.getMessageList == null) {
             this.logger.warn(
-                `Skip history pull for guild ${session.guildId}: ` +
+                `Skip history pull for session ${session.isDirect ? session.userId : session.guildId}: ` +
                     'Bot API requires a valid channel id.'
             )
             return []
@@ -690,10 +893,10 @@ export class MessageCollector extends Service {
         while (results.length < count) {
             let response: Awaited<ReturnType<typeof bot.getMessageList>>
             try {
-                response = await bot.getMessageList(targetId, nextId, 'before')
+                response = await bot.getMessageList(channelId, nextId, 'before')
             } catch (error) {
                 this.logger.warn(
-                    `Failed to pull Bot API history for guild ${session.guildId}`,
+                    `Failed to pull Bot API history for session ${session.isDirect ? session.userId : session.guildId}`,
                     error
                 )
                 return []
@@ -756,9 +959,139 @@ export class MessageCollector extends Service {
 
         if (bot.platform !== 'onebot' || bot.internal?._request == null) {
             this.logger.debug(
-                `Skip history pull for guild ${session.guildId}: current adapter is not OneBot.`
+                `Skip history pull for session ${session.guildId}: current adapter is not OneBot.`
             )
             return []
+        }
+
+        if (session.isDirect) {
+            const targetId = Number(session.userId)
+            if (!Number.isFinite(targetId)) {
+                this.logger.warn(
+                    `Skip history pull for private user ${session.userId}: invalid user id.`
+                )
+                return []
+            }
+
+            const results: OneBotHistoryMessage[] = []
+            let fetchedCount = 0
+            let messageSeq: number | undefined
+            let oldestMessageTime = Number.MAX_SAFE_INTEGER
+            const focusTimestamp = focusMessage.timestamp
+
+            while (fetchedCount < count) {
+                const requestPackage: Record<string, unknown> = {
+                    user_id: targetId,
+                    message_seq: messageSeq,
+                    count: Math.min(count - fetchedCount + 1, 20),
+                    reverseOrder: typeof messageSeq === 'number'
+                }
+
+                if (messageSeq == null) {
+                    delete requestPackage.message_seq
+                    delete requestPackage.reverseOrder
+                }
+
+                let batch: OneBotHistoryMessage[] = []
+                try {
+                    const response = await bot.internal._request(
+                        'get_friend_msg_history',
+                        requestPackage
+                    )
+                    batch =
+                        (response.data?.['messages'] as OneBotHistoryMessage[]) ??
+                        []
+                } catch (error) {
+                    this.logger.warn(
+                        `Failed to pull OneBot private history for private user ${session.userId}`,
+                        error
+                    )
+                    return []
+                }
+
+                if (batch.length < 1) {
+                    break
+                }
+
+                const filteredBatch = batch.filter((message) => {
+                    if (
+                        message.message_id != null &&
+                        focusMessage.messageId != null
+                    ) {
+                        return String(message.message_id) !== focusMessage.messageId
+                    }
+
+                    if (focusTimestamp == null || message.time == null) {
+                        return true
+                    }
+
+                    const messageTimestamp =
+                        message.time < 1_000_000_000_000
+                            ? message.time * 1000
+                            : message.time
+                    return messageTimestamp < focusTimestamp
+                })
+
+                results.unshift(...filteredBatch)
+                fetchedCount = results.length
+
+                const oldest = batch[0]
+                if (oldest == null || oldest.time == null) {
+                    break
+                }
+
+                if (oldest.time >= oldestMessageTime) {
+                    break
+                }
+
+                oldestMessageTime = oldest.time
+                messageSeq = oldest.message_seq
+            }
+
+            return results
+                .map((msg) => {
+                    const raw = msg.raw_message ?? ''
+                    const content = mapElementToString(
+                        session,
+                        raw,
+                        parseCQCode(raw)
+                    )
+
+                    if (content.length < 1) {
+                        return null
+                    }
+
+                    const id = msg.sender?.user_id
+
+                    return {
+                        content,
+                        name: getNotEmptyString(
+                            msg.sender?.nickname,
+                            msg.sender?.card,
+                            String(id ?? '0')
+                        ),
+                        id: id != null ? String(id) : '0',
+                        messageId:
+                            msg.message_id != null
+                                ? String(msg.message_id)
+                                : undefined,
+                        timestamp:
+                            msg.time == null
+                                ? undefined
+                                : msg.time < 1_000_000_000_000
+                                  ? msg.time * 1000
+                                  : msg.time
+                    } as Message
+                })
+                .filter((message): message is Message => message != null)
+                .filter((message) => !sameMessage(message, focusMessage))
+                .filter(
+                    (message) =>
+                        clearedAfter == null ||
+                        (message.timestamp != null &&
+                            message.timestamp > clearedAfter)
+                )
+                .slice(-count)
         }
 
         const targetId = Number(session.guildId)
@@ -1104,10 +1437,11 @@ function formatLogDate(value?: Date | null) {
 
 function mapElementToString(
     session: Session,
-    content: string,
+    content: string | undefined,
     elements: h[],
     images?: MessageImage[]
 ) {
+    content = content ?? ''
     const filteredBuffer: string[] = []
     const usedImages = new Set<string>()
 

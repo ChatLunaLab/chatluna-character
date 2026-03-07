@@ -1087,7 +1087,7 @@ function formatMessageString(message: Message, enableMessageId: boolean) {
     }
 
     if (message.quote) {
-        xmlMessage += ` quote='${formatMessageString(message.quote, enableMessageId)}'`
+        xmlMessage += ` quote="${formatMessageString(message.quote, enableMessageId).replaceAll('&', '&amp;').replaceAll('"', '&quot;')}"`
     }
 
     xmlMessage += `>${message.content}</message>`
