@@ -1,13 +1,5 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import {
-    Bot,
-    Context,
-    h,
-    Logger,
-    Service,
-    Session,
-    Time
-} from 'koishi'
+import { Bot, Context, h, Logger, Service, Session, Time } from 'koishi'
 import { createLogger } from 'koishi-plugin-chatluna/utils/logger'
 import { isForwardMessageElement } from 'koishi-plugin-chatluna/utils/koishi'
 import {
@@ -704,24 +696,14 @@ export class MessageCollector extends Service {
         clearedAfter?: number
     ): Promise<Message[]> {
         if (session.platform === 'onebot') {
-            return this._pullOneBot(
-                session,
-                count,
-                focusMessage,
-                clearedAfter
-            )
+            return this._pullOneBot(session, count, focusMessage, clearedAfter)
         }
 
         if (
             typeof (session.bot as Bot & { getMessageList?: unknown })
                 .getMessageList === 'function'
         ) {
-            return this._pullBot(
-                session,
-                count,
-                focusMessage,
-                clearedAfter
-            )
+            return this._pullBot(session, count, focusMessage, clearedAfter)
         }
 
         this.logger.debug(
@@ -843,8 +825,13 @@ export class MessageCollector extends Service {
 
         let isNapCat = false
         try {
-            const versionInfo = await bot.internal._request('get_version_info', {})
-            const appName = String(versionInfo.data?.['app_name'] ?? '').toLowerCase()
+            const versionInfo = await bot.internal._request(
+                'get_version_info',
+                {}
+            )
+            const appName = String(
+                versionInfo.data?.['app_name'] ?? ''
+            ).toLowerCase()
             isNapCat = appName.includes('napcat')
         } catch (error) {
             this.logger.debug('Failed to detect OneBot app info', error)
@@ -881,7 +868,9 @@ export class MessageCollector extends Service {
                     'get_group_msg_history',
                     requestPackage
                 )
-                batch = (response.data?.['messages'] as OneBotHistoryMessage[]) ?? []
+                batch =
+                    (response.data?.['messages'] as OneBotHistoryMessage[]) ??
+                    []
             } catch (error) {
                 this.logger.warn(
                     `Failed to pull OneBot history for guild ${session.guildId}`,
@@ -895,7 +884,10 @@ export class MessageCollector extends Service {
             }
 
             const filteredBatch = batch.filter((message) => {
-                if (message.message_id != null && focusMessage.messageId != null) {
+                if (
+                    message.message_id != null &&
+                    focusMessage.messageId != null
+                ) {
                     return String(message.message_id) !== focusMessage.messageId
                 }
 
@@ -930,7 +922,11 @@ export class MessageCollector extends Service {
         return results
             .map((msg) => {
                 const raw = msg.raw_message ?? ''
-                const content = mapElementToString(session, raw, parseCQCode(raw))
+                const content = mapElementToString(
+                    session,
+                    raw,
+                    parseCQCode(raw)
+                )
 
                 if (content.length < 1) {
                     return null
@@ -954,8 +950,8 @@ export class MessageCollector extends Service {
                         msg.time == null
                             ? undefined
                             : msg.time < 1_000_000_000_000
-                              ? msg.time * 1000
-                              : msg.time
+                                ? msg.time * 1000
+                                : msg.time
                 } as Message
             })
             .filter((message): message is Message => message != null)
