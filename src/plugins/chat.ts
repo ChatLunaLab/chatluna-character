@@ -696,8 +696,8 @@ export async function apply(ctx: Context, config: Config) {
                     (await createChatLunaChain(ctx, model, session))
             }
 
-            const temp = await service.getTemp(session)
             const latestMessages = service.getMessages(guildId) ?? messages
+            const temp = await service.resolveStatusTemp(session, latestMessages)
             const focusMessage = latestMessages[latestMessages.length - 1]
 
             const completionMessages = await prepareMessages(
@@ -769,7 +769,12 @@ export async function apply(ctx: Context, config: Config) {
             }
 
             temp.status = latestStatus
-            await service.persistStatus(session, latestStatus)
+            const persistedMessages = service.getMessages(guildId) ?? latestMessages
+            await service.persistStatus(
+                session,
+                latestStatus,
+                persistedMessages[persistedMessages.length - 1]
+            )
             if (!sentAny) {
                 service.mute(session, copyOfConfig.muteTime)
                 return

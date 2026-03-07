@@ -23,9 +23,14 @@ export interface Message {
 
 export interface GroupTemp {
     completionMessages: BaseMessage[]
-    status?: string
-    statusLoaded?: boolean
+    status?: string | null
+    recordLoaded?: boolean
     historyPulled?: boolean
+    historyClearedAt?: Date
+    statusMessageId?: string | null
+    statusMessageTimestamp?: number | null
+    statusMessageContent?: string | null
+    statusMessageUserId?: string | null
 }
 
 export interface GuildConfig {
@@ -66,7 +71,12 @@ export interface GuildConfig {
 
 export interface CharacterVariableRecord {
     groupId: string
-    status?: string
+    status?: string | null
+    historyClearedAt?: Date
+    statusMessageId?: string | null
+    statusMessageTimestamp?: number | null
+    statusMessageContent?: string | null
+    statusMessageUserId?: string | null
     updatedAt: Date
 }
 
