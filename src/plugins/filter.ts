@@ -421,7 +421,7 @@ function shouldStopWhenDisableChatLuna(
     if (session.isDirect) {
         return (
             copyOfConfig.disableChatLuna &&
-            copyOfConfig.whiteListDisableChatLunaPrivate.includes(id)
+            !copyOfConfig.whiteListDisableChatLunaPrivate.includes(id)
         )
     }
 
