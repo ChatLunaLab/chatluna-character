@@ -225,7 +225,8 @@ function registerResponseTriggers(
 
         if (!accepted) {
             logger.warn(
-                `Ignore invalid <wake_up_reply time="${wakeUp.time}" reason="${wakeUp.reason}" /> for group ${guildId}`
+                `Ignore invalid <wake_up_reply time="${wakeUp.time}" ` +
+                    `reason="${wakeUp.reason}" /> for group ${guildId}`
             )
         }
     }
@@ -685,7 +686,8 @@ export async function apply(ctx: Context, config: Config) {
 
             if (model.value == null) {
                 logger.warn(
-                    `Model ${copyOfConfig.model} load not successful. Please check your logs output.`
+                    `Model ${copyOfConfig.model} load not successful. ` +
+                        'Please check your logs output.'
                 )
                 return
             }
