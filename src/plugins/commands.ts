@@ -9,6 +9,9 @@ export function apply(ctx: Context, config: Config) {
         authority: 3
     }).action(async ({ session }, group) => {
         const groupId = group ?? session.guildId
+        const messages = groupId
+            ? ctx.chatluna_character.getMessages(groupId)
+            : undefined
 
         if (!groupId) {
             await sendMessageToPrivate(session, '请检查你是否提供了群组 id')
@@ -17,27 +20,12 @@ export function apply(ctx: Context, config: Config) {
 
         const groupInfo = groupInfos[groupId]
 
-        if (!groupInfo) {
+        if (!groupInfo && (!messages || messages.length < 1)) {
             await sendMessageToPrivate(session, '未找到该群组的聊天记录')
             return
         }
 
-        groupInfos[groupId] = {
-            messageCount: 0,
-            messageTimestamps: [],
-            messageTimestampsByUserId: {},
-            lastActivityScore: 0,
-            currentActivityThreshold: 0,
-            lastUserMessageTime: 0,
-            lastPassiveTriggerAt: 0,
-            passiveRetryCount: 0,
-            currentIdleWaitSeconds: 0,
-            lastMessageUserId: '',
-            pendingNextReplies: [],
-            pendingWakeUpReplies: [],
-            lastScoreUpdate: Date.now(),
-            lastResponseTime: 0
-        }
+        delete groupInfos[groupId]
         await ctx.chatluna_character.clear(groupId)
         await sendMessageToPrivate(session, `已清除群组 ${groupId} 的聊天记录`)
     })

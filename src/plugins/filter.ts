@@ -21,6 +21,7 @@ const MIN_COOLDOWN_TIME = Time.second * 6 // 最小冷却时间：6秒
 const COOLDOWN_PENALTY = 0.8 // 响应后降低活跃度的惩罚值
 const THRESHOLD_RESET_TIME = Time.minute * 10 // 十分钟无人回复时，重置活跃度阈值
 const SCHEDULER_TICK = Time.second
+const STALE_GROUP_INFO_TTL = Time.hour * 24
 
 const MIN_RECENT_MESSAGES = 6 // 进入活跃度统计的最小消息数
 const SUSTAINED_RATE_THRESHOLD = 10 // 持续活跃阈值（条/分钟）
@@ -416,7 +417,7 @@ function shouldStopWhenDisableChatLuna(
     return false
 }
 
-function resolveTriggerReason(
+function resolveImmediateTriggerReason(
     info: GroupInfo,
     copyOfConfig: Config,
     isDirectTrigger: boolean,
@@ -430,11 +431,74 @@ function resolveTriggerReason(
         return isAppel ? 'Mention or quote trigger' : 'Nickname trigger'
     }
 
+    return undefined
+}
+
+function resolveTriggerReason(
+    info: GroupInfo,
+    copyOfConfig: Config,
+    isDirectTrigger: boolean,
+    isAppel: boolean
+) {
+    const immediateTriggerReason = resolveImmediateTriggerReason(
+        info,
+        copyOfConfig,
+        isDirectTrigger,
+        isAppel
+    )
+    if (immediateTriggerReason) {
+        return immediateTriggerReason
+    }
+
     if (info.lastActivityScore >= info.currentActivityThreshold) {
         return `Activity score trigger (${info.lastActivityScore.toFixed(3)} >= ${info.currentActivityThreshold.toFixed(3)})`
     }
 
     return undefined
+}
+
+function hasPendingSchedulerWork(info: GroupInfo, copyOfConfig: Config) {
+    return (
+        copyOfConfig.enableLongWaitTrigger ||
+        (info.pendingNextReplies?.length ?? 0) > 0 ||
+        (info.pendingWakeUpReplies?.length ?? 0) > 0
+    )
+}
+
+function getGroupInfoLastActiveAt(info: GroupInfo) {
+    return Math.max(
+        info.lastUserMessageTime ?? 0,
+        info.lastResponseTime ?? 0,
+        info.lastScoreUpdate ?? 0
+    )
+}
+
+function shouldRecycleGroupInfo(
+    guildId: string,
+    info: GroupInfo,
+    copyOfConfig: Config,
+    hasLastSession: boolean,
+    now: number,
+    config: Config
+) {
+    if (!config.applyGroup.includes(guildId)) {
+        return true
+    }
+
+    if (hasPendingSchedulerWork(info, copyOfConfig)) {
+        return false
+    }
+
+    if (!hasLastSession) {
+        return true
+    }
+
+    const lastActiveAt = getGroupInfoLastActiveAt(info)
+    if (lastActiveAt <= 0) {
+        return true
+    }
+
+    return now - lastActiveAt >= STALE_GROUP_INFO_TTL
 }
 
 async function processSchedulerTickForGuild(
@@ -445,6 +509,10 @@ async function processSchedulerTickForGuild(
     const service = ctx.chatluna_character
     const logger = service.logger
     const info = groupInfos[guildId]
+    if (info == null) {
+        return
+    }
+
     const copyOfConfig = getGroupConfig(config, guildId)
     const session = service.getLastSession(guildId)
     if (session == null) {
@@ -559,7 +627,35 @@ export async function apply(ctx: Context, config: Config) {
     })
 
     ctx.setInterval(() => {
+        const now = Date.now()
+
         for (const guildId of Object.keys(groupInfos)) {
+            const info = groupInfos[guildId]
+            if (info == null) {
+                continue
+            }
+
+            const copyOfConfig = getGroupConfig(config, guildId)
+            const hasLastSession = service.getLastSession(guildId) != null
+
+            if (
+                shouldRecycleGroupInfo(
+                    guildId,
+                    info,
+                    copyOfConfig,
+                    hasLastSession,
+                    now,
+                    config
+                )
+            ) {
+                delete groupInfos[guildId]
+                continue
+            }
+
+            if (!hasPendingSchedulerWork(info, copyOfConfig)) {
+                continue
+            }
+
             processSchedulerTickForGuild(ctx, config, guildId).catch((e) => {
                 logger.error(
                     `[next_reply] scheduler failed guild=${guildId}`,
@@ -589,29 +685,13 @@ export async function apply(ctx: Context, config: Config) {
             return
         }
 
-        updateIncomingMessageStats(info, copyOfConfig, message.id, now)
-
-        const activity = calculateActivityScore(
-            info.messageTimestamps,
-            info.lastResponseTime,
-            copyOfConfig.maxMessages,
-            info.lastActivityScore,
-            info.lastScoreUpdate
-        )
-        info.lastActivityScore = activity.score
-        info.lastScoreUpdate = activity.timestamp
-
-        logger.debug(
-            `messageCount: ${info.messageCount}, activityScore: ${activity.score.toFixed(3)}. content: ${JSON.stringify(
-                Object.assign({}, message, { images: undefined })
-            )}`
-        )
-
         if (
             shouldStopWhenDisableChatLuna(ctx, session, copyOfConfig, guildId)
         ) {
             return
         }
+
+        updateIncomingMessageStats(info, copyOfConfig, message.id, now)
 
         const botId = session.bot.selfId
         let appel = session.stripped.appel
@@ -664,6 +744,41 @@ export async function apply(ctx: Context, config: Config) {
                 currentPreset.nick_name.some((value) =>
                     plainTextContent.includes(value)
                 ))
+
+        const immediateTriggerReason = resolveImmediateTriggerReason(
+            info,
+            copyOfConfig,
+            isDirectTrigger,
+            isAppel
+        )
+
+        if (immediateTriggerReason) {
+            if (!isMute) {
+                markTriggered(info, copyOfConfig, now)
+                groupInfos[session.guildId] = info
+                return immediateTriggerReason
+            }
+
+            info.messageCount++
+            groupInfos[session.guildId] = info
+            return
+        }
+
+        const activity = calculateActivityScore(
+            info.messageTimestamps,
+            info.lastResponseTime,
+            copyOfConfig.maxMessages,
+            info.lastActivityScore,
+            info.lastScoreUpdate
+        )
+        info.lastActivityScore = activity.score
+        info.lastScoreUpdate = activity.timestamp
+
+        logger.debug(
+            `messageCount: ${info.messageCount}, activityScore: ${activity.score.toFixed(3)}. content: ${JSON.stringify(
+                Object.assign({}, message, { images: undefined })
+            )}`
+        )
 
         const triggerReason = resolveTriggerReason(
             info,
