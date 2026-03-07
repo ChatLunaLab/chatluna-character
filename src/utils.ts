@@ -1175,7 +1175,7 @@ export async function createChatLunaChain(
 
             const emitEarlyIntermediate = (action: AgentStep['action']) => {
                 const chunk = createAgentResponseChunk(
-                    buf.length > 0 ? buf : action.log
+                    buf.length > 0 ? buf : action.content
                 )
 
                 buf = ''
