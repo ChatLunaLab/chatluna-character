@@ -13,6 +13,7 @@ import {
     GroupLock,
     GroupTemp,
     IMAGE_SIZE_CACHE_LIMIT,
+    KoishiMessage,
     Message,
     MessageCollectorFilter,
     MessageImage,
@@ -21,38 +22,6 @@ import {
 import { parseCQCode } from '../onebot/cqcode'
 import { VariableStore } from './variable_store'
 import { attachMultimodalFileLimit } from '../utils'
-
-interface BotAPIMessage {
-    id?: string
-    userId?: string
-    content?: string
-    elements?: h[]
-    messageId?: string
-    timestamp?: number
-    createdAt?: number
-    member?: {
-        name?: string
-    }
-    user?: {
-        id?: string
-        nick?: string
-        name?: string
-        avatar?: string
-    }
-    guild?: {
-        id?: string
-    }
-    quote?: {
-        id?: string
-        content?: string
-        elements?: h[]
-        user?: {
-            id?: string
-            nick?: string
-            name?: string
-        }
-    }
-}
 
 export class MessageCollector extends Service {
     private _messages: Record<string, Message[]> = {}
@@ -588,12 +557,7 @@ export class MessageCollector extends Service {
             `Try to pull ${count} history message(s) for guild ${groupId}.`
         )
 
-        const list = await this._pull(
-            session,
-            count,
-            focusMessage,
-            cutoff
-        )
+        const list = await this._pull(session, count, focusMessage, cutoff)
 
         const unlock = await this._lockByGroupId(groupId)
         try {
@@ -932,8 +896,8 @@ export class MessageCollector extends Service {
                         msg.time == null
                             ? undefined
                             : msg.time < 1_000_000_000_000
-                                ? msg.time * 1000
-                                : msg.time
+                              ? msg.time * 1000
+                              : msg.time
                 } as Message
             })
             .filter((message): message is Message => message != null)
@@ -1048,9 +1012,9 @@ function newTemp(clearedAt?: Date): GroupTemp {
     }
 }
 
-function toBotMsg(session: Session, msg: BotAPIMessage): Message | null {
+function toBotMsg(session: Session, msg: KoishiMessage): Message | null {
     const text = msg.content ?? ''
-    const id = msg.userId ?? msg.user?.id ?? '0'
+    const id = msg.user?.id ?? '0'
     const content = mapElementToString(
         session,
         text,
