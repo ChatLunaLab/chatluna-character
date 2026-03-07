@@ -1,7 +1,7 @@
 import { Context } from 'koishi'
 import { CharacterVariableRecord, GroupTemp, Message } from '../types'
 
-export class TempStore {
+export class VariableStore {
     constructor(private ctx: Context) {
         this.ctx.database.extend(
             'chathub_character_variable',

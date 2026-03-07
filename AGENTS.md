@@ -264,6 +264,58 @@ If something actually can be undefined (as declared in the interface with `?`),
 a single simple check is fine. But do not chain fallbacks or add checks for
 types that are not declared optional.
 
+### Extract Class-Independent Functions
+
+If a method inside a class does **not** depend on the class instance (`this`) —
+i.e. it does not read or write instance fields, call other instance methods, or
+use injected services — it **must** be extracted as a standalone module-level
+function.
+
+Class methods should only contain logic that genuinely needs instance state.
+Pure computation, formatting, parsing, and other self-contained logic belong
+outside the class.
+
+```ts
+// BAD — method does not use `this` at all
+class MessageCollector extends Service {
+    formatTimestamp(ts: number): string {
+        return new Date(ts).toISOString()
+    }
+}
+
+// GOOD — extracted as a standalone function
+function formatTimestamp(ts: number): string {
+    return new Date(ts).toISOString()
+}
+```
+
+### Minimize Constants
+
+Do **not** define named constants unless the value is truly important and
+reused. Inline literal values directly at the call site when they are used
+once or are self-explanatory.
+
+Only extract a constant when **all** of the following apply:
+
+1. The value is used in **multiple** places, OR
+2. The meaning of the literal is **not obvious** from context, OR
+3. The value is a **critical tuning parameter** that may need adjustment.
+
+```ts
+// BAD — unnecessary constants for one-off or obvious values
+const MAX_RETRY_COUNT = 1
+const DEFAULT_SEPARATOR = '\n'
+const EMPTY_STRING = ''
+
+// GOOD — inline obvious values
+await retry(() => fetch(url), 1)
+messages.join('\n')
+
+// GOOD — constant is justified (tuning parameter, used in multiple places)
+const WINDOW_SIZE = 10
+const MIN_COOLDOWN_TIME = 3000
+```
+
 ## TypeScript Style
 
 - Use modern ES modules (`.ts`).
