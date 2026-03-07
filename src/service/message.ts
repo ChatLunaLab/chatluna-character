@@ -165,7 +165,8 @@ export class MessageCollector extends Service {
 
     /**
      * Try to acquire the response lock. If the lock is already held, wait until it is released.
-     * @returns A Promise that resolves to whether the lock was successfully acquired (false means cancelled)
+     * @returns A Promise that resolves to whether the lock was successfully
+     * acquired (false means cancelled)
      */
     async acquireResponseLock(
         session: Session,
@@ -304,7 +305,11 @@ export class MessageCollector extends Service {
         }
     }
 
-    async persistStatus(session: Session, status?: string, anchorMessage?: Message) {
+    async persistStatus(
+        session: Session,
+        status?: string,
+        anchorMessage?: Message
+    ) {
         const groupId = session.guildId
         const config = this._getGroupConfig(groupId)
 
@@ -619,18 +624,24 @@ export class MessageCollector extends Service {
 
         if (list.length < 1) {
             this.logger.debug(
-                `No history messages pulled for guild ${groupId}. Cutoff: ${formatLogDate(temp.historyClearedAt)}.`
+                `No history messages pulled for guild ${groupId}. ` +
+                    `Cutoff: ${formatLogDate(temp.historyClearedAt)}.`
             )
             return
         }
 
         this.logger.debug(
-            `Pulled ${list.length} history message(s) for guild ${groupId}. Cutoff: ${formatLogDate(temp.historyClearedAt)}.`
+            `Pulled ${list.length} history message(s) for guild ${groupId}. ` +
+                `Cutoff: ${formatLogDate(temp.historyClearedAt)}.`
         )
 
         const unlock = await this._lockByGroupId(groupId)
         try {
-            this._messages[groupId] = this._merge(this._messages[groupId] ?? [], list, max)
+            this._messages[groupId] = this._merge(
+                this._messages[groupId] ?? [],
+                list,
+                max
+            )
         } finally {
             unlock()
         }
@@ -714,7 +725,8 @@ export class MessageCollector extends Service {
         }
 
         this.logger.debug(
-            `Skip history pull for guild ${session.guildId}: current adapter does not support history API.`
+            `Skip history pull for guild ${session.guildId}: ` +
+                'current adapter does not support history API.'
         )
         return []
     }
@@ -737,7 +749,8 @@ export class MessageCollector extends Service {
 
         if (targetId == null || bot.getMessageList == null) {
             this.logger.warn(
-                `Skip history pull for guild ${session.guildId}: Bot API requires a valid channel id.`
+                `Skip history pull for guild ${session.guildId}: ` +
+                    'Bot API requires a valid channel id.'
             )
             return []
         }

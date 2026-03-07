@@ -337,12 +337,22 @@ export function parseNextReplyReason(
             naturalReason: predicates
                 .map((predicate) => {
                     if (predicate.type === 'time_id') {
-                        return `time_${predicate.seconds}s_id_${predicate.userId}: no new messages from user ${predicate.userId} for ${predicate.seconds}s`
+                        return (
+                            `time_${predicate.seconds}s_id_${predicate.userId}: ` +
+                            `no new messages from user ${predicate.userId} ` +
+                            `for ${predicate.seconds}s`
+                        )
                     }
                     if (predicate.type === 'time') {
-                        return `time_${predicate.seconds}s: no new messages for ${predicate.seconds}s`
+                        return (
+                            `time_${predicate.seconds}s: ` +
+                            `no new messages for ${predicate.seconds}s`
+                        )
                     }
-                    return `id_${predicate.userId}: received a new message from user ${predicate.userId}`
+                    return (
+                        `id_${predicate.userId}: ` +
+                        `received a new message from user ${predicate.userId}`
+                    )
                 })
                 .join(' and ')
         })

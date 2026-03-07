@@ -192,7 +192,9 @@ export const Config = Schema.intersect([
             ),
         toolCalling: Schema.boolean()
             .description(
-                '是否启用工具调用功能（可在[**这里**](https://cooksleep.github.io/newapi-special-test)测试你的API工具调用等能力是否正常）'
+                '是否启用工具调用功能（可在[**这里**]' +
+                    '(https://cooksleep.github.io/newapi-special-test)' +
+                    '测试你的 API 工具调用等能力是否正常）'
             )
             .default(true)
     }).description('模型配置'),
@@ -242,7 +244,9 @@ export const Config = Schema.intersect([
         enableHistoryPull: Schema.boolean()
             .default(true)
             .description(
-                '是否在缺失历史消息时自动从支持的 API（如 OneBot及所有支持 getMessageList 的适配器）获取历史消息，使重启插件时可以获取刚刚的上下文'
+                '是否在缺失历史消息时自动从支持的 API ' +
+                    '（如 OneBot 及所有支持 getMessageList 的适配器）' +
+                    '获取历史消息，使重启插件时可以获取刚刚的上下文'
             ),
         enableLongWaitTrigger: Schema.boolean()
             .default(false)
@@ -295,7 +299,10 @@ export const Config = Schema.intersect([
             .role('slider')
             .step(0.00001)
             .description(
-                '消息活跃度分数的上限阈值。每次响应后，判断阈值会向此值靠拢。若下限 < 上限（如 0.1 → 0.9），则会越聊越少；若下限 > 上限（如 0.9 → 0.2），则会越聊越多。十分钟内无人回复时，会自动回退到下限。'
+                '消息活跃度分数的上限阈值。每次响应后，判断阈值会向此值靠拢。' +
+                    '若下限 < 上限（如 0.1 → 0.9），则会越聊越少；' +
+                    '若下限 > 上限（如 0.9 → 0.2），则会越聊越多。' +
+                    '十分钟内无人回复时，会自动回退到下限。'
             ),
 
         coolDownTime: Schema.number()
@@ -395,7 +402,9 @@ export const Config = Schema.intersect([
                 enableHistoryPull: Schema.boolean()
                     .default(true)
                     .description(
-                        '是否在缺失历史消息时自动从支持的 API（如 OneBot及所有支持 getMessageList 的适配器）获取历史消息，使重启插件时可以获取刚刚的上下文'
+                        '是否在缺失历史消息时自动从支持的 API ' +
+                            '（如 OneBot 及所有支持 getMessageList 的适配器）' +
+                            '获取历史消息，使重启插件时可以获取刚刚的上下文'
                     ),
                 enableLongWaitTrigger: Schema.boolean()
                     .default(false)
@@ -448,11 +457,16 @@ export const Config = Schema.intersect([
                     .role('slider')
                     .step(0.00001)
                     .description(
-                        '消息活跃度分数的上限阈值。每次响应后，判断阈值会向此值靠拢。若下限 < 上限（如 0.1 → 0.9），则会越聊越少；若下限 > 上限（如 0.9 → 0.2），则会越聊越多。十分钟内无人回复时，会自动回退到下限。'
+                        '消息活跃度分数的上限阈值。每次响应后，判断阈值会向此值靠拢。' +
+                            '若下限 < 上限（如 0.1 → 0.9），则会越聊越少；' +
+                            '若下限 > 上限（如 0.9 → 0.2），则会越聊越多。' +
+                            '十分钟内无人回复时，会自动回退到下限。'
                     ),
                 toolCalling: Schema.boolean()
                     .description(
-                        '是否启用工具调用功能（可在[**这里**](https://cooksleep.github.io/newapi-special-test)测试你的API工具调用等能力是否正常）'
+                        '是否启用工具调用功能（可在[**这里**]' +
+                            '(https://cooksleep.github.io/newapi-special-test)' +
+                            '测试你的 API 工具调用等能力是否正常）'
                     )
                     .default(true),
                 image: Schema.boolean()
