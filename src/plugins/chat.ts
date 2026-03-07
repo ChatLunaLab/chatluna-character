@@ -771,7 +771,8 @@ export async function apply(ctx: Context, config: Config) {
             }
 
             temp.status = latestStatus
-            const persistedMessages = service.getMessages(guildId) ?? latestMessages
+            const persistedMessages =
+                service.getMessages(guildId) ?? latestMessages
             await service.persistStatus(
                 session,
                 latestStatus,
