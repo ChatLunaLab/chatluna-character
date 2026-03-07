@@ -769,6 +769,7 @@ export async function apply(ctx: Context, config: Config) {
             }
 
             temp.status = latestStatus
+            await service.persistStatus(session, latestStatus)
             if (!sentAny) {
                 service.mute(session, copyOfConfig.muteTime)
                 return

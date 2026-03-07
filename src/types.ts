@@ -24,6 +24,8 @@ export interface Message {
 export interface GroupTemp {
     completionMessages: BaseMessage[]
     status?: string
+    statusLoaded?: boolean
+    historyPulled?: boolean
 }
 
 export interface GuildConfig {
@@ -58,6 +60,26 @@ export interface GuildConfig {
     muteTime: number
     modelCompletionCount: number
     toolCalling: boolean
+    enableHistoryPull: boolean
+    enableStatusPersistence: boolean
+}
+
+export interface CharacterVariableRecord {
+    groupId: string
+    status?: string
+    updatedAt: Date
+}
+
+export interface OneBotHistoryMessage {
+    raw_message?: string
+    message_id?: number
+    message_seq?: number
+    time?: number
+    sender?: {
+        user_id?: number
+        nickname?: string
+        card?: string
+    }
 }
 
 export interface PresetTemplate {
@@ -164,4 +186,10 @@ export type MessageImage = {
     url: string
     hash: string
     formatted: string
+}
+
+declare module 'koishi' {
+    interface Tables {
+        chathub_character_variable: CharacterVariableRecord
+    }
 }

@@ -52,7 +52,7 @@ export function apply(ctx: Context, config: Config) {
 }
 
 export const inject = {
-    required: ['chatluna'],
+    required: ['chatluna', 'database'],
     optional: ['chatluna_character', 'vits']
 }
 
@@ -65,6 +65,9 @@ export const inject2 = {
     },
     vits: {
         required: false
+    },
+    database: {
+        required: true
     }
 }
 
@@ -117,6 +120,8 @@ export interface Config extends ChatLunaPlugin.Config {
     imageInputMaxSize: number
     multimodalFileInputMaxSize: number
     modelCompletionCount: number
+    enableHistoryPull: boolean
+    enableStatusPersistence: boolean
 
     coolDownTime: number
     typingTime: number
@@ -229,6 +234,12 @@ export const Config = Schema.intersect([
             .role('slider')
             .max(10000)
             .description('随机发送消息的最大间隔'),
+        enableHistoryPull: Schema.boolean()
+            .default(true)
+            .description('是否在群组首次触发回复时自动补拉历史消息'),
+        enableStatusPersistence: Schema.boolean()
+            .default(true)
+            .description('是否将状态变量持久化到数据库'),
         enableLongWaitTrigger: Schema.boolean()
             .default(false)
             .description('是否启用空闲触发'),
@@ -372,6 +383,12 @@ export const Config = Schema.intersect([
                     .description(
                         '随机发送消息的间隔。群越活跃，这个值就会越高。'
                     ),
+                enableHistoryPull: Schema.boolean()
+                    .default(true)
+                    .description('是否在群组首次触发回复时自动补拉历史消息'),
+                enableStatusPersistence: Schema.boolean()
+                    .default(true)
+                    .description('是否将状态变量持久化到数据库'),
                 enableLongWaitTrigger: Schema.boolean()
                     .default(false)
                     .description('是否启用空闲触发'),
