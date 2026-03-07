@@ -697,10 +697,7 @@ export async function apply(ctx: Context, config: Config) {
             }
 
             const latestMessages = service.getMessages(guildId) ?? messages
-            const temp = await service.resolveStatusTemp(
-                session,
-                latestMessages
-            )
+            const temp = await service.getTemp(session, latestMessages)
             const focusMessage = latestMessages[latestMessages.length - 1]
 
             const completionMessages = await prepareMessages(
