@@ -33,6 +33,7 @@ import {
 import { Preset } from '../preset'
 import {
     clearNextReplyTriggers,
+    groupInfos,
     registerNextReplyTrigger,
     registerWakeUpReplyTrigger
 } from './filter'
@@ -66,6 +67,29 @@ async function parseResponseContent(
 ): Promise<StreamedParsedResponseChunk> {
     let parsedResponse: ParsedResponse
     const { responseMessage, responseContent, isIntermediate } = chunk
+
+    if (
+        isIntermediate &&
+        (/^Invoking\s+"[^"]+"\s+with\s+/i.test(responseContent.trim()) ||
+            responseContent.trim().startsWith('Tool '))
+    ) {
+        logger.debug(
+            'Failed to parse intermediate agent content, fallback to raw send: %s',
+            responseContent
+        )
+
+        return {
+            responseMessage,
+            responseContent,
+            parsedResponse: {
+                elements: [],
+                rawMessage: responseContent,
+                status: undefined,
+                sticker: undefined,
+                messageType: 'text'
+            }
+        }
+    }
 
     try {
         parsedResponse = await parseResponse(
@@ -109,13 +133,13 @@ async function parseResponseContent(
             throw error
         }
 
-        logger.warn(
+        logger.debug(
             'Failed to parse intermediate agent content, fallback to raw send: %s',
             responseContent
         )
 
         parsedResponse = {
-            elements: [[h.text(responseContent)]],
+            elements: [],
             rawMessage: responseContent,
             status: undefined,
             sticker: undefined,
@@ -141,7 +165,7 @@ function createStreamConfig(
             session,
             model,
             userId: session.userId,
-            conversationId: session.guildId,
+            conversationId: session.isDirect ? session.userId : session.guildId,
             preset: presetName
         },
         signal
@@ -166,7 +190,9 @@ async function* streamAgentResponseContents(
             input: lastMessage,
             configurable: {
                 session,
-                conversationId: session.guildId,
+                conversationId: session.isDirect
+                    ? session.userId
+                    : session.guildId,
                 preset: presetName
             }
         },
@@ -197,19 +223,19 @@ async function* streamAgentResponseContents(
 }
 
 function registerResponseTriggers(
-    guildId: string,
+    key: string,
     config: Config,
     nextReplyReasons: string[],
     wakeUpReplies: ReturnType<typeof extractWakeUpReplies>
 ) {
     if (nextReplyReasons.length > 0) {
-        clearNextReplyTriggers(guildId)
+        clearNextReplyTriggers(key)
         for (const reason of nextReplyReasons) {
-            const accepted = registerNextReplyTrigger(guildId, reason, config)
+            const accepted = registerNextReplyTrigger(key, reason, config)
 
             if (!accepted) {
                 logger.warn(
-                    `Ignore invalid <next_reply reason="${reason}" /> for group ${guildId}`
+                    `Ignore invalid <next_reply reason="${reason}" /> for session ${key}`
                 )
             }
         }
@@ -217,7 +243,7 @@ function registerResponseTriggers(
 
     for (const wakeUp of wakeUpReplies) {
         const accepted = registerWakeUpReplyTrigger(
-            guildId,
+            key,
             wakeUp.time,
             wakeUp.reason,
             config
@@ -226,7 +252,7 @@ function registerResponseTriggers(
         if (!accepted) {
             logger.warn(
                 `Ignore invalid <wake_up_reply time="${wakeUp.time}" ` +
-                    `reason="${wakeUp.reason}" /> for group ${guildId}`
+                    `reason="${wakeUp.reason}" /> for session ${key}`
             )
         }
     }
@@ -258,7 +284,8 @@ async function setupModelPool(
 
     if (config.modelOverride?.length > 0) {
         for (const override of config.modelOverride) {
-            modelPool[override.groupId] = (async () => {
+            const key = `group:${override.groupId}`
+            modelPool[key] = (async () => {
                 const [platform, modelName] = parseRawModelName(override.model)
                 const loadedModel = await initializeModel(
                     ctx,
@@ -272,7 +299,30 @@ async function setupModelPool(
                     override.groupId
                 )
 
-                modelPool[override.groupId] = Promise.resolve(loadedModel)
+                modelPool[key] = Promise.resolve(loadedModel)
+                return loadedModel
+            })()
+        }
+    }
+
+    if (config.privateModelOverride?.length > 0) {
+        for (const override of config.privateModelOverride) {
+            const key = `private:${override.userId}`
+            modelPool[key] = (async () => {
+                const [platform, modelName] = parseRawModelName(override.model)
+                const loadedModel = await initializeModel(
+                    ctx,
+                    platform,
+                    modelName
+                )
+
+                logger.info(
+                    'override model loaded %c for private %c',
+                    override.model,
+                    override.userId
+                )
+
+                modelPool[key] = Promise.resolve(loadedModel)
                 return loadedModel
             })()
         }
@@ -281,34 +331,30 @@ async function setupModelPool(
     return { globalModel, modelPool }
 }
 
-async function getModelForGuild(
-    guildId: string,
-    globalModel: ComputedRef<ChatLunaChatModel>,
-    modelPool: Record<string, Promise<ComputedRef<ChatLunaChatModel>>>
-): Promise<ComputedRef<ChatLunaChatModel>> {
-    return await (modelPool[guildId] ?? Promise.resolve(globalModel))
-}
-
 async function getConfigAndPresetForGuild(
     guildId: string,
+    isDirect: boolean,
     config: Config,
     globalPreset: PresetTemplate,
     presetPool: Record<string, PresetTemplate>,
+    key: string,
     preset: Preset
 ): Promise<{ copyOfConfig: Config; currentPreset: PresetTemplate }> {
-    const currentGuildConfig = config.configs[guildId]
+    const currentGuildConfig = isDirect
+        ? config.privateConfigs[guildId]
+        : config.configs[guildId]
     let copyOfConfig = { ...config }
     let currentPreset = globalPreset
 
     if (currentGuildConfig) {
         copyOfConfig = Object.assign({}, copyOfConfig, currentGuildConfig)
         currentPreset =
-            presetPool[guildId] ??
+            presetPool[key] ??
             (await (async () => {
                 const template = preset.getPresetForCache(
                     currentGuildConfig.preset
                 )
-                presetPool[guildId] = template
+                presetPool[key] = template
                 return template
             })())
 
@@ -357,6 +403,10 @@ async function prepareMessages(
         logger.debug('messages_last: ' + JSON.stringify(lastMessage))
     }
 
+    if (focusMessage?.quote) {
+        logger.debug('formatted_last_message: ' + lastMessage)
+    }
+
     const humanMessage = new HumanMessage(
         await currentPreset.input.format(
             {
@@ -376,7 +426,9 @@ async function prepareMessages(
                 prompt: session.content,
                 built: {
                     preset: currentPreset.name,
-                    conversationId: session.guildId
+                    conversationId: session.isDirect
+                        ? session.userId
+                        : session.guildId
                 }
             },
             session.app.chatluna.promptRenderer,
@@ -666,21 +718,20 @@ export async function apply(ctx: Context, config: Config) {
     })
 
     service.collect(async (session, messages, triggerReason, signal) => {
-        const guildId = session.event.guild?.id ?? session.guildId
+        const guildId = session.isDirect ? session.userId : session.guildId
+        const key = `${session.isDirect ? 'private' : 'group'}:${guildId}`
 
         try {
-            const model = await getModelForGuild(
-                guildId,
-                globalModel,
-                modelPool
-            )
+            const model = await (modelPool[key] ?? Promise.resolve(globalModel))
 
             const { copyOfConfig, currentPreset } =
                 await getConfigAndPresetForGuild(
                     guildId,
+                    session.isDirect,
                     config,
                     globalPreset,
                     presetPool,
+                    key,
                     preset
                 )
 
@@ -693,12 +744,12 @@ export async function apply(ctx: Context, config: Config) {
             }
 
             if (copyOfConfig.toolCalling) {
-                chainPool[guildId] =
-                    chainPool[guildId] ??
+                chainPool[key] =
+                    chainPool[key] ??
                     (await createChatLunaChain(ctx, model, session))
             }
 
-            const latestMessages = service.getMessages(guildId) ?? messages
+            const latestMessages = service.getMessages(key) ?? messages
             const count = latestMessages.length
             const temp = await service.getTemp(session, latestMessages)
             const focusMessage = latestMessages[latestMessages.length - 1]
@@ -710,12 +761,12 @@ export async function apply(ctx: Context, config: Config) {
                 model.value,
                 currentPreset,
                 temp,
-                chainPool[guildId]?.value,
+                chainPool[key]?.value,
                 focusMessage,
                 triggerReason
             )
 
-            if (!chainPool[guildId]) {
+            if (!chainPool[key]) {
                 logger.debug(
                     'completion message: ' +
                         JSON.stringify(
@@ -737,7 +788,7 @@ export async function apply(ctx: Context, config: Config) {
                 completionMessages,
                 copyOfConfig,
                 currentPreset.name,
-                chainPool[guildId]?.value,
+                chainPool[key]?.value,
                 signal
             )) {
                 latestStatus = chunk.parsedResponse.status ?? latestStatus
@@ -777,7 +828,7 @@ export async function apply(ctx: Context, config: Config) {
             }
 
             const persistedMessages =
-                service.getMessages(guildId) ?? latestMessages
+                service.getMessages(key) ?? latestMessages
             if (persistedMessages.length > count) {
                 temp.status = latestStatus
                 await service.persistStatus(
@@ -800,10 +851,14 @@ export async function apply(ctx: Context, config: Config) {
             )
 
             registerResponseTriggers(
-                guildId,
+                key,
                 copyOfConfig,
                 nextReplyReasons,
                 wakeUpReplies
+            )
+            await service.persistWakeUpReplies(
+                session,
+                groupInfos[key]?.pendingWakeUpReplies ?? []
             )
 
             service.muteAtLeast(session, copyOfConfig.coolDownTime * 1000)

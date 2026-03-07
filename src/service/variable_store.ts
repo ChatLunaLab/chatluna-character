@@ -1,12 +1,18 @@
 import { Context } from 'koishi'
-import { CharacterVariableRecord, GroupTemp, Message } from '../types'
+import {
+    CharacterVariableRecord,
+    GroupTemp,
+    Message,
+    PendingWakeUpReply,
+    WakeUpReplyRecord
+} from '../types'
 
 export class VariableStore {
     constructor(private ctx: Context) {
         this.ctx.database.extend(
             'chathub_character_variable',
             {
-                groupId: {
+                sessionKey: {
                     type: 'string',
                     length: 255
                 },
@@ -44,15 +50,60 @@ export class VariableStore {
             },
             {
                 autoInc: false,
-                primary: 'groupId',
-                unique: ['groupId']
+                primary: 'sessionKey',
+                unique: ['sessionKey']
+            }
+        )
+
+        this.ctx.database.extend(
+            'chathub_character_wake_up_reply',
+            {
+                id: 'unsigned',
+                sessionKey: {
+                    type: 'string',
+                    length: 255
+                },
+                botId: {
+                    type: 'string',
+                    length: 255
+                },
+                channelId: {
+                    type: 'string',
+                    length: 255
+                },
+                guildId: {
+                    type: 'string',
+                    length: 255,
+                    nullable: true
+                },
+                userId: {
+                    type: 'string',
+                    length: 255
+                },
+                rawTime: {
+                    type: 'string',
+                    length: 255
+                },
+                reason: 'text',
+                naturalReason: 'text',
+                triggerAt: 'integer',
+                createdAt: 'integer',
+                updatedAt: {
+                    type: 'timestamp',
+                    nullable: false,
+                    initial: new Date()
+                }
+            },
+            {
+                autoInc: true,
+                primary: 'id'
             }
         )
     }
 
-    async read(id: string, temp: GroupTemp) {
+    async read(sessionKey: string, temp: GroupTemp) {
         const row = (
-            await this.ctx.database.get('chathub_character_variable', [id])
+            await this.ctx.database.get('chathub_character_variable', [sessionKey])
         )[0]
 
         temp.status = row?.status
@@ -64,12 +115,17 @@ export class VariableStore {
         temp.recordLoaded = true
     }
 
-    async save(id: string, temp: GroupTemp, status?: string, msg?: Message) {
+    async save(
+        sessionKey: string,
+        temp: GroupTemp,
+        status?: string,
+        msg?: Message
+    ) {
         const s = status ?? null
 
         await this.ctx.database.upsert('chathub_character_variable', [
             {
-                groupId: id,
+                sessionKey,
                 status: s,
                 historyClearedAt: temp.historyClearedAt,
                 statusMessageId: msg?.messageId,
@@ -87,10 +143,14 @@ export class VariableStore {
         temp.statusMessageUserId = msg?.id
     }
 
-    async clear(id: string, at: Date) {
+    async list(): Promise<CharacterVariableRecord[]> {
+        return await this.ctx.database.get('chathub_character_variable', {})
+    }
+
+    async clear(sessionKey: string, at: Date) {
         await this.ctx.database.upsert('chathub_character_variable', [
             {
-                groupId: id,
+                sessionKey,
                 status: null,
                 historyClearedAt: at,
                 statusMessageId: null,
@@ -100,5 +160,47 @@ export class VariableStore {
                 updatedAt: new Date()
             } satisfies CharacterVariableRecord
         ])
+    }
+
+    async listWakeUpReplies(): Promise<WakeUpReplyRecord[]> {
+        return await this.ctx.database.get('chathub_character_wake_up_reply', {})
+    }
+
+    async saveWakeUpReplies(
+        sessionKey: string,
+        botId: string,
+        channelId: string,
+        guildId: string | undefined,
+        userId: string,
+        wakeUpReplies: PendingWakeUpReply[]
+    ) {
+        await this.ctx.database.remove('chathub_character_wake_up_reply', {
+            sessionKey
+        })
+
+        if (wakeUpReplies.length < 1) {
+            return
+        }
+
+        await Promise.all(
+            wakeUpReplies.map(async (item) => {
+                await this.ctx.database.create(
+                    'chathub_character_wake_up_reply',
+                    {
+                        sessionKey,
+                        botId,
+                        channelId,
+                        guildId,
+                        userId,
+                        rawTime: item.rawTime,
+                        reason: item.reason,
+                        naturalReason: item.naturalReason,
+                        triggerAt: item.triggerAt,
+                        createdAt: item.createdAt,
+                        updatedAt: new Date()
+                    } satisfies WakeUpReplyRecord
+                )
+            })
+        )
     }
 }
