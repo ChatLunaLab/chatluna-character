@@ -1161,23 +1161,21 @@ export async function createChatLunaChain(
             updateToolsIfNeeded(input, options)
 
             const chunkQueue = createAsyncChunkQueue<ChatLunaChainStreamChunk>()
-            let bufferedActionText = ''
+            let buf = ''
 
             const emitEarlyIntermediate = (action: AgentStep['action']) => {
-                const content =
-                    bufferedActionText.length > 0
-                        ? bufferedActionText
-                        : action.log
-                const responseChunk = createAgentResponseChunk(content)
+                const chunk = createAgentResponseChunk(
+                    buf.length > 0 ? buf : action.log
+                )
 
-                bufferedActionText = ''
+                buf = ''
 
-                if (responseChunk == null) {
+                if (chunk == null) {
                     return
                 }
 
                 chunkQueue.push({
-                    message: responseChunk,
+                    message: chunk,
                     phase: 'intermediate'
                 })
             }
@@ -1192,7 +1190,7 @@ export async function createChatLunaChain(
                           : []),
                     {
                         handleLLMNewToken(token: string) {
-                            bufferedActionText += token
+                            buf += token
                         },
                         handleAgentAction(action: AgentStep['action']) {
                             emitEarlyIntermediate(action)
@@ -1208,7 +1206,7 @@ export async function createChatLunaChain(
                         streamOptions
                     )) as AgentExecutorStreamChunk
 
-                    bufferedActionText = ''
+                    buf = ''
 
                     if ('output' in response) {
                         const responseChunk = createAgentResponseChunk(
