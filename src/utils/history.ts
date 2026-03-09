@@ -1,4 +1,4 @@
-import { Bot, Context, h, Logger, Session } from 'koishi'
+import { Context, h, Logger, Session } from 'koishi'
 import OneBotBot from 'koishi-plugin-adapter-onebot'
 import { Config } from '..'
 import { parseCQCode } from '../onebot/cqcode'
@@ -26,17 +26,18 @@ export async function pullHistory(cfg: PullHistoryConfig) {
 
     const groupId = `${cfg.session.isDirect ? 'private' : 'group'}:${cfg.session.isDirect ? cfg.session.userId : cfg.session.guildId}`
 
+    if (cfg.session.platform === 'qq') {
+        cfg.logger.debug(
+            `Skip history pull for session ${cfg.session.isDirect ? cfg.session.userId : cfg.session.guildId}: current adapter is QQ official.`
+        )
+        return []
+    }
+
     cfg.logger.debug(
         `Try to pull ${count} history message(s) for session ${groupId}.`
     )
 
-    const bot = cfg.session.bot as unknown as Bot & {
-        getMessageList?: (
-            channelId: string,
-            next?: string,
-            direction?: 'before' | 'after'
-        ) => Promise<{ data?: unknown[]; prev?: string }>
-    }
+    const bot = cfg.session.bot
 
     if (cfg.session.platform === 'onebot') {
         return pullOneBot(cfg, count)

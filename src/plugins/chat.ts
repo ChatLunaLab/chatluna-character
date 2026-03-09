@@ -25,10 +25,13 @@ import {
     formatCompletionMessages,
     formatMessage,
     formatTimestamp,
+    getElementText,
     isEmoticonStatement,
     parseResponse,
+    sendElements,
     setLogger,
-    trimCompletionMessages
+    trimCompletionMessages,
+    voiceRender
 } from '../utils/index'
 import { Preset } from '../preset'
 
@@ -87,39 +90,10 @@ async function parseResponseContent(
 
     try {
         parsedResponse = await parseResponse(
+            ctx,
+            session,
             stripInternalTriggerTags(responseContent),
             config.isAt,
-            async (element) => {
-                logger.debug('voice render element: ' + JSON.stringify(element))
-                try {
-                    const content = element.attrs['content']
-                    const extra = element.attrs['extra']
-                    if (extra) {
-                        const { id } = extra
-                        if (id) {
-                            return [
-                                await ctx.vits.say(
-                                    Object.assign(
-                                        {
-                                            speaker_id: Number.parseInt(id, 10),
-                                            input: content
-                                        },
-                                        { session }
-                                    )
-                                )
-                            ]
-                        }
-                    }
-                    return [
-                        await ctx.vits.say(
-                            Object.assign({ input: content }, { session })
-                        )
-                    ]
-                } catch (e) {
-                    logger.error('voice render failed', e)
-                    return [element]
-                }
-            },
             config
         )
     } catch (error) {
@@ -571,14 +545,15 @@ async function handleVoiceMessage(
     elements: h[]
 ): Promise<{ breakSay: boolean; sent: boolean }> {
     try {
-        await session.send(
-            await ctx.vits.say(Object.assign({ input: text }, { session }))
+        await sendElements(
+            session,
+            await voiceRender(ctx, session, text, undefined, elements)
         )
         return { breakSay: true, sent: true }
     } catch (e) {
         logger.error(e)
         try {
-            await session.send(elements)
+            await sendElements(session, elements)
             return { breakSay: false, sent: true }
         } catch (fallbackError) {
             logger.error(fallbackError)
@@ -627,26 +602,25 @@ async function handleMessageSending(
     try {
         switch (parsedResponse.messageType) {
             case 'text':
-                await session.send(elements)
+                await sendElements(session, elements)
                 sent = true
                 break
             case 'voice':
-                await session.send(
-                    await ctx.vits.say(
-                        Object.assign({ input: text }, { session })
-                    )
+                await sendElements(
+                    session,
+                    await voiceRender(ctx, session, text, undefined, elements)
                 )
                 sent = true
                 break
             default:
-                await session.send(elements)
+                await sendElements(session, elements)
                 sent = true
                 break
         }
     } catch (e) {
         logger.error(e)
         try {
-            await session.send(elements)
+            await sendElements(session, elements)
             sent = true
         } catch (fallbackError) {
             logger.error(fallbackError)
@@ -666,9 +640,10 @@ async function handleParsedResponseChunk(
     let sentAny = false
 
     for (const elements of parsedResponse.elements) {
-        const text = elements
-            .map((element) => element.attrs.content ?? '')
-            .join('')
+        const text =
+            parsedResponse.messageType === 'voice'
+                ? parsedResponse.rawMessage
+                : getElementText(elements)
         const emoticonStatement = isEmoticonStatement(text, elements)
 
         if (elements.length < 1) continue
