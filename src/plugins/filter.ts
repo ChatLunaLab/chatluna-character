@@ -556,13 +556,14 @@ export async function apply(ctx: Context, config: Config) {
     }, SCHEDULER_TICK)
 
     service.addFilter((session, message) => {
-        const id = session.isDirect ? session.userId : session.guildId
-        const key = `${session.isDirect ? 'private' : 'group'}:${id}`
+        const isPrivate = session.isDirect
+        const id = isPrivate ? session.userId : session.guildId
+        const key = `${isPrivate ? 'private' : 'group'}:${id}`
         const now = Date.now()
         const { copyOfConfig, currentPreset } = resolveGuildPresetContext(
             id,
             key,
-            session.isDirect,
+            isPrivate,
             config,
             globalPreset,
             presetPool,
@@ -663,7 +664,7 @@ export async function apply(ctx: Context, config: Config) {
                 ))
 
         logger.debug(
-            session.isDirect
+            isPrivate
                 ? `messageCount: ${info.messageCount}. content: ${JSON.stringify(
                       Object.assign({}, message, { images: undefined })
                   )}`
