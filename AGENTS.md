@@ -21,7 +21,7 @@ It applies to the entire tree under the repo root.
 
 ### Install
 
-- Use Node.js >= 18 and Yarn.
+- Use Node.js >= 18 and Yarn (4.5.0+).
 - Install dependencies: `yarn install`
 
 ### Build
@@ -35,8 +35,7 @@ It applies to the entire tree under the repo root.
 - Run ESLint: `yarn lint`
 - Auto-fix: `yarn lint-fix`
 - ESLint uses `@typescript-eslint`, `prettier`, and `standard` configs.
-- Do **not** add new linters/formatters or config files without an explicit
-  request.
+- Do **not** add new linters/formatters or config files without an explicit request.
 
 ### Tests
 
@@ -47,72 +46,104 @@ It applies to the entire tree under the repo root.
 
 ```
 src/
-  index.ts          — Plugin entry: exports apply(), Config schema, injects
-  plugin.ts         — Sequentially applies all sub-plugins from src/plugins/
-  preset.ts         — Preset loading (YAML), file watching, schema registration
-  types.ts          — Shared interfaces & types
-  utils.ts          — Response parsing, XML lexer, markdown rendering, LLM chain creation
+  index.ts          — Plugin entry: exports apply(), injects services, middleware
+  plugin.ts         — Sequentially runs sub-plugins: [chat, commands, config, filter, interception]
+  config.ts         — Config schema definition with type safety
+  preset.ts         — Preset YAML loading, file watching, schema registration
+  types.ts          — Core interfaces: Message, GroupTemp, GuildConfig, PrivateConfig
+  onebot/
+    cqcode.ts       — CQ code parsing/formatting for OneBot adapter
   service/
-    message.ts      — Core service (MessageCollector extends Service): message storage,
-                      group state, concurrency locks, filter dispatch, broadcast pipeline
+    message.ts      — MessageCollector: message storage, group locks, filter dispatch, broadcasts
+    trigger.ts      — TriggerStore: manages per-group trigger state and predicates
+    variable_store.ts — Persists group status, history, and character variables
   plugins/
-    chat.ts         — LLM response pipeline: model selection, message preparation,
-                      streaming, response parsing, sending with typing delays
-    commands.ts     — Koishi commands (chatluna.character.clear etc.)
-    config.ts       — Dynamic schema registration for model selection
-    filter.ts       — Activity scoring, trigger detection, idle/wake-up/next-reply scheduling
-    interception.ts — Intercepts ChatLuna main plugin events for character-handled groups
+    chat.ts         — LLM chat pipeline: prompt building, model inference, response parsing
+    commands.ts     — Koishi commands (clear history, trigger, config, etc.)
+    config.ts       — Dynamic schema registration for model/preset selection
+    filter.ts       — Activity scoring, trigger detection, idle/wake-up scheduling
+    interception.ts — Intercepts ChatLuna main plugin events for character groups
+  utils/
+    index.ts        — Main utils export
+    activity.ts     — Activity score calculation
+    chain.ts        — ChatLunaChain wrapper for LLM invocation
+    elements.ts     — Koishi element processing, message splitting
+    history.ts      — Message history retrieval and pulling
+    logger.ts       — Logger setup
+    messages.ts     — Message building, formatting
+    response.ts     — Response parsing (XML tags, stickers, voice)
+    text.ts         — Text processing, XML tag lexer
+    triggers.ts     — Trigger matching and evaluation
 resources/
-  presets/          — Default YAML preset files, copied to user data dir on first run
+  presets/          — Default YAML preset files (copied to user data on first run)
 ```
 
 ### Plugin Lifecycle
 
 ```
 index.ts apply()
-  -> ctx.plugin(MessageCollector)         // registers ctx.chatluna_character service
-  -> ctx.plugin({ apply: on('ready') })   // after ready: init presets, run plugins()
-  -> ctx.middleware()                      // calls service.broadcast() for every message
+  -> ctx.plugin(TriggerStore)        // registers ctx.chatluna_character_trigger
+  -> ctx.plugin(MessageCollector)    // registers ctx.chatluna_character
+  -> ctx.plugin({ apply: on('ready') })
+    -> await ctx.chatluna_character.preset.init()
+    -> await plugins(ctx, config)
+  -> ctx.middleware()  // for every message: dispatch to broadcast()
 
-plugin.ts plugins()
-  -> sequentially calls: [chat, commands, config, filter, interception]
+plugins() sequentially calls:
+  1. chat.ts      — message collect handler (emit event, LLM inference)
+  2. commands.ts  — register commands
+  3. config.ts    — register dynamic schema
+  4. filter.ts    — activity scoring, idle/wake-up triggers
+  5. interception.ts — intercept ChatLuna events
 
-Data flow:
-  User message -> middleware -> service.broadcast(session)
-    -> store message, run filters (filter.ts)
-    -> if triggered: acquireResponseLock -> emit 'chatluna_character/message_collect'
-    -> chat.ts handler: prepare messages -> stream model -> parse -> send -> release lock
+Message flow:
+  User message
+    -> middleware filters (isDirect, apply list check)
+    -> service.broadcast(session)
+      -> store message in _messages[groupId]
+      -> run _filters (trigger, idle state, etc.)
+      -> if triggered: acquire response lock
+        -> emit 'chatluna_character/message_collect'
+        -> chat.ts handler: build prompt, stream model, parse response, send
+        -> release lock & notify waiters
 ```
 
 ### Key Abstractions
 
 | Abstraction | Location | Description |
 |---|---|---|
-| `MessageCollector` | `service/message.ts` | Koishi `Service` registered as `ctx.chatluna_character`. Central coordinator for message storage, group locks, filter dispatch |
-| `Preset` | `preset.ts` | Loads/watches YAML presets from disk, registers dynamic schema |
-| `ChatLunaChain` | `types.ts` + `utils.ts` | Wraps LangChain agent executor for tool-calling LLM invocation |
-| `GroupInfo` | `types.ts` + `filter.ts` | Per-group activity state: message counts, timestamps, scoring thresholds, pending triggers |
-| `GroupLock` | `types.ts` + `service/message.ts` | Per-group mute timer + response mutex to serialize LLM calls |
+| `MessageCollector` | `service/message.ts` | Koishi Service registered as `ctx.chatluna_character`. Central hub: message storage, group locks, broadcast pipeline, filter dispatch |
+| `TriggerStore` | `service/trigger.ts` | Koishi Service registered as `ctx.chatluna_character_trigger`. Manages per-group trigger state and predicates |
+| `VariableStore` | `service/variable_store.ts` | Persists character status, history clear time, and group-level variables to database |
+| `Preset` | `preset.ts` | Loads/watches YAML presets, registers dynamic config schemas for model selection |
+| `GroupTemp` | `types.ts` + `service/message.ts` | Per-group transient state: completion messages, status, history pull flag, mute timer |
+| `Message` | `types.ts` | Message interface: content, name, id, timestamp, quote, images |
+| `GuildConfig` / `PrivateConfig` | `types.ts` | Per-group/user overridable config (preset, token limits, trigger thresholds, typing delays, etc.) |
 
 ### Service Access Patterns
 
-The `MessageCollector` service is the single entry point for cross-module interaction:
+The two primary services coordinate all behavior:
 
 ```ts
-// Available everywhere via Koishi DI
-ctx.chatluna_character.broadcast(session)
-ctx.chatluna_character.getMessages(groupId)
-ctx.chatluna_character.mute(session, time)
-ctx.chatluna_character.collect(handler)
-ctx.chatluna_character.addFilter(filter)
-ctx.chatluna_character.triggerCollect(session, reason)
-ctx.chatluna_character.preset  // Preset instance
-ctx.chatluna_character.logger  // Logger instance
+// MessageCollector (ctx.chatluna_character) — message pipeline
+ctx.chatluna_character.broadcast(session)          // main dispatch point
+ctx.chatluna_character.collect(handler)            // register message collect listener
+ctx.chatluna_character.addFilter(filter)           // add trigger/filter
+ctx.chatluna_character.triggerCollect(session, reason)  // manual trigger
+ctx.chatluna_character.getMessages(groupId)       // retrieve stored messages
+ctx.chatluna_character.mute(session, time)        // mute group for duration
+ctx.chatluna_character.preset                      // Preset instance
+ctx.chatluna_character.logger                      // Logger instance
+
+// TriggerStore (ctx.chatluna_character_trigger) — trigger state
+ctx.chatluna_character_trigger.isTriggerActive(sessionKey)
+ctx.chatluna_character_trigger.setPredicate(sessionKey, predicate)
+ctx.chatluna_character_trigger.getPredicate(sessionKey)
 ```
 
 ### Per-Group Config Merging
 
-The pattern for per-group configuration override is consistent across the codebase:
+Consistent pattern for guild config overrides:
 
 ```ts
 const guildConfig = config.configs[guildId]
@@ -123,7 +154,7 @@ Use this exact pattern. Do not create helper functions for it.
 
 ### Module Augmentation
 
-The project extends Koishi's type system via `declare module 'koishi'`:
+The project extends Koishi's type system:
 
 ```ts
 // in service/message.ts
@@ -132,13 +163,19 @@ declare module 'koishi' {
         chatluna_character: MessageCollector
     }
     export interface Events {
-        'chatluna_character/message_collect': (...) => void | Promise<void>
+        'chatluna_character/message_collect': (session: Session) => void | Promise<void>
+    }
+}
+
+// in service/trigger.ts
+declare module 'koishi' {
+    export interface Context {
+        chatluna_character_trigger: TriggerStore
     }
 }
 ```
 
-When adding new services or events, follow this exact pattern in the relevant
-file.
+Follow this pattern when adding new services or events.
 
 ## Code Style (MANDATORY)
 
