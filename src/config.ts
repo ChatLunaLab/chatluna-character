@@ -74,14 +74,7 @@ const commonConfigObject = Schema.object({
         .default(true),
     isAt: Schema.boolean().description('是否启用@').default(false),
     splitVoice: Schema.boolean().description('是否分段发送语音').default(false),
-    splitSentence: Schema.boolean()
-        .description('是否启用自分割发送消息（仅旧版预设开启）')
-        .default(false),
-    markdownRender: Schema.boolean()
-        .description(
-            '是否启用 Markdown 渲染。关闭后可能会损失分割消息的精度（仅旧版预设开启）'
-        )
-        .default(false),
+
     isNickname: Schema.boolean()
         .description('允许 bot 配置中的昵称引发回复')
         .default(true),
@@ -357,17 +350,9 @@ export const Config = Schema.intersect([
         splitVoice: Schema.boolean()
             .description('是否分段发送语音')
             .default(false),
-        splitSentence: Schema.boolean()
-            .description('是否启用自分割发送消息（仅旧版预设开启）')
-            .default(false),
         enableMessageId: Schema.boolean()
             .description('向模型暴露平台消息 ID，以允许发送引用消息。')
             .default(true),
-        markdownRender: Schema.boolean()
-            .description(
-                '是否启用 Markdown 渲染。关闭后可能会损失分割消息的精度（仅旧版预设开启）'
-            )
-            .default(false),
         messageInterval: Schema.number()
             .default(20)
             .min(0)

@@ -14,8 +14,8 @@ export {
 export { createChatLunaChain, createEmbeddingsModel } from './chain'
 export {
     attachMultimodalFileLimit,
-    processElements,
-    processTextMatches
+    parseMessageElements,
+    processElements
 } from './elements'
 export { formatHistoryLogDate, mergeMessages, pullHistory } from './history'
 export { setLogger } from './logger'
@@ -28,15 +28,14 @@ export {
     formatTimestamp,
     trimCompletionMessages
 } from './messages'
-export { parseResponse, parseXmlToObject } from './response'
 export {
-    isEmoticonStatement,
-    isOnlyPunctuation,
-    matchAt,
-    matchPre,
-    splitSentence,
-    transform
-} from './text'
+    createResponseElementRenders,
+    getElementText,
+    voiceRender
+} from './render'
+export { parseResponse, parseXmlToObject } from './response'
+export { sendElements, splitSendElements } from './send'
+export { isEmoticonStatement, isOnlyPunctuation } from './text'
 export {
     clearStaleNextReplyTriggers,
     evaluateNextReplyGroup,

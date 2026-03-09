@@ -54,8 +54,6 @@ export interface GuildConfig {
     imageInputMaxCount: number
     imageInputMaxSize: number
     multimodalFileInputMaxSize: number
-    splitSentence: boolean
-    markdownRender: boolean
     largeTextSize: number
     largeTextTypingTime: number
     coolDownTime: number

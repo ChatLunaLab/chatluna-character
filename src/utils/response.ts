@@ -1,8 +1,9 @@
-import { h } from 'koishi'
+import { Context, Session } from 'koishi'
 
 import { Config } from '..'
-import { processElements, processTextMatches } from './elements'
+import { parseMessageElements, processElements } from './elements'
 import { logger } from './logger'
+import { createResponseElementRenders } from './render'
 
 function parseMessageContent(response: string) {
     const status = response.match(/<status>(.*?)<\/status>/s)?.[1]
@@ -40,26 +41,24 @@ function parseMessageContent(response: string) {
 }
 
 export async function parseResponse(
+    ctx: Context,
+    session: Session,
     response: string,
     useAt: boolean = true,
-    voiceRender?: (element: h) => Promise<h[]>,
     config?: Config
 ) {
     try {
         const { rawMessage, messageType, status, sticker } =
             parseMessageContent(response)
+        const renders = createResponseElementRenders(ctx, session, config)
 
-        const { currentElements, parsedMessage } = processTextMatches(
+        const { currentElements, parsedMessage } = parseMessageElements(
             rawMessage,
             useAt,
-            config?.markdownRender ?? true
+            renders
         )
 
-        const resultElements = await processElements(
-            currentElements,
-            voiceRender,
-            config
-        )
+        const resultElements = await processElements(currentElements, renders)
 
         return {
             elements: resultElements,
