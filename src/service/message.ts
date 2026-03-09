@@ -1,11 +1,5 @@
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { Bot, Context, h, Logger, Service, Session, Time } from 'koishi'
+import { Context, h, Logger, Service, Session, Time } from 'koishi'
 import { createLogger } from 'koishi-plugin-chatluna/utils/logger'
-import { isForwardMessageElement } from 'koishi-plugin-chatluna/utils/koishi'
-import {
-    hashString,
-    isMessageContentImageUrl
-} from 'koishi-plugin-chatluna/utils/string'
 import { ObjectLock } from 'koishi-plugin-chatluna/utils/lock'
 import { Config } from '..'
 import { Preset } from '../preset'
@@ -13,54 +7,23 @@ import {
     GroupLock,
     GroupTemp,
     IMAGE_SIZE_CACHE_LIMIT,
-    KoishiMessage,
     Message,
     MessageCollectorFilter,
-    MessageImage,
-    OneBotHistoryMessage,
-    PendingWakeUpReply,
-    WakeUpReplyRecord
+    MessageImage
 } from '../types'
-import { parseCQCode } from '../onebot/cqcode'
+import {
+    attachMultimodalFileLimit,
+    pullHistory as doPullHistory,
+    formatHistoryLogDate,
+    getImages,
+    getNotEmptyString,
+    mapElementToString,
+    mergeMessages
+} from '../utils/index'
 import { VariableStore } from './variable_store'
-import { attachMultimodalFileLimit } from '../utils'
-
-function createStoredSession(bot: Bot, temp: WakeUpReplyRecord) {
-    const isDirect = temp.sessionKey.startsWith('private:')
-    if (temp.userId == null) {
-        return null
-    }
-
-    const channelId = temp.channelId ?? temp.userId
-
-    return bot.session({
-        channel: {
-            id: channelId,
-            type: isDirect ? 1 : 0
-        },
-        guild: isDirect
-            ? undefined
-            : {
-                  id: temp.guildId
-              },
-        message: {
-            id: '0',
-            content: ''
-        },
-        selfId: bot.selfId,
-        timestamp: Date.now(),
-        type: 'message',
-        user: {
-            id: temp.userId,
-            name: temp.userId
-        }
-    }) as Session
-}
 
 export class MessageCollector extends Service {
     private _messages: Record<string, Message[]> = {}
-
-    private _wakeUpReplies: Record<string, PendingWakeUpReply[]> = {}
 
     private _filters: MessageCollectorFilter[] = []
 
@@ -77,8 +40,6 @@ export class MessageCollector extends Service {
             reject: (reason?: string) => void
         }[]
     > = {}
-
-    private _lastSessions: Record<string, Session> = {}
 
     private _imageSizeCache: Record<string, number> = {}
 
@@ -113,46 +74,6 @@ export class MessageCollector extends Service {
                     statusMessageTimestamp: row.statusMessageTimestamp,
                     statusMessageContent: row.statusMessageContent,
                     statusMessageUserId: row.statusMessageUserId
-                }
-            }
-
-            const wakeUpRows = await this._store.listWakeUpReplies()
-
-            for (const row of wakeUpRows) {
-                ;(this._wakeUpReplies[row.sessionKey] ??= []).push({
-                    rawTime: row.rawTime,
-                    reason: row.reason,
-                    naturalReason: row.naturalReason,
-                    triggerAt: row.triggerAt,
-                    createdAt: row.createdAt
-                })
-
-                const bot = ctx.bots[row.botId]
-
-                if (!bot || this._lastSessions[row.sessionKey]) {
-                    continue
-                }
-
-                const session = createStoredSession(bot, row)
-
-                if (session) {
-                    this._lastSessions[row.sessionKey] = session
-                }
-            }
-        })
-
-        ctx.on('bot-status-updated', async (bot) => {
-            const rows = await this._store.listWakeUpReplies()
-
-            for (const row of rows) {
-                if (row.botId !== bot.sid || this._lastSessions[row.sessionKey]) {
-                    continue
-                }
-
-                const session = createStoredSession(bot, row)
-
-                if (session) {
-                    this._lastSessions[row.sessionKey] = session
                 }
             }
         })
@@ -202,22 +123,6 @@ export class MessageCollector extends Service {
 
     getMessages(groupId: string) {
         return this._messages[groupId]
-    }
-
-    getLastSession(groupId: string) {
-        return this._lastSessions[groupId]
-    }
-
-    getLoadedTemp(groupId: string) {
-        return this._groupTemp[groupId]
-    }
-
-    getLoadedTemps() {
-        return this._groupTemp
-    }
-
-    getLoadedWakeUpReplies(groupId: string) {
-        return this._wakeUpReplies[groupId] ?? []
     }
 
     isMute(session: Session) {
@@ -407,24 +312,6 @@ export class MessageCollector extends Service {
         }
     }
 
-    async persistWakeUpReplies(
-        session: Session,
-        wakeUpReplies: PendingWakeUpReply[]
-    ) {
-        const groupId = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
-
-        this._wakeUpReplies[groupId] = wakeUpReplies
-
-        await this._store.saveWakeUpReplies(
-            groupId,
-            session.bot.sid,
-            session.channelId ?? session.userId,
-            session.guildId,
-            session.userId,
-            wakeUpReplies
-        )
-    }
-
     private _getGroupLocks(groupId: string) {
         if (!this._groupLocks[groupId]) {
             this._groupLocks[groupId] = {
@@ -467,7 +354,6 @@ export class MessageCollector extends Service {
             try {
                 this._messages[groupId] = []
                 this._groupTemp[groupId] = newTemp(clearedAt)
-                delete this._lastSessions[groupId]
                 // Cancel waiters directly while holding lock
                 const waiters = this._responseWaiters[groupId]
                 if (waiters) {
@@ -499,7 +385,6 @@ export class MessageCollector extends Service {
             this._groupTemp = Object.fromEntries(
                 groupIds.map((groupId) => [groupId, newTemp(clearedAt)])
             )
-            this._lastSessions = {}
 
             // Cancel waiters directly while holding locks
             for (const gid of groupIds) {
@@ -557,7 +442,7 @@ export class MessageCollector extends Service {
 
     async broadcast(session: Session) {
         const groupId = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
-        this._lastSessions[groupId] = session
+        this.ctx.chatluna_character_trigger.setLastSession(session)
         const guildConfig = session.isDirect
             ? this._config.privateConfigs[session.userId]
             : this._config.configs[session.guildId]
@@ -576,13 +461,14 @@ export class MessageCollector extends Service {
                 element.type === 'audio'
         )
 
-        const preMessage = config.image || hasMultimodalFile
-            ? await this.ctx.chatluna.messageTransformer.transform(
-                  session,
-                  elements,
-                  config.model
-              )
-            : undefined
+        const preMessage =
+            config.image || hasMultimodalFile
+                ? await this.ctx.chatluna.messageTransformer.transform(
+                      session,
+                      elements,
+                      config.model
+                  )
+                : undefined
 
         const images = config.image
             ? await getImages(this.ctx, config.model, session, preMessage)
@@ -605,8 +491,7 @@ export class MessageCollector extends Service {
                       const quoted = (this._messages[groupId] ?? []).find(
                           (msg) =>
                               msg.messageId != null &&
-                              String(msg.messageId) ===
-                                  String(session.quote.id)
+                              String(msg.messageId) === String(session.quote.id)
                       )
                       if (quoted) {
                           return quoted.content
@@ -630,14 +515,12 @@ export class MessageCollector extends Service {
                                   element.type === 'audio'
                               ) {
                                   element.attrs.chatluna_file_url ??=
-                                      element.attrs.src ??
-                                      element.attrs.url
+                                      element.attrs.src ?? element.attrs.url
                               }
 
                               if (element.type === 'img') {
                                   element.attrs.imageUrl ??=
-                                      element.attrs.src ??
-                                      element.attrs.url
+                                      element.attrs.src ?? element.attrs.url
                               }
                           }
                       }
@@ -726,31 +609,26 @@ export class MessageCollector extends Service {
             ? this._config.privateConfigs[session.userId]
             : this._config.configs[session.guildId]
         const cfg = Object.assign({}, this._config, guildConfig)
-        const max = cfg.maxMessages
-
-        if (!cfg.historyPull) {
-            return
-        }
 
         const temp = await this.getTemp(session)
-        const cutoff = temp.historyClearedAt?.getTime()
-        const msgs = this._messages[groupId] ?? []
-        const count = Math.max(0, max - msgs.length)
-
-        if (count < 1) {
-            temp.historyPulled = true
-            return
-        }
 
         if (temp.historyPulled) {
             return
         }
 
-        this.logger.debug(
-            `Try to pull ${count} history message(s) for session ${groupId}.`
-        )
+        const cutoff = temp.historyClearedAt?.getTime()
+        const list = await doPullHistory({
+            logger: this.logger,
+            session,
+            config: cfg,
+            focusMessage,
+            messageCount: this._messages[groupId]?.length ?? 0,
+            clearedAfter: cutoff
+        })
 
-        const list = await this._pull(session, count, focusMessage, cutoff)
+        if (list == null) {
+            return
+        }
 
         const unlock = await this._lockByGroupId(groupId)
         try {
@@ -765,20 +643,20 @@ export class MessageCollector extends Service {
             if (list.length < 1) {
                 this.logger.debug(
                     `No history messages pulled for session ${groupId}. ` +
-                        `Cutoff: ${formatLogDate(current.historyClearedAt)}.`
+                        `Cutoff: ${formatHistoryLogDate(current.historyClearedAt)}.`
                 )
                 return
             }
 
             this.logger.debug(
                 `Pulled ${list.length} history message(s) for session ${groupId}. ` +
-                    `Cutoff: ${formatLogDate(current.historyClearedAt)}.`
+                    `Cutoff: ${formatHistoryLogDate(current.historyClearedAt)}.`
             )
 
             this._messages[groupId] = mergeMessages(
                 this._messages[groupId] ?? [],
                 list,
-                max
+                cfg.maxMessages
             )
         } finally {
             unlock()
@@ -835,413 +713,6 @@ export class MessageCollector extends Service {
         } finally {
             unlock()
         }
-    }
-
-    private async _pull(
-        session: Session,
-        count: number,
-        focusMessage: Message,
-        clearedAfter?: number
-    ): Promise<Message[]> {
-        const bot = session.bot as unknown as Bot & {
-            getMessageList?: (
-                channelId: string,
-                next?: string,
-                direction?: 'before' | 'after'
-            ) => Promise<{ data?: unknown[]; prev?: string }>
-        }
-
-        if (session.platform === 'onebot') {
-            return this._pullOneBot(session, count, focusMessage, clearedAfter)
-        }
-
-        if (typeof bot.getMessageList === 'function') {
-            return this._pullBot(session, count, focusMessage, clearedAfter)
-        }
-
-        this.logger.debug(
-            `Skip history pull for session ${session.isDirect ? session.userId : session.guildId}: ` +
-                'current adapter does not support history API.'
-        )
-        return []
-    }
-
-    private async _pullBot(
-        session: Session,
-        count: number,
-        focusMessage: Message,
-        clearedAfter?: number
-    ): Promise<Message[]> {
-        const bot = session.bot as Bot & {
-            getMessageList: Bot['getMessageList']
-        }
-
-        const channelId = session.channelId ?? session.guildId
-
-        if (channelId == null || bot.getMessageList == null) {
-            this.logger.warn(
-                `Skip history pull for session ${session.isDirect ? session.userId : session.guildId}: ` +
-                    'Bot API requires a valid channel id.'
-            )
-            return []
-        }
-
-        const results: Message[] = []
-        let nextId: string | undefined
-        let previousNextId: string | undefined
-
-        while (results.length < count) {
-            let response: Awaited<ReturnType<typeof bot.getMessageList>>
-            try {
-                response = await bot.getMessageList(channelId, nextId, 'before')
-            } catch (error) {
-                this.logger.warn(
-                    `Failed to pull Bot API history for session ${session.isDirect ? session.userId : session.guildId}`,
-                    error
-                )
-                return []
-            }
-
-            const batch = response.data ?? []
-            if (batch.length < 1) {
-                break
-            }
-
-            const list = batch
-                .map((msg) => toBotMsg(session, msg))
-                .filter((message): message is Message => message != null)
-                .filter((message) => !sameMessage(message, focusMessage))
-                .filter(
-                    (message) =>
-                        clearedAfter == null ||
-                        message.timestamp == null ||
-                        message.timestamp > clearedAfter
-                )
-
-            results.unshift(...list)
-
-            const oldestMessage = batch[0]
-            const oldestTimestamp =
-                oldestMessage?.timestamp ?? oldestMessage?.createdAt ?? 0
-            if (clearedAfter != null && oldestTimestamp <= clearedAfter) {
-                break
-            }
-            nextId = response.prev ?? oldestMessage?.id
-            if (nextId == null || nextId.length < 1) {
-                break
-            }
-
-            if (nextId === previousNextId) {
-                break
-            }
-
-            previousNextId = nextId
-        }
-
-        return mergeMessages([], results, count)
-    }
-
-    private async _pullOneBot(
-        session: Session,
-        count: number,
-        focusMessage: Message,
-        clearedAfter?: number
-    ): Promise<Message[]> {
-        const bot = session.bot as Session['bot'] & {
-            platform: string
-            internal?: {
-                _request: (
-                    action: string,
-                    params: Record<string, unknown>
-                ) => Promise<{ data?: Record<string, unknown> }>
-            }
-        }
-
-        if (bot.platform !== 'onebot' || bot.internal?._request == null) {
-            this.logger.debug(
-                `Skip history pull for session ${session.guildId}: current adapter is not OneBot.`
-            )
-            return []
-        }
-
-        if (session.isDirect) {
-            const targetId = Number(session.userId)
-            if (!Number.isFinite(targetId)) {
-                this.logger.warn(
-                    `Skip history pull for private user ${session.userId}: invalid user id.`
-                )
-                return []
-            }
-
-            const results: OneBotHistoryMessage[] = []
-            let fetchedCount = 0
-            let messageSeq: number | undefined
-            let oldestMessageTime = Number.MAX_SAFE_INTEGER
-            const focusTimestamp = focusMessage.timestamp
-
-            while (fetchedCount < count) {
-                const requestPackage: Record<string, unknown> = {
-                    user_id: targetId,
-                    message_seq: messageSeq,
-                    count: Math.min(count - fetchedCount + 1, 20),
-                    reverseOrder: typeof messageSeq === 'number'
-                }
-
-                if (messageSeq == null) {
-                    delete requestPackage.message_seq
-                    delete requestPackage.reverseOrder
-                }
-
-                let batch: OneBotHistoryMessage[] = []
-                try {
-                    const response = await bot.internal._request(
-                        'get_friend_msg_history',
-                        requestPackage
-                    )
-                    batch =
-                        (response.data?.['messages'] as OneBotHistoryMessage[]) ??
-                        []
-                } catch (error) {
-                    this.logger.warn(
-                        `Failed to pull OneBot private history for private user ${session.userId}`,
-                        error
-                    )
-                    return []
-                }
-
-                if (batch.length < 1) {
-                    break
-                }
-
-                const filteredBatch = batch.filter((message) => {
-                    if (
-                        message.message_id != null &&
-                        focusMessage.messageId != null
-                    ) {
-                        return String(message.message_id) !== focusMessage.messageId
-                    }
-
-                    if (focusTimestamp == null || message.time == null) {
-                        return true
-                    }
-
-                    const messageTimestamp =
-                        message.time < 1_000_000_000_000
-                            ? message.time * 1000
-                            : message.time
-                    return messageTimestamp < focusTimestamp
-                })
-
-                results.unshift(...filteredBatch)
-                fetchedCount = results.length
-
-                const oldest = batch[0]
-                if (oldest == null || oldest.time == null) {
-                    break
-                }
-
-                if (oldest.time >= oldestMessageTime) {
-                    break
-                }
-
-                oldestMessageTime = oldest.time
-                messageSeq = oldest.message_seq
-            }
-
-            return results
-                .map((msg) => {
-                    const raw = msg.raw_message ?? ''
-                    const content = mapElementToString(
-                        session,
-                        raw,
-                        parseCQCode(raw)
-                    )
-
-                    if (content.length < 1) {
-                        return null
-                    }
-
-                    const id = msg.sender?.user_id
-
-                    return {
-                        content,
-                        name: getNotEmptyString(
-                            msg.sender?.nickname,
-                            msg.sender?.card,
-                            String(id ?? '0')
-                        ),
-                        id: id != null ? String(id) : '0',
-                        messageId:
-                            msg.message_id != null
-                                ? String(msg.message_id)
-                                : undefined,
-                        timestamp:
-                            msg.time == null
-                                ? undefined
-                                : msg.time < 1_000_000_000_000
-                                  ? msg.time * 1000
-                                  : msg.time
-                    } as Message
-                })
-                .filter((message): message is Message => message != null)
-                .filter((message) => !sameMessage(message, focusMessage))
-                .filter(
-                    (message) =>
-                        clearedAfter == null ||
-                        (message.timestamp != null &&
-                            message.timestamp > clearedAfter)
-                )
-                .slice(-count)
-        }
-
-        const targetId = Number(session.guildId)
-        if (!Number.isFinite(targetId)) {
-            this.logger.warn(
-                `Skip history pull for guild ${session.guildId}: invalid group id.`
-            )
-            return []
-        }
-
-        let isNapCat = false
-        try {
-            const versionInfo = await bot.internal._request(
-                'get_version_info',
-                {}
-            )
-            const appName = String(
-                versionInfo.data?.['app_name'] ?? ''
-            ).toLowerCase()
-            isNapCat = appName.includes('napcat')
-        } catch (error) {
-            this.logger.debug('Failed to detect OneBot app info', error)
-        }
-
-        const results: OneBotHistoryMessage[] = []
-        let fetchedCount = 0
-        let messageSeq: number | undefined
-        let messageId: number | undefined
-        let oldestMessageTime = Number.MAX_SAFE_INTEGER
-        const focusTimestamp = focusMessage.timestamp
-
-        while (fetchedCount < count) {
-            const requestPackage: Record<string, unknown> = {
-                group_id: targetId,
-                message_seq: messageSeq,
-                message_id: messageId,
-                count: Math.min(count - fetchedCount + 1, isNapCat ? 50 : 30),
-                reverseOrder: typeof messageSeq === 'number'
-            }
-
-            if (!isNapCat) {
-                delete requestPackage.reverseOrder
-            }
-
-            if (messageSeq == null) {
-                delete requestPackage.message_seq
-                delete requestPackage.message_id
-            }
-
-            let batch: OneBotHistoryMessage[] = []
-            try {
-                const response = await bot.internal._request(
-                    'get_group_msg_history',
-                    requestPackage
-                )
-                batch =
-                    (response.data?.['messages'] as OneBotHistoryMessage[]) ??
-                    []
-            } catch (error) {
-                this.logger.warn(
-                    `Failed to pull OneBot history for guild ${session.guildId}`,
-                    error
-                )
-                return []
-            }
-
-            if (batch.length < 1) {
-                break
-            }
-
-            const filteredBatch = batch.filter((message) => {
-                if (
-                    message.message_id != null &&
-                    focusMessage.messageId != null
-                ) {
-                    return String(message.message_id) !== focusMessage.messageId
-                }
-
-                if (focusTimestamp == null || message.time == null) {
-                    return true
-                }
-
-                const messageTimestamp =
-                    message.time < 1_000_000_000_000
-                        ? message.time * 1000
-                        : message.time
-                return messageTimestamp < focusTimestamp
-            })
-
-            results.unshift(...filteredBatch)
-            fetchedCount = results.length
-
-            const oldest = batch[0]
-            if (oldest == null || oldest.time == null) {
-                break
-            }
-
-            if (oldest.time >= oldestMessageTime) {
-                break
-            }
-
-            oldestMessageTime = oldest.time
-            messageSeq = oldest.message_seq
-            messageId = oldest.message_id
-        }
-
-        return results
-            .map((msg) => {
-                const raw = msg.raw_message ?? ''
-                const content = mapElementToString(
-                    session,
-                    raw,
-                    parseCQCode(raw)
-                )
-
-                if (content.length < 1) {
-                    return null
-                }
-
-                const id = msg.sender?.user_id
-
-                return {
-                    content,
-                    name: getNotEmptyString(
-                        msg.sender?.nickname,
-                        msg.sender?.card,
-                        String(id ?? '0')
-                    ),
-                    id: id != null ? String(id) : '0',
-                    messageId:
-                        msg.message_id != null
-                            ? String(msg.message_id)
-                            : undefined,
-                    timestamp:
-                        msg.time == null
-                            ? undefined
-                            : msg.time < 1_000_000_000_000
-                              ? msg.time * 1000
-                              : msg.time
-                } as Message
-            })
-            .filter((message): message is Message => message != null)
-            .filter((message) => !sameMessage(message, focusMessage))
-            .filter(
-                (message) =>
-                    clearedAfter == null ||
-                    (message.timestamp != null &&
-                        message.timestamp > clearedAfter)
-            )
-            .slice(-count)
     }
 
     private async _processImages(groupArray: Message[], config: Config) {
@@ -1342,257 +813,6 @@ function newTemp(clearedAt?: Date): GroupTemp {
         statusMessageContent: null,
         statusMessageUserId: null,
         recordLoaded: clearedAt != null
-    }
-}
-
-function toBotMsg(session: Session, msg: KoishiMessage): Message | null {
-    const text = msg.content ?? ''
-    const id = msg.user?.id ?? '0'
-    const content = mapElementToString(
-        session,
-        text,
-        msg.elements ?? h.parse(text)
-    )
-
-    if (content.length < 1) {
-        return null
-    }
-
-    return {
-        content,
-        name: getNotEmptyString(
-            msg.member?.name,
-            msg.user?.nick,
-            msg.user?.name,
-            id
-        ),
-        id,
-        messageId: msg.messageId ?? msg.id,
-        timestamp: msg.timestamp ?? msg.createdAt,
-        quote: msg.quote
-            ? {
-                  content: mapElementToString(
-                      session,
-                      msg.quote.content ?? '',
-                      msg.quote.elements ?? h.parse(msg.quote.content ?? '')
-                  ),
-                  name: getNotEmptyString(
-                      msg.quote.user?.name,
-                      msg.quote.user?.nick,
-                      msg.quote.user?.id
-                  ),
-                  id: msg.quote.user?.id,
-                  messageId: msg.quote.id
-              }
-            : undefined
-    }
-}
-
-function sameMessage(left: Message, right: Message) {
-    if (left.messageId != null && right.messageId != null) {
-        return left.messageId === right.messageId
-    }
-
-    return (
-        left.id === right.id &&
-        left.timestamp === right.timestamp &&
-        left.content === right.content
-    )
-}
-
-function mergeMessages(list: Message[], add: Message[], max: number) {
-    const map = new Map<string, Message>()
-
-    for (const msg of list.concat(add)) {
-        const key =
-            msg.messageId != null
-                ? `message:${msg.messageId}`
-                : `fallback:${msg.id}:${msg.timestamp}:${msg.content}`
-        map.set(key, msg)
-    }
-
-    const merged = [...map.values()].sort((a, b) => {
-        const left = a.timestamp ?? 0
-        const right = b.timestamp ?? 0
-        return left - right
-    })
-
-    while (merged.length > max) {
-        merged.shift()
-    }
-
-    return merged
-}
-
-function formatLogDate(value?: Date | null) {
-    if (value == null) {
-        return 'none'
-    }
-
-    return value.toLocaleString('zh-CN', {
-        hour12: false,
-        timeZone: 'Asia/Shanghai'
-    })
-}
-
-function mapElementToString(
-    session: Session,
-    content: string | undefined,
-    elements: h[],
-    images?: MessageImage[]
-) {
-    content = content ?? ''
-    const filteredBuffer: string[] = []
-    const usedImages = new Set<string>()
-
-    for (const element of elements) {
-        if (element.type === 'text') {
-            const content = element.attrs.content as string
-
-            if (content?.trimEnd()?.length > 0) {
-                filteredBuffer.push(content)
-            }
-        } else if (element.type === 'at') {
-            let name = element.attrs?.name
-            if (element.attrs.id === session.bot.selfId) {
-                name = name ?? session.bot.user.name ?? '0'
-            }
-            if (name == null || name.length < 1) {
-                name = element.attrs.id ?? '0'
-            }
-
-            filteredBuffer.push(`<at name='${name}'>${element.attrs.id}</at>`)
-        } else if (element.type === 'img') {
-            const imageHash = element.attrs.imageHash as string | undefined
-            const imageUrl = element.attrs.imageUrl as string | undefined
-
-            const matchedImage = images?.find((image) => {
-                if (imageHash && image.hash === imageHash) {
-                    return true
-                }
-                if (imageUrl && image.url === imageUrl) {
-                    return true
-                }
-                return false
-            })
-
-            if (imageUrl) {
-                filteredBuffer.push(`<sticker>${imageUrl}</sticker>`)
-            } else if (matchedImage) {
-                filteredBuffer.push(matchedImage.formatted)
-                usedImages.add(matchedImage.formatted)
-            } else if (images && images.length > 0) {
-                for (const image of images) {
-                    if (!usedImages.has(image.formatted)) {
-                        filteredBuffer.push(image.formatted)
-                        usedImages.add(image.formatted)
-                    }
-                }
-            } else {
-                let buffer = `[image`
-                if (imageHash) {
-                    buffer += `:${imageHash}`
-                }
-                if (imageUrl) {
-                    buffer += `:${imageUrl}`
-                }
-                buffer += ']'
-                filteredBuffer.push(buffer)
-            }
-        } else if (element.type === 'face') {
-            filteredBuffer.push(
-                `<face name='${element.attrs.name}'>${element.attrs.id}</face>`
-            )
-        } else if (
-            element.type === 'file' ||
-            element.type === 'video' ||
-            element.type === 'audio'
-        ) {
-            const url = element.attrs['chatluna_file_url']
-            if (!url) {
-                continue
-            }
-            let fallbackName = 'file'
-            if (element.type === 'video') {
-                fallbackName = 'video'
-            } else if (element.type === 'audio') {
-                fallbackName = 'audio'
-            }
-            const name =
-                element.attrs['file'] ??
-                element.attrs['name'] ??
-                element.attrs['filename'] ??
-                fallbackName
-
-            const marker = element.type === 'audio' ? 'voice' : element.type
-            filteredBuffer.push(`[${marker}:${name}:${url}]`)
-        } else if (isForwardMessageElement(element)) {
-            filteredBuffer.push('[聊天记录]')
-        }
-    }
-
-    if (content.trimEnd().length < 1 && filteredBuffer.length < 1) {
-        return ''
-    }
-
-    return filteredBuffer.join('')
-}
-
-// 返回 base64 的图片编码
-async function getImages(
-    ctx: Context,
-    model: string,
-    session: Session,
-    mergedMessage?: Awaited<
-        ReturnType<Context['chatluna']['messageTransformer']['transform']>
-    >
-) {
-    const transformed =
-        mergedMessage ??
-        (await ctx.chatluna.messageTransformer.transform(
-            session,
-            session.elements,
-            model
-        ))
-
-    if (typeof transformed.content === 'string') {
-        return undefined
-    }
-
-    const images = transformed.content.filter(isMessageContentImageUrl)
-
-    if (!images || images.length < 1) {
-        return undefined
-    }
-
-    const results: MessageImage[] = []
-
-    for (const image of images) {
-        const url =
-            typeof image.image_url === 'string'
-                ? image.image_url
-                : image.image_url.url
-
-        let hash: string =
-            typeof image.image_url !== 'string' ? image.image_url['hash'] : ''
-
-        if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
-            hash = await hashString(url, 8)
-        }
-
-        const formatted = hash ? `[image:${hash}]` : `<sticker>${url}</sticker>`
-
-        results.push({ url, hash, formatted })
-    }
-
-    return results
-}
-
-export function getNotEmptyString(...texts: (string | undefined)[]): string {
-    for (const text of texts) {
-        if (text && text?.length > 0) {
-            return text
-        }
     }
 }
 

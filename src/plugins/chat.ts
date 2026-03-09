@@ -29,14 +29,8 @@ import {
     parseResponse,
     setLogger,
     trimCompletionMessages
-} from '../utils'
+} from '../utils/index'
 import { Preset } from '../preset'
-import {
-    clearNextReplyTriggers,
-    groupInfos,
-    registerNextReplyTrigger,
-    registerWakeUpReplyTrigger
-} from './filter'
 
 import type {} from 'koishi-plugin-chatluna/services/chat'
 import { getMessageContent } from 'koishi-plugin-chatluna/utils/string'
@@ -222,16 +216,20 @@ async function* streamAgentResponseContents(
     }
 }
 
-function registerResponseTriggers(
+async function registerResponseTriggers(
+    ctx: Context,
+    session: Session,
     key: string,
     config: Config,
     nextReplyReasons: string[],
     wakeUpReplies: ReturnType<typeof extractWakeUpReplies>
 ) {
+    const store = ctx.chatluna_character_trigger
+
     if (nextReplyReasons.length > 0) {
-        clearNextReplyTriggers(key)
+        store.clearNextReplies(key)
         for (const reason of nextReplyReasons) {
-            const accepted = registerNextReplyTrigger(key, reason, config)
+            const accepted = store.registerNextReply(key, reason, config)
 
             if (!accepted) {
                 logger.warn(
@@ -242,8 +240,8 @@ function registerResponseTriggers(
     }
 
     for (const wakeUp of wakeUpReplies) {
-        const accepted = registerWakeUpReplyTrigger(
-            key,
+        const accepted = await store.registerWakeUpReply(
+            session,
             wakeUp.time,
             wakeUp.reason,
             config
@@ -255,6 +253,10 @@ function registerResponseTriggers(
                     `reason="${wakeUp.reason}" /> for session ${key}`
             )
         }
+    }
+
+    if (wakeUpReplies.length > 0) {
+        await store.setWakeUpReplies(session, store.getWakeUpReplies(key))
     }
 }
 
@@ -827,8 +829,7 @@ export async function apply(ctx: Context, config: Config) {
                 return
             }
 
-            const persistedMessages =
-                service.getMessages(key) ?? latestMessages
+            const persistedMessages = service.getMessages(key) ?? latestMessages
             if (persistedMessages.length > count) {
                 temp.status = latestStatus
                 await service.persistStatus(
@@ -850,15 +851,13 @@ export async function apply(ctx: Context, config: Config) {
                 copyOfConfig.modelCompletionCount
             )
 
-            registerResponseTriggers(
+            await registerResponseTriggers(
+                ctx,
+                session,
                 key,
                 copyOfConfig,
                 nextReplyReasons,
                 wakeUpReplies
-            )
-            await service.persistWakeUpReplies(
-                session,
-                groupInfos[key]?.pendingWakeUpReplies ?? []
             )
 
             service.muteAtLeast(session, copyOfConfig.coolDownTime * 1000)
