@@ -267,7 +267,7 @@ export async function createChatLunaChain(
                             )
                             const content =
                                 text.length > 2000
-                                    ? text.slice(0, 2000) + '\n...[truncated]'
+                                    ? text.slice(0, 2000) + '...'
                                     : text
 
                             logger.debug(`agent tool call:\n${content}`)
@@ -277,11 +277,10 @@ export async function createChatLunaChain(
                             let result = output
 
                             if (typeof output === 'string') {
-                                const raw = output.replace(/\\n/g, '\n')
                                 try {
-                                    result = JSON.parse(raw)
+                                    result = JSON.parse(output)
                                 } catch {
-                                    result = raw
+                                    result = output.replace(/\\n/g, '\n')
                                 }
                             }
                             const text =
@@ -290,7 +289,7 @@ export async function createChatLunaChain(
                                     : JSON.stringify(result, null, 2)
                             const content =
                                 text.length > 2000
-                                    ? text.slice(0, 2000) + '\n...[truncated]'
+                                    ? text.slice(0, 2000) + '...'
                                     : text
 
                             logger.debug(`agent tool result:\n${content}`)
