@@ -65,6 +65,10 @@ export interface Config extends ChatLunaPlugin.Config {
 }
 
 const commonConfigObject = Schema.object({
+    remark: Schema.string()
+        .default('')
+        .description('备注（无作用）'),
+
     maxTokens: Schema.number()
         .default(20000)
         .min(1024)
