@@ -26,6 +26,7 @@ import {
     ChatLunaChainStreamChunk,
     ChatLunaRunnableConfig
 } from '../types'
+import { truncate } from './text'
 
 interface AgentExecutorStreamChunk {
     output?: BaseMessage['content']
@@ -243,14 +244,16 @@ export async function createChatLunaChain(
                 })
             }
 
+            const existingCallbacks = options?.callbacks
+                ? Array.isArray(options.callbacks)
+                    ? options.callbacks
+                    : [options.callbacks]
+                : []
+
             const streamOptions: ChatLunaRunnableConfig = {
                 ...(options ?? {}),
                 callbacks: [
-                    ...(Array.isArray(options?.callbacks)
-                        ? options.callbacks
-                        : options?.callbacks != null
-                          ? [options.callbacks]
-                          : []),
+                    ...existingCallbacks,
                     {
                         handleLLMNewToken(token: string) {
                             buf += token
@@ -265,17 +268,11 @@ export async function createChatLunaChain(
                                 null,
                                 2
                             )
-                            const content =
-                                text.length > 2000
-                                    ? text.slice(0, 2000) + '...'
-                                    : text
-
-                            logger.debug(`agent tool call:\n${content}`)
+                            logger.debug(`agent tool call:\n${truncate(text)}`)
                             emitEarlyIntermediate(action)
                         },
-                        handleToolEnd(output: unknown) {
+                        handleToolEnd(output) {
                             let result = output
-
                             if (typeof output === 'string') {
                                 try {
                                     result = JSON.parse(output)
@@ -287,12 +284,9 @@ export async function createChatLunaChain(
                                 typeof result === 'string'
                                     ? result
                                     : JSON.stringify(result, null, 2)
-                            const content =
-                                text.length > 2000
-                                    ? text.slice(0, 2000) + '...'
-                                    : text
-
-                            logger.debug(`agent tool result:\n${content}`)
+                            logger.debug(
+                                `agent tool result:\n${truncate(text)}`
+                            )
                         }
                     }
                 ]
@@ -307,17 +301,12 @@ export async function createChatLunaChain(
 
                     buf = ''
 
-                    if ('output' in response) {
-                        const responseChunk = createAgentResponseChunk(
-                            response.output
-                        )
-
-                        if (responseChunk) {
-                            chunkQueue.push({
-                                message: responseChunk,
-                                phase: 'final'
-                            })
-                        }
+                    const chunk = createAgentResponseChunk(response.output)
+                    if (chunk) {
+                        chunkQueue.push({
+                            message: chunk,
+                            phase: 'final'
+                        })
                     }
 
                     chunkQueue.end()
@@ -329,13 +318,8 @@ export async function createChatLunaChain(
             try {
                 while (true) {
                     const { value, done } = await chunkQueue.next()
-                    if (done) {
-                        break
-                    }
-
-                    if (value) {
-                        yield value
-                    }
+                    if (done) break
+                    if (value) yield value
                 }
             } finally {
                 await producer
