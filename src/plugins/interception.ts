@@ -6,7 +6,10 @@ export function apply(ctx: Context, config: Config) {
         const id = session.isDirect ? session.userId : session.guildId
 
         if (session.isDirect) {
-            if (!config.applyPrivate.includes(id)) {
+            if (
+                config.privateWhitelistMode &&
+                !config.applyPrivate.includes(id)
+            ) {
                 return false
             }
 
@@ -16,7 +19,7 @@ export function apply(ctx: Context, config: Config) {
             )
         }
 
-        if (!config.applyGroup.includes(id)) {
+        if (config.groupWhitelistMode && !config.applyGroup.includes(id)) {
             return false
         }
 

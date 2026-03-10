@@ -19,7 +19,9 @@ export interface Config extends ChatLunaPlugin.Config {
     messageActivityScoreUpperLimit: number
 
     maxTokens: number
+    privateWhitelistMode: boolean
     applyPrivate: string[]
+    groupWhitelistMode: boolean
     applyGroup: string[]
     searchKeywordExtraModel: string
 
@@ -260,7 +262,17 @@ const guildConfigObject = Schema.intersect([
 
 export const Config = Schema.intersect([
     Schema.object({
+        privateWhitelistMode: Schema.boolean()
+            .default(true)
+            .description(
+                '是否启用私聊白名单模式：开启后，将仅允许 applyPrivate 中的用户使用伪装插件私聊功能'
+            ),
         applyPrivate: Schema.array(Schema.string()).description('应用到的私聊'),
+        groupWhitelistMode: Schema.boolean()
+            .default(true)
+            .description(
+                '是否启用群聊白名单模式：开启后，将仅允许 applyGroup 中的群组使用伪装插件群聊功能'
+            ),
         applyGroup: Schema.array(Schema.string()).description('应用到的群组'),
         maxMessages: Schema.number()
             .description('存储在内存里的最大消息数量')

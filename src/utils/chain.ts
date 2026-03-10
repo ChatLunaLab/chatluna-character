@@ -152,6 +152,7 @@ export async function createChatLunaChain(
     llmRef: ComputedRef<ChatLunaChatModel>,
     session: Session
 ): Promise<ComputedRef<ChatLunaChain>> {
+    const logger = ctx.chatluna_character.logger
     const currentPreset = computed(
         () =>
             ({
@@ -255,7 +256,44 @@ export async function createChatLunaChain(
                             buf += token
                         },
                         handleAgentAction(action: AgentStep['action']) {
+                            const text = JSON.stringify(
+                                {
+                                    tool: action.tool,
+                                    toolInput: action.toolInput,
+                                    content: action.content
+                                },
+                                null,
+                                2
+                            )
+                            const content =
+                                text.length > 2000
+                                    ? text.slice(0, 2000) + '\n...[truncated]'
+                                    : text
+
+                            logger.debug(`agent tool call:\n${content}`)
                             emitEarlyIntermediate(action)
+                        },
+                        handleToolEnd(output: unknown) {
+                            let result = output
+
+                            if (typeof output === 'string') {
+                                const raw = output.replace(/\\n/g, '\n')
+                                try {
+                                    result = JSON.parse(raw)
+                                } catch {
+                                    result = raw
+                                }
+                            }
+                            const text =
+                                typeof result === 'string'
+                                    ? result
+                                    : JSON.stringify(result, null, 2)
+                            const content =
+                                text.length > 2000
+                                    ? text.slice(0, 2000) + '\n...[truncated]'
+                                    : text
+
+                            logger.debug(`agent tool result:\n${content}`)
                         }
                     }
                 ]
