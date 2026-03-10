@@ -35,6 +35,7 @@ export interface GroupTemp {
 
 export interface GuildConfig {
     preset: string
+    remark: string
     enableMessageId: boolean
     messageInterval: number
     enableLongWaitTrigger: boolean
