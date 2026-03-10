@@ -28,6 +28,8 @@ type PendingCooldownTrigger = {
     message: Message
 }
 
+const MAX_TIMEOUT_MS = 2147483647
+
 export class MessageCollector extends Service {
     private _messages: Record<string, Message[]> = {}
 
@@ -374,6 +376,14 @@ export class MessageCollector extends Service {
             try {
                 this._messages[groupId] = []
                 this._groupTemp[groupId] = newTemp(clearedAt)
+
+                delete this._pendingCooldownTriggers[groupId]
+                const timer = this._cooldownTriggerTimers[groupId]
+                if (timer) {
+                    clearTimeout(timer)
+                    delete this._cooldownTriggerTimers[groupId]
+                }
+
                 // Cancel waiters directly while holding lock
                 const waiters = this._responseWaiters[groupId]
                 if (waiters) {
@@ -414,6 +424,13 @@ export class MessageCollector extends Service {
                         waiter.reject('cancelled')
                     }
                     this._responseWaiters[gid] = []
+                }
+
+                delete this._pendingCooldownTriggers[gid]
+                const timer = this._cooldownTriggerTimers[gid]
+                if (timer) {
+                    clearTimeout(timer)
+                    delete this._cooldownTriggerTimers[gid]
                 }
             }
 
@@ -619,8 +636,10 @@ export class MessageCollector extends Service {
                 }
 
                 this._cooldownTriggerTimers[groupId] = setTimeout(() => {
-                    void this._flushCooldownTrigger(groupId)
-                }, delay)
+                    this._flushCooldownTrigger(groupId).catch((err) => {
+                        this.logger.error(err)
+                    })
+                }, Math.min(delay, MAX_TIMEOUT_MS))
             } finally {
                 unlock()
             }
@@ -778,7 +797,7 @@ export class MessageCollector extends Service {
     private async _flushCooldownTrigger(groupId: string) {
         const unlock = await this._lockByGroupId(groupId)
 
-        let pending!: PendingCooldownTrigger
+        let pending: PendingCooldownTrigger | undefined
         try {
             pending = this._pendingCooldownTriggers[groupId]
             if (!pending) {
@@ -788,9 +807,12 @@ export class MessageCollector extends Service {
 
             const lock = this._getGroupLocks(groupId)
             if (lock.mute > Date.now()) {
+                const delay = Math.max(lock.mute - Date.now(), 0)
                 this._cooldownTriggerTimers[groupId] = setTimeout(() => {
-                    void this._flushCooldownTrigger(groupId)
-                }, Math.max(lock.mute - Date.now(), 0))
+                    this._flushCooldownTrigger(groupId).catch((err) => {
+                        this.logger.error(err)
+                    })
+                }, Math.min(delay, MAX_TIMEOUT_MS))
                 return
             }
 
@@ -798,6 +820,10 @@ export class MessageCollector extends Service {
             delete this._cooldownTriggerTimers[groupId]
         } finally {
             unlock()
+        }
+
+        if (!pending) {
+            return
         }
 
         await this.pullHistory(pending.session, pending.message)

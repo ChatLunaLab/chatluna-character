@@ -14,6 +14,8 @@ import {
     WINDOW_SIZE
 } from '../utils/index'
 
+const MAX_IDLE_WAIT_SECONDS = 60 * 60 * 24 * 30
+
 function markTriggered(
     info: GroupInfo,
     config: Config,
@@ -58,14 +60,14 @@ function getPassiveRetryIntervalSeconds(
     const backoffSeconds = baseSeconds * Math.pow(2, retried)
 
     if (config.enableIdleTriggerMaxInterval === false) {
-        return backoffSeconds
+        return Math.min(backoffSeconds, MAX_IDLE_WAIT_SECONDS)
     }
 
     const maxMinutes = Math.max(
         config.idleTriggerMaxIntervalMinutes ?? 60 * 24,
         1
     )
-    const maxSeconds = maxMinutes * 60
+    const maxSeconds = Math.min(maxMinutes * 60, MAX_IDLE_WAIT_SECONDS)
     return Math.min(backoffSeconds, maxSeconds)
 }
 
