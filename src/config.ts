@@ -164,7 +164,7 @@ const commonConfigObject = Schema.object({
         .min(0)
         .max(60 * 24 * 24)
         .description(
-            '冷却发言时间（秒）：当上一条消息发送完成后的 n 秒内发出的请求将被丢弃。'
+            '冷却发言时间（秒）：当上一条消息发送完成后的 n 秒内发出的请求将被积累并延迟触发。'
         ),
 
     typingTime: Schema.number()
@@ -445,7 +445,7 @@ export const Config = Schema.intersect([
             .min(0)
             .max(60 * 24)
             .description(
-                '冷却发言时间（秒）：当上一条消息发送完成后的 n 秒内发出的请求将被丢弃。'
+                '冷却发言时间（秒）：当上一条消息发送完成后的 n 秒内发出的请求将被积累并延迟触发。'
             ),
 
         typingTime: Schema.number()
