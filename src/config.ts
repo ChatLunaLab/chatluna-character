@@ -64,7 +64,7 @@ export interface Config extends ChatLunaPlugin.Config {
     enableMessageId: boolean
 }
 
-const commonConfigObject = Schema.object({
+const commonTokenAndMessageIdConfig = Schema.object({
     remark: Schema.string()
         .default('')
         .description('备注（无作用）'),
@@ -77,7 +77,10 @@ const commonConfigObject = Schema.object({
 
     enableMessageId: Schema.boolean()
         .description('向模型暴露平台消息 ID，以允许发送引用消息。')
-        .default(true),
+        .default(true)
+})
+
+const commonChatBehaviorConfig = Schema.object({
     isAt: Schema.boolean().description('是否启用@').default(false),
     splitVoice: Schema.boolean().description('是否分段发送语音').default(false),
 
@@ -106,7 +109,10 @@ const commonConfigObject = Schema.object({
         ),
     enableLongWaitTrigger: Schema.boolean()
         .default(false)
-        .description('是否启用空闲触发'),
+        .description('是否启用空闲触发')
+})
+
+const commonIdleStrategyConfig = Schema.object({
     idleTriggerRetryStyle: Schema.union([
         Schema.const('exponential').description(
             '指数退避（默认）：首次触发后若仍无新消息，按“空闲触发间隔（分钟）”作为起始值每次乘 2（例如 2→4→8→16）。'
@@ -131,7 +137,10 @@ const commonConfigObject = Schema.object({
         .default(true)
         .description(
             '是否启用空闲触发随机抖动：对固定重试与指数退避都生效，每轮会随机提前或延后 5%-10%。'
-        ),
+        )
+})
+
+const commonConversationConfig = Schema.object({
     toolCalling: Schema.boolean()
         .description(
             '是否启用工具调用功能（可在[**这里**]' +
@@ -206,14 +215,17 @@ const commonConfigObject = Schema.object({
 })
 
 const privateConfigObject = Schema.intersect([
-    commonConfigObject,
+    commonTokenAndMessageIdConfig,
     Schema.object({
         messageInterval: Schema.number()
-            .default(5)
+            .default(2)
             .min(0)
             .role('slider')
             .max(10000)
-            .description('随机发送消息的间隔。私聊默认更积极。'),
+            .description('随机发送消息的间隔（条）：私聊需要更积极。')
+    }),
+    commonChatBehaviorConfig,
+    Schema.object({
         idleTriggerIntervalMinutes: Schema.number()
             .default(60 * 8)
             .min(1)
@@ -221,25 +233,35 @@ const privateConfigObject = Schema.intersect([
             .description(
                 '空闲触发间隔（分钟）：当超过该时间未收到新消息时，将自动触发一次回复请求。'
             )
-    })
+    }),
+    commonIdleStrategyConfig,
+    commonConversationConfig
 ]) as Schema<PrivateConfig>
 
 const guildConfigObject = Schema.intersect([
-    commonConfigObject,
+    commonTokenAndMessageIdConfig,
     Schema.object({
         messageInterval: Schema.number()
             .default(20)
             .min(0)
             .role('slider')
             .max(10000)
-            .description('随机发送消息的间隔。群越活跃，这个值就会越高。'),
+            .description(
+                '随机发送消息的间隔（条）：群越活跃，这个值就越需要调高，否则将一直被高强度触发。'
+            ),
+    }),
+    commonChatBehaviorConfig,
+    Schema.object({
         idleTriggerIntervalMinutes: Schema.number()
             .default(60 * 3)
             .min(1)
             .max(60 * 24 * 7)
             .description(
                 '空闲触发间隔（分钟）：当超过该时间未收到新消息时，将自动触发一次回复请求。'
-            ),
+            )
+    }),
+    commonIdleStrategyConfig,
+    Schema.object({
         messageActivityScoreLowerLimit: Schema.number()
             .default(0.85)
             .min(0)
@@ -260,8 +282,9 @@ const guildConfigObject = Schema.intersect([
                     '若下限 < 上限（如 0.1 → 0.9），则会越聊越少；' +
                     '若下限 > 上限（如 0.9 → 0.2），则会越聊越多。' +
                     '十分钟内无人回复时，会自动回退到下限。'
-            )
-    })
+            ),
+    }),
+    commonConversationConfig
 ]) as Schema<GuildConfig>
 
 export const Config = Schema.intersect([
