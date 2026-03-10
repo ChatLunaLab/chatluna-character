@@ -121,7 +121,7 @@ const commonConfigObject = Schema.object({
         .min(1)
         .max(60 * 24 * 30)
         .description(
-            '空闲触发最大间隔（分钟）：仅在“指数退避”下生效，关闭上面的限制时不封顶。'
+            '空闲触发最大间隔（分钟）：仅在“指数退避”下生效，关闭上面的限制后也会受 30 天安全上限约束。'
         ),
     enableIdleTriggerJitter: Schema.boolean()
         .default(true)
@@ -411,7 +411,7 @@ export const Config = Schema.intersect([
             .min(1)
             .max(60 * 24 * 30)
             .description(
-                '空闲触发最大间隔（分钟）：仅在“指数退避”下生效，关闭上面的限制时不封顶。'
+                '空闲触发最大间隔（分钟）：仅在“指数退避”下生效，关闭上面的限制后也会受 30 天安全上限约束。'
             ),
         enableIdleTriggerJitter: Schema.boolean()
             .default(true)
