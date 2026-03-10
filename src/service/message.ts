@@ -22,6 +22,12 @@ import {
 } from '../utils/index'
 import { VariableStore } from './variable_store'
 
+type PendingCooldownTrigger = {
+    session: Session
+    triggerReason: string
+    message: Message
+}
+
 export class MessageCollector extends Service {
     private _messages: Record<string, Message[]> = {}
 
@@ -44,6 +50,13 @@ export class MessageCollector extends Service {
     private _imageSizeCache: Record<string, number> = {}
 
     private _imageSizeCacheCount = 0
+
+    private _pendingCooldownTriggers: Record<string, PendingCooldownTrigger> = {}
+
+    private _cooldownTriggerTimers: Record<
+        string,
+        ReturnType<typeof setTimeout>
+    > = {}
 
     private _store: VariableStore
 
@@ -76,6 +89,13 @@ export class MessageCollector extends Service {
                     statusMessageUserId: row.statusMessageUserId
                 }
             }
+        })
+
+        ctx.on('dispose', () => {
+            for (const timer of Object.values(this._cooldownTriggerTimers)) {
+                clearTimeout(timer)
+            }
+            this._cooldownTriggerTimers = {}
         })
     }
 
@@ -559,6 +579,19 @@ export class MessageCollector extends Service {
         })
 
         if (triggerReason && !this.isMute(session)) {
+            const unlock = await this._lockByGroupId(groupId)
+            try {
+                delete this._pendingCooldownTriggers[groupId]
+
+                const timer = this._cooldownTriggerTimers[groupId]
+                if (timer) {
+                    clearTimeout(timer)
+                    delete this._cooldownTriggerTimers[groupId]
+                }
+            } finally {
+                unlock()
+            }
+
             await this.pullHistory(session, message)
             const triggered = await this.triggerCollect(
                 session,
@@ -566,9 +599,36 @@ export class MessageCollector extends Service {
                 message
             )
             return triggered
-        } else {
-            return this.isMute(session)
         }
+
+        if (triggerReason) {
+            const unlock = await this._lockByGroupId(groupId)
+
+            try {
+                this._pendingCooldownTriggers[groupId] = {
+                    session,
+                    triggerReason,
+                    message
+                }
+
+                const lock = this._getGroupLocks(groupId)
+                const delay = Math.max(lock.mute - Date.now(), 0)
+                const timer = this._cooldownTriggerTimers[groupId]
+                if (timer) {
+                    clearTimeout(timer)
+                }
+
+                this._cooldownTriggerTimers[groupId] = setTimeout(() => {
+                    void this._flushCooldownTrigger(groupId)
+                }, delay)
+            } finally {
+                unlock()
+            }
+
+            return true
+        }
+
+        return this.isMute(session)
     }
 
     async triggerCollect(
@@ -713,6 +773,39 @@ export class MessageCollector extends Service {
         } finally {
             unlock()
         }
+    }
+
+    private async _flushCooldownTrigger(groupId: string) {
+        const unlock = await this._lockByGroupId(groupId)
+
+        let pending!: PendingCooldownTrigger
+        try {
+            pending = this._pendingCooldownTriggers[groupId]
+            if (!pending) {
+                delete this._cooldownTriggerTimers[groupId]
+                return
+            }
+
+            const lock = this._getGroupLocks(groupId)
+            if (lock.mute > Date.now()) {
+                this._cooldownTriggerTimers[groupId] = setTimeout(() => {
+                    void this._flushCooldownTrigger(groupId)
+                }, Math.max(lock.mute - Date.now(), 0))
+                return
+            }
+
+            delete this._pendingCooldownTriggers[groupId]
+            delete this._cooldownTriggerTimers[groupId]
+        } finally {
+            unlock()
+        }
+
+        await this.pullHistory(pending.session, pending.message)
+        await this.triggerCollect(
+            pending.session,
+            pending.triggerReason,
+            pending.message
+        )
     }
 
     private async _processImages(groupArray: Message[], config: Config) {
