@@ -177,9 +177,9 @@ async function* streamAgentResponseContents(
         const isIntermediate = responseChunk.phase === 'intermediate'
 
         if (isIntermediate) {
-            logger.debug(`agent intermediate response: ${responseContent}`)
+            logger.debug(`agent intermediate response:\n${responseContent}`)
         } else {
-            logger.debug(`model response: ${responseContent}`)
+            logger.debug(`model response:\n${responseContent}`)
         }
 
         yield {
@@ -508,7 +508,7 @@ async function* streamModelResponse(
                 return
             }
 
-            logger.debug(`model response: ${responseContent}`)
+            logger.debug(`model response:\n${responseContent}`)
             emittedAny = true
 
             yield await parseResponseContent(ctx, session, config, {

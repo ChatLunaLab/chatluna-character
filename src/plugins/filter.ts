@@ -334,8 +334,12 @@ function shouldRecycleGroupInfo(
           : key
 
     if (
-        (!isDirect && !config.applyGroup.includes(id)) ||
-        (isDirect && !config.applyPrivate.includes(id))
+        (!isDirect &&
+            config.groupWhitelistMode &&
+            !config.applyGroup.includes(id)) ||
+        (isDirect &&
+            config.privateWhitelistMode &&
+            !config.applyPrivate.includes(id))
     ) {
         return true
     }
@@ -474,7 +478,8 @@ export async function apply(ctx: Context, config: Config) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ctx.on('guild-member' as any, (session: Session) => {
         if (
-            !config.applyGroup.includes(session.guildId) ||
+            (config.groupWhitelistMode &&
+                !config.applyGroup.includes(session.guildId)) ||
             session.event?.subtype !== 'ban' ||
             session.bot.selfId !== session.event?.user?.id
         ) {
