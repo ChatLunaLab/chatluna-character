@@ -219,7 +219,15 @@ export type MessageImage = {
 
 export type KoishiMessage = Awaited<ReturnType<Bot['getMessage']>>
 
+export type PendingCooldownTrigger = {
+    session: Session
+    triggerReason: string
+    message: Message
+}
+
 export const IMAGE_SIZE_CACHE_LIMIT = 512
+
+export const MAX_IDLE_WAIT_SECONDS = 60 * 60 * 24 * 30
 
 declare module 'koishi' {
     interface Tables {

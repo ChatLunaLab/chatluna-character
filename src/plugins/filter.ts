@@ -1,6 +1,6 @@
 import { Context, Session } from 'koishi'
 import { Config } from '..'
-import { GroupInfo, PresetTemplate } from '../types'
+import { GroupInfo, MAX_IDLE_WAIT_SECONDS, PresetTemplate } from '../types'
 import { createDefaultGroupInfo } from '../service/trigger'
 import {
     calculateActivityScore,
@@ -14,7 +14,267 @@ import {
     WINDOW_SIZE
 } from '../utils/index'
 
-const MAX_IDLE_WAIT_SECONDS = 60 * 60 * 24 * 30
+export async function apply(ctx: Context, config: Config) {
+    const service = ctx.chatluna_character
+    const store = ctx.chatluna_character_trigger
+    const preset = service.preset
+    const logger = service.logger
+
+    const globalPreset = await preset.getPreset(config.defaultPreset)
+    const presetPool: Record<string, PresetTemplate> = {}
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ctx.on('guild-member' as any, (session: Session) => {
+        if (
+            (config.groupWhitelistMode &&
+                !config.applyGroup.includes(session.guildId)) ||
+            session.event?.subtype !== 'ban' ||
+            session.bot.selfId !== session.event?.user?.id
+        ) {
+            return
+        }
+
+        const duration = (session.event._data?.['duration'] ?? 0) * 1000
+
+        if (duration === 0) {
+            logger.warn(
+                `检测到 ${session.bot.user?.name || session.selfId} 被 ${session.operatorId} 操作解禁。`
+            )
+            ctx.chatluna_character.mute(session, 0)
+            return
+        }
+
+        logger.warn(
+            `检测到 ${session.bot.user?.name || session.selfId} 被 ${session.operatorId} 操作禁言 ${duration / 1000} 秒。`
+        )
+
+        ctx.chatluna_character.mute(session, duration)
+    })
+
+    ctx.setInterval(() => {
+        const now = Date.now()
+
+        for (const key of store.keys()) {
+            const info = store.get(key)
+            if (info == null) {
+                continue
+            }
+
+            const session = store.getLastSession(key)
+            const isDirect = session
+                ? session.isDirect
+                : key.startsWith('private:')
+            const id = session
+                ? session.isDirect
+                    ? session.userId
+                    : session.guildId
+                : key.startsWith('private:')
+                  ? key.slice('private:'.length)
+                  : key.startsWith('group:')
+                    ? key.slice('group:'.length)
+                    : key
+            const guildConfig = isDirect
+                ? config.privateConfigs[id]
+                : config.configs[id]
+            const copyOfConfig = Object.assign({}, config, guildConfig)
+            const hasLastSession = session != null
+
+            if (
+                shouldRecycleGroupInfo(
+                    key,
+                    info,
+                    copyOfConfig,
+                    hasLastSession,
+                    now,
+                    config
+                )
+            ) {
+                store.delete(key).catch((e) => {
+                    logger.error(
+                        `[next_reply] recycle failed session=${key}`,
+                        e
+                    )
+                })
+                continue
+            }
+
+            if (!hasPendingSchedulerWork(info, copyOfConfig)) {
+                continue
+            }
+
+            processSchedulerTickForGuild(ctx, config, key).catch((e) => {
+                logger.error(`[next_reply] scheduler failed session=${key}`, e)
+            })
+        }
+    }, SCHEDULER_TICK)
+
+    service.addFilter((session, message) => {
+        const isPrivate = session.isDirect
+        const id = isPrivate ? session.userId : session.guildId
+        const key = `${isPrivate ? 'private' : 'group'}:${id}`
+        const now = Date.now()
+        const { copyOfConfig, currentPreset } = resolveGuildPresetContext(
+            id,
+            key,
+            isPrivate,
+            config,
+            globalPreset,
+            presetPool,
+            preset
+        )
+
+        const info = store.get(key) ?? createDefaultGroupInfo(copyOfConfig, now)
+
+        if (
+            !service.isResponseLocked(session) &&
+            (service.getMessages(key)?.length ?? 0) > 1
+        ) {
+            const pendingWakeUpReplies = info.pendingWakeUpReplies ?? []
+            const nextWakeUpReplies = pendingWakeUpReplies.filter(
+                (pending) => pending.triggerAt > now
+            )
+
+            if (nextWakeUpReplies.length !== pendingWakeUpReplies.length) {
+                info.pendingWakeUpReplies = nextWakeUpReplies
+                store
+                    .setWakeUpReplies(session, nextWakeUpReplies)
+                    .catch((e) => {
+                        logger.error(e)
+                    })
+            }
+        }
+
+        const selfId = session.bot.selfId ?? session.bot.userId ?? '0'
+        if (message.id === selfId) {
+            store.set(key, info)
+            return
+        }
+
+        if (
+            shouldStopWhenDisableChatLuna(ctx, session, copyOfConfig, key, id)
+        ) {
+            return
+        }
+
+        updateIncomingMessageStats(
+            info,
+            copyOfConfig,
+            message.id,
+            now,
+            session.isDirect
+        )
+
+        const botId = session.bot.selfId
+        let appel = session.stripped.appel
+        if (!appel) {
+            appel = session.elements.some(
+                (element) =>
+                    element.type === 'at' && element.attrs?.['id'] === botId
+            )
+        }
+        if (!appel) {
+            appel = session.quote?.user?.id === botId
+        }
+        const isAppel = Boolean(appel)
+
+        const muteKeywords = currentPreset.mute_keyword ?? []
+        const forceMuteActive =
+            copyOfConfig.isForceMute && isAppel && muteKeywords.length > 0
+        const needPlainText =
+            copyOfConfig.isNickname ||
+            copyOfConfig.isNickNameWithContent ||
+            forceMuteActive
+
+        const plainTextContent = needPlainText
+            ? (session.elements ?? [])
+                  .filter((element) => element.type === 'text')
+                  .map((element) => element.attrs?.content ?? '')
+                  .join('')
+            : ''
+
+        if (forceMuteActive) {
+            const needMute = muteKeywords.some((value) =>
+                plainTextContent.includes(value)
+            )
+
+            if (needMute) {
+                logger.debug(`mute content: ${message.content}`)
+                service.mute(session, copyOfConfig.muteTime)
+            }
+        }
+
+        const isMute = service.isMute(session)
+
+        const isDirectTrigger =
+            isAppel ||
+            (copyOfConfig.isNickname &&
+                currentPreset.nick_name.some((value) =>
+                    plainTextContent.startsWith(value)
+                )) ||
+            (copyOfConfig.isNickNameWithContent &&
+                currentPreset.nick_name.some((value) =>
+                    plainTextContent.includes(value)
+                ))
+
+        logger.debug(
+            isPrivate
+                ? `messageCount: ${info.messageCount}. content: ${JSON.stringify(
+                      Object.assign({}, message, { images: undefined })
+                  )}`
+                : `messageCount: ${info.messageCount}, activityScore: ${info.lastActivityScore.toFixed(3)}. content: ${JSON.stringify(
+                      Object.assign({}, message, { images: undefined })
+                  )}`
+        )
+
+        const immediateTriggerReason = resolveImmediateTriggerReason(
+            info,
+            copyOfConfig,
+            isDirectTrigger,
+            isAppel
+        )
+
+        if (immediateTriggerReason) {
+            if (!isMute) {
+                markTriggered(info, copyOfConfig, now, session.isDirect)
+                store.set(key, info)
+                return immediateTriggerReason
+            }
+
+            info.messageCount++
+            store.set(key, info)
+            return
+        }
+
+        if (!session.isDirect) {
+            const activity = calculateActivityScore(
+                info.messageTimestamps,
+                info.lastResponseTime,
+                copyOfConfig.maxMessages,
+                info.lastActivityScore,
+                info.lastScoreUpdate
+            )
+            info.lastActivityScore = activity.score
+            info.lastScoreUpdate = activity.timestamp
+        }
+
+        const triggerReason = resolveTriggerReason(
+            info,
+            copyOfConfig,
+            isDirectTrigger,
+            isAppel,
+            session.isDirect
+        )
+
+        if (triggerReason && !isMute) {
+            markTriggered(info, copyOfConfig, now, session.isDirect)
+            store.set(key, info)
+            return triggerReason
+        }
+
+        info.messageCount++
+        store.set(key, info)
+    })
+}
 
 function markTriggered(
     info: GroupInfo,
@@ -466,266 +726,4 @@ async function processSchedulerTickForGuild(
     }
 
     store.set(key, info)
-}
-
-export async function apply(ctx: Context, config: Config) {
-    const service = ctx.chatluna_character
-    const store = ctx.chatluna_character_trigger
-    const preset = service.preset
-    const logger = service.logger
-
-    const globalPreset = await preset.getPreset(config.defaultPreset)
-    const presetPool: Record<string, PresetTemplate> = {}
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ctx.on('guild-member' as any, (session: Session) => {
-        if (
-            (config.groupWhitelistMode &&
-                !config.applyGroup.includes(session.guildId)) ||
-            session.event?.subtype !== 'ban' ||
-            session.bot.selfId !== session.event?.user?.id
-        ) {
-            return
-        }
-
-        const duration = (session.event._data?.['duration'] ?? 0) * 1000
-
-        if (duration === 0) {
-            logger.warn(
-                `检测到 ${session.bot.user?.name || session.selfId} 被 ${session.operatorId} 操作解禁。`
-            )
-            ctx.chatluna_character.mute(session, 0)
-            return
-        }
-
-        logger.warn(
-            `检测到 ${session.bot.user?.name || session.selfId} 被 ${session.operatorId} 操作禁言 ${duration / 1000} 秒。`
-        )
-
-        ctx.chatluna_character.mute(session, duration)
-    })
-
-    ctx.setInterval(() => {
-        const now = Date.now()
-
-        for (const key of store.keys()) {
-            const info = store.get(key)
-            if (info == null) {
-                continue
-            }
-
-            const session = store.getLastSession(key)
-            const isDirect = session
-                ? session.isDirect
-                : key.startsWith('private:')
-            const id = session
-                ? session.isDirect
-                    ? session.userId
-                    : session.guildId
-                : key.startsWith('private:')
-                  ? key.slice('private:'.length)
-                  : key.startsWith('group:')
-                    ? key.slice('group:'.length)
-                    : key
-            const guildConfig = isDirect
-                ? config.privateConfigs[id]
-                : config.configs[id]
-            const copyOfConfig = Object.assign({}, config, guildConfig)
-            const hasLastSession = session != null
-
-            if (
-                shouldRecycleGroupInfo(
-                    key,
-                    info,
-                    copyOfConfig,
-                    hasLastSession,
-                    now,
-                    config
-                )
-            ) {
-                store.delete(key).catch((e) => {
-                    logger.error(
-                        `[next_reply] recycle failed session=${key}`,
-                        e
-                    )
-                })
-                continue
-            }
-
-            if (!hasPendingSchedulerWork(info, copyOfConfig)) {
-                continue
-            }
-
-            processSchedulerTickForGuild(ctx, config, key).catch((e) => {
-                logger.error(`[next_reply] scheduler failed session=${key}`, e)
-            })
-        }
-    }, SCHEDULER_TICK)
-
-    service.addFilter((session, message) => {
-        const isPrivate = session.isDirect
-        const id = isPrivate ? session.userId : session.guildId
-        const key = `${isPrivate ? 'private' : 'group'}:${id}`
-        const now = Date.now()
-        const { copyOfConfig, currentPreset } = resolveGuildPresetContext(
-            id,
-            key,
-            isPrivate,
-            config,
-            globalPreset,
-            presetPool,
-            preset
-        )
-
-        const info = store.get(key) ?? createDefaultGroupInfo(copyOfConfig, now)
-
-        if (
-            !service.isResponseLocked(session) &&
-            (service.getMessages(key)?.length ?? 0) > 1
-        ) {
-            const pendingWakeUpReplies = info.pendingWakeUpReplies ?? []
-            const nextWakeUpReplies = pendingWakeUpReplies.filter(
-                (pending) => pending.triggerAt > now
-            )
-
-            if (nextWakeUpReplies.length !== pendingWakeUpReplies.length) {
-                info.pendingWakeUpReplies = nextWakeUpReplies
-                store
-                    .setWakeUpReplies(session, nextWakeUpReplies)
-                    .catch((e) => {
-                        logger.error(e)
-                    })
-            }
-        }
-
-        const selfId = session.bot.selfId ?? session.bot.userId ?? '0'
-        if (message.id === selfId) {
-            store.set(key, info)
-            return
-        }
-
-        if (
-            shouldStopWhenDisableChatLuna(ctx, session, copyOfConfig, key, id)
-        ) {
-            return
-        }
-
-        updateIncomingMessageStats(
-            info,
-            copyOfConfig,
-            message.id,
-            now,
-            session.isDirect
-        )
-
-        const botId = session.bot.selfId
-        let appel = session.stripped.appel
-        if (!appel) {
-            appel = session.elements.some(
-                (element) =>
-                    element.type === 'at' && element.attrs?.['id'] === botId
-            )
-        }
-        if (!appel) {
-            appel = session.quote?.user?.id === botId
-        }
-        const isAppel = Boolean(appel)
-
-        const muteKeywords = currentPreset.mute_keyword ?? []
-        const forceMuteActive =
-            copyOfConfig.isForceMute && isAppel && muteKeywords.length > 0
-        const needPlainText =
-            copyOfConfig.isNickname ||
-            copyOfConfig.isNickNameWithContent ||
-            forceMuteActive
-
-        const plainTextContent = needPlainText
-            ? (session.elements ?? [])
-                  .filter((element) => element.type === 'text')
-                  .map((element) => element.attrs?.content ?? '')
-                  .join('')
-            : ''
-
-        if (forceMuteActive) {
-            const needMute = muteKeywords.some((value) =>
-                plainTextContent.includes(value)
-            )
-
-            if (needMute) {
-                logger.debug(`mute content: ${message.content}`)
-                service.mute(session, copyOfConfig.muteTime)
-            }
-        }
-
-        const isMute = service.isMute(session)
-
-        const isDirectTrigger =
-            isAppel ||
-            (copyOfConfig.isNickname &&
-                currentPreset.nick_name.some((value) =>
-                    plainTextContent.startsWith(value)
-                )) ||
-            (copyOfConfig.isNickNameWithContent &&
-                currentPreset.nick_name.some((value) =>
-                    plainTextContent.includes(value)
-                ))
-
-        logger.debug(
-            isPrivate
-                ? `messageCount: ${info.messageCount}. content: ${JSON.stringify(
-                      Object.assign({}, message, { images: undefined })
-                  )}`
-                : `messageCount: ${info.messageCount}, activityScore: ${info.lastActivityScore.toFixed(3)}. content: ${JSON.stringify(
-                      Object.assign({}, message, { images: undefined })
-                  )}`
-        )
-
-        const immediateTriggerReason = resolveImmediateTriggerReason(
-            info,
-            copyOfConfig,
-            isDirectTrigger,
-            isAppel
-        )
-
-        if (immediateTriggerReason) {
-            if (!isMute) {
-                markTriggered(info, copyOfConfig, now, session.isDirect)
-                store.set(key, info)
-                return immediateTriggerReason
-            }
-
-            info.messageCount++
-            store.set(key, info)
-            return
-        }
-
-        if (!session.isDirect) {
-            const activity = calculateActivityScore(
-                info.messageTimestamps,
-                info.lastResponseTime,
-                copyOfConfig.maxMessages,
-                info.lastActivityScore,
-                info.lastScoreUpdate
-            )
-            info.lastActivityScore = activity.score
-            info.lastScoreUpdate = activity.timestamp
-        }
-
-        const triggerReason = resolveTriggerReason(
-            info,
-            copyOfConfig,
-            isDirectTrigger,
-            isAppel,
-            session.isDirect
-        )
-
-        if (triggerReason && !isMute) {
-            markTriggered(info, copyOfConfig, now, session.isDirect)
-            store.set(key, info)
-            return triggerReason
-        }
-
-        info.messageCount++
-        store.set(key, info)
-    })
 }

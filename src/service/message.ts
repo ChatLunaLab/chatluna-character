@@ -9,7 +9,8 @@ import {
     IMAGE_SIZE_CACHE_LIMIT,
     Message,
     MessageCollectorFilter,
-    MessageImage
+    MessageImage,
+    PendingCooldownTrigger
 } from '../types'
 import {
     attachMultimodalFileLimit,
@@ -21,12 +22,6 @@ import {
     mergeMessages
 } from '../utils/index'
 import { VariableStore } from './variable_store'
-
-type PendingCooldownTrigger = {
-    session: Session
-    triggerReason: string
-    message: Message
-}
 
 const MAX_TIMEOUT_MS = 2147483647
 
@@ -53,7 +48,8 @@ export class MessageCollector extends Service {
 
     private _imageSizeCacheCount = 0
 
-    private _pendingCooldownTriggers: Record<string, PendingCooldownTrigger> = {}
+    private _pendingCooldownTriggers: Record<string, PendingCooldownTrigger> =
+        {}
 
     private _cooldownTriggerTimers: Record<
         string,
@@ -635,11 +631,14 @@ export class MessageCollector extends Service {
                     clearTimeout(timer)
                 }
 
-                this._cooldownTriggerTimers[groupId] = setTimeout(() => {
-                    this._flushCooldownTrigger(groupId).catch((err) => {
-                        this.logger.error(err)
-                    })
-                }, Math.min(delay, MAX_TIMEOUT_MS))
+                this._cooldownTriggerTimers[groupId] = setTimeout(
+                    () => {
+                        this._flushCooldownTrigger(groupId).catch((err) => {
+                            this.logger.error(err)
+                        })
+                    },
+                    Math.min(delay, MAX_TIMEOUT_MS)
+                )
             } finally {
                 unlock()
             }
@@ -808,11 +807,14 @@ export class MessageCollector extends Service {
             const lock = this._getGroupLocks(groupId)
             if (lock.mute > Date.now()) {
                 const delay = Math.max(lock.mute - Date.now(), 0)
-                this._cooldownTriggerTimers[groupId] = setTimeout(() => {
-                    this._flushCooldownTrigger(groupId).catch((err) => {
-                        this.logger.error(err)
-                    })
-                }, Math.min(delay, MAX_TIMEOUT_MS))
+                this._cooldownTriggerTimers[groupId] = setTimeout(
+                    () => {
+                        this._flushCooldownTrigger(groupId).catch((err) => {
+                            this.logger.error(err)
+                        })
+                    },
+                    Math.min(delay, MAX_TIMEOUT_MS)
+                )
                 return
             }
 
