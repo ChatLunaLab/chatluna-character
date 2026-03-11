@@ -89,8 +89,8 @@ export interface WakeUpReplyRecord {
     rawTime: string
     reason: string
     naturalReason: string
-    triggerAt: Date
-    createdAt: Date
+    triggerAtV2: Date
+    createdAtV2: Date
     updatedAt: Date
 }
 

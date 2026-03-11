@@ -53,8 +53,8 @@ export class TriggerStore extends Service {
                 },
                 reason: 'text',
                 naturalReason: 'text',
-                triggerAt: 'timestamp',
-                createdAt: 'timestamp',
+                triggerAtV2: 'timestamp',
+                createdAtV2: 'timestamp',
                 updatedAt: {
                     type: 'timestamp',
                     nullable: false,
@@ -68,6 +68,8 @@ export class TriggerStore extends Service {
         )
 
         ctx.on('ready', async () => {
+            // await this.prepareDatabase()
+
             const rows = await this.ctx.database.get(
                 'chathub_character_wake_up_reply',
                 {}
@@ -98,8 +100,8 @@ export class TriggerStore extends Service {
                     rawTime: row.rawTime,
                     reason: row.reason,
                     naturalReason: row.naturalReason,
-                    triggerAt: row.triggerAt.getTime(),
-                    createdAt: row.createdAt.getTime()
+                    triggerAt: row.triggerAtV2.getTime(),
+                    createdAt: row.createdAtV2.getTime()
                 })
                 this._infos[row.sessionKey] = info
 
@@ -260,8 +262,8 @@ export class TriggerStore extends Service {
                         rawTime: item.rawTime,
                         reason: item.reason,
                         naturalReason: item.naturalReason,
-                        triggerAt: new Date(item.triggerAt),
-                        createdAt: new Date(item.createdAt),
+                        triggerAtV2: new Date(item.triggerAt),
+                        createdAtV2: new Date(item.createdAt),
                         updatedAt: new Date()
                     } satisfies WakeUpReplyRecord
                 )
