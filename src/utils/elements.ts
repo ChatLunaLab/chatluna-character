@@ -315,7 +315,12 @@ class TextMatchParser {
                     break
                 case 'at':
                     result.push(
-                        makeMatch('at', el.attrs.content, el.attrs.extra)
+                        makeMatch(
+                            'at',
+                            el.children?.[0]?.attrs?.content ??
+                                el.attrs?.content,
+                            el.attrs.extra
+                        )
                     )
                     break
                 case 'text':
@@ -325,19 +330,38 @@ class TextMatchParser {
                     result.push(
                         makeMatch(
                             'sticker',
-                            el.children[0].attrs.content,
+                            el.children?.[0]?.attrs?.content ??
+                                el.attrs?.content,
                             el.attrs
                         )
                     )
                     break
                 case 'img':
-                    result.push(makeMatch('img', el.attrs.content))
+                    result.push(
+                        makeMatch(
+                            'img',
+                            el.children?.[0]?.attrs?.content ??
+                                el.attrs?.content
+                        )
+                    )
                     break
                 case 'face':
-                    result.push(makeMatch('face', el.attrs.content, el.attrs))
+                    result.push(
+                        makeMatch(
+                            'face',
+                            el.children[0].attrs.content,
+                            el.attrs
+                        )
+                    )
                     break
                 case 'markdown':
-                    result.push(makeMatch('markdown', el.attrs.content))
+                    result.push(
+                        makeMatch(
+                            'markdown',
+                            el.children?.[0]?.attrs?.content ??
+                                el.attrs?.content
+                        )
+                    )
                     break
                 default:
                     result.push(...this.collect(el.children, depth))

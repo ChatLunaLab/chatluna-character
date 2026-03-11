@@ -65,9 +65,7 @@ export interface Config extends ChatLunaPlugin.Config {
 }
 
 const commonTokenAndMessageIdConfig = Schema.object({
-    remark: Schema.string()
-        .default('')
-        .description('备注（无作用）'),
+    remark: Schema.string().default('').description('备注（无作用）'),
 
     maxTokens: Schema.number()
         .default(20000)
@@ -248,7 +246,7 @@ const guildConfigObject = Schema.intersect([
             .max(10000)
             .description(
                 '随机发送消息的间隔（条）：群越活跃，这个值就越需要调高，否则将一直被高强度触发。'
-            ),
+            )
     }),
     commonChatBehaviorConfig,
     Schema.object({
@@ -282,7 +280,7 @@ const guildConfigObject = Schema.intersect([
                     '若下限 < 上限（如 0.1 → 0.9），则会越聊越少；' +
                     '若下限 > 上限（如 0.9 → 0.2），则会越聊越多。' +
                     '十分钟内无人回复时，会自动回退到下限。'
-            ),
+            )
     }),
     commonConversationConfig
 ]) as Schema<GuildConfig>
