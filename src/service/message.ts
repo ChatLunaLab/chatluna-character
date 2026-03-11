@@ -82,8 +82,6 @@ export class MessageCollector extends Service {
                     historyPulled: false,
                     historyClearedAt: row.historyClearedAt,
                     statusMessageId: row.statusMessageId,
-                    statusMessageTimestamp: row.statusMessageTimestamp,
-                    statusMessageContent: row.statusMessageContent,
                     statusMessageUserId: row.statusMessageUserId
                 }
             }
@@ -270,25 +268,13 @@ export class MessageCollector extends Service {
                 msgs &&
                 temp.status != null &&
                 msgs.length > 0 &&
-                (temp.statusMessageId != null ||
-                    temp.statusMessageTimestamp != null ||
-                    temp.statusMessageContent != null) &&
+                temp.statusMessageId != null &&
                 !msgs.some((msg) => {
-                    if (
-                        temp.statusMessageId != null &&
-                        msg.messageId != null &&
-                        temp.statusMessageId === msg.messageId
-                    ) {
-                        return true
-                    }
-
                     return (
-                        temp.statusMessageTimestamp != null &&
-                        temp.statusMessageContent != null &&
+                        msg.messageId != null &&
                         temp.statusMessageUserId != null &&
-                        msg.timestamp === temp.statusMessageTimestamp &&
-                        msg.content === temp.statusMessageContent &&
-                        msg.id === temp.statusMessageUserId
+                        temp.statusMessageId === msg.messageId &&
+                        temp.statusMessageUserId === msg.id
                     )
                 })
             ) {
@@ -930,8 +916,6 @@ function newTemp(clearedAt?: Date): GroupTemp {
         historyClearedAt: clearedAt,
         status: null,
         statusMessageId: null,
-        statusMessageTimestamp: null,
-        statusMessageContent: null,
         statusMessageUserId: null,
         recordLoaded: clearedAt != null
     }

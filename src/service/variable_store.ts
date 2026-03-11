@@ -23,14 +23,6 @@ export class VariableStore {
                     length: 255,
                     nullable: true
                 },
-                statusMessageTimestamp: {
-                    type: 'integer',
-                    nullable: true
-                },
-                statusMessageContent: {
-                    type: 'text',
-                    nullable: true
-                },
                 statusMessageUserId: {
                     type: 'string',
                     length: 255,
@@ -60,8 +52,6 @@ export class VariableStore {
         temp.status = row?.status
         temp.historyClearedAt = row?.historyClearedAt
         temp.statusMessageId = row?.statusMessageId
-        temp.statusMessageTimestamp = row?.statusMessageTimestamp
-        temp.statusMessageContent = row?.statusMessageContent
         temp.statusMessageUserId = row?.statusMessageUserId
         temp.recordLoaded = true
     }
@@ -80,8 +70,6 @@ export class VariableStore {
                 status: s,
                 historyClearedAt: temp.historyClearedAt,
                 statusMessageId: msg?.messageId,
-                statusMessageTimestamp: msg?.timestamp,
-                statusMessageContent: msg?.content,
                 statusMessageUserId: msg?.id,
                 updatedAt: new Date()
             } satisfies CharacterVariableRecord
@@ -89,8 +77,6 @@ export class VariableStore {
 
         temp.status = s
         temp.statusMessageId = msg?.messageId
-        temp.statusMessageTimestamp = msg?.timestamp
-        temp.statusMessageContent = msg?.content
         temp.statusMessageUserId = msg?.id
     }
 
@@ -105,8 +91,6 @@ export class VariableStore {
                 status: null,
                 historyClearedAt: at,
                 statusMessageId: null,
-                statusMessageTimestamp: null,
-                statusMessageContent: null,
                 statusMessageUserId: null,
                 updatedAt: new Date()
             } satisfies CharacterVariableRecord
