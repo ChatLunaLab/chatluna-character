@@ -28,8 +28,6 @@ export interface GroupTemp {
     historyPulled?: boolean
     historyClearedAt?: Date
     statusMessageId?: string | null
-    statusMessageTimestamp?: number | null
-    statusMessageContent?: string | null
     statusMessageUserId?: string | null
 }
 
@@ -77,8 +75,6 @@ export interface CharacterVariableRecord {
     status?: string | null
     historyClearedAt?: Date
     statusMessageId?: string | null
-    statusMessageTimestamp?: number | null
-    statusMessageContent?: string | null
     statusMessageUserId?: string | null
     updatedAt: Date
 }
@@ -93,8 +89,8 @@ export interface WakeUpReplyRecord {
     rawTime: string
     reason: string
     naturalReason: string
-    triggerAt: number
-    createdAt: number
+    triggerAt: Date
+    createdAt: Date
     updatedAt: Date
 }
 

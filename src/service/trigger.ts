@@ -53,8 +53,8 @@ export class TriggerStore extends Service {
                 },
                 reason: 'text',
                 naturalReason: 'text',
-                triggerAt: 'integer',
-                createdAt: 'integer',
+                triggerAt: 'timestamp',
+                createdAt: 'timestamp',
                 updatedAt: {
                     type: 'timestamp',
                     nullable: false,
@@ -98,8 +98,8 @@ export class TriggerStore extends Service {
                     rawTime: row.rawTime,
                     reason: row.reason,
                     naturalReason: row.naturalReason,
-                    triggerAt: row.triggerAt,
-                    createdAt: row.createdAt
+                    triggerAt: row.triggerAt.getTime(),
+                    createdAt: row.createdAt.getTime()
                 })
                 this._infos[row.sessionKey] = info
 
@@ -260,8 +260,8 @@ export class TriggerStore extends Service {
                         rawTime: item.rawTime,
                         reason: item.reason,
                         naturalReason: item.naturalReason,
-                        triggerAt: item.triggerAt,
-                        createdAt: item.createdAt,
+                        triggerAt: new Date(item.triggerAt),
+                        createdAt: new Date(item.createdAt),
                         updatedAt: new Date()
                     } satisfies WakeUpReplyRecord
                 )
