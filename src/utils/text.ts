@@ -21,7 +21,5 @@ export function isOnlyPunctuation(text: string): boolean {
 }
 
 export function truncate(text: string, maxLength = 2000): string {
-    return text.length > maxLength
-        ? text.slice(0, maxLength) + '...'
-        : text
+    return text.length > maxLength ? text.slice(0, maxLength) + '...' : text
 }
