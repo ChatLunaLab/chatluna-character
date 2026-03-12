@@ -424,10 +424,39 @@ async function prepareMessages(
         preset: currentPreset.name,
         conversationId: session.isDirect ? session.userId : session.guildId
     }
+
+    let historyNewMessages = recentMessage
+    if (
+        config.modelCompletionCount > 0 &&
+        temp.lastHistoryNew &&
+        temp.lastHistoryNew.length > 0
+    ) {
+        let overlap = Math.min(
+            temp.lastHistoryNew.length,
+            recentMessage.length
+        )
+
+        while (overlap > 0) {
+            const previous = temp.lastHistoryNew.slice(-overlap)
+            const current = recentMessage.slice(0, overlap)
+
+            if (previous.every((msg, index) => msg === current[index])) {
+                break
+            }
+
+            overlap--
+        }
+
+        if (overlap > 0) {
+            historyNewMessages = ['...'].concat(recentMessage.slice(overlap))
+        }
+    }
+
+    temp.lastHistoryNew = recentMessage.slice()
     const humanMessage = new HumanMessage(
         await currentPreset.input.format(
             {
-                history_new: recentMessage
+                history_new: historyNewMessages
                     .join('\n\n')
                     .replaceAll('{', '{{')
                     .replaceAll('}', '}}'),
