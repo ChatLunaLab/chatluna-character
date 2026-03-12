@@ -47,6 +47,7 @@
     },
     "devDependencies": {
         "@initencounter/vits": "^0.0.3",
+        "@koishijs/client": "^5.30.11",
         "@koishijs/plugin-adapter-qq": "^4.10.1",
         "@typescript-eslint/eslint-plugin": "^7.18.1-alpha.3",
         "@typescript-eslint/parser": "^8.45.1-alpha.0",
@@ -68,8 +69,14 @@
         "yakumo-tsc": "^1.0.0"
     },
     "peerDependencies": {
+        "@koishijs/plugin-console": "^5.30.11",
         "koishi": "^4.18.9",
         "koishi-plugin-chatluna": "^1.3.27"
+    },
+    "peerDependenciesMeta": {
+        "@koishijs/plugin-console": {
+            "optional": true
+        }
     },
     "engines": {
         "node": ">=18.0.0"
@@ -108,7 +115,8 @@
                 "database"
             ],
             "optional": [
-                "vits"
+                "vits",
+                "console"
             ]
         }
     }

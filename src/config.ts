@@ -426,13 +426,13 @@ export const Config = Schema.intersect([
     }).description('基础配置'),
 
     Schema.object({
-        globalPrivateConfig: globalPrivateConfigObject
-            .default({} as PrivateConfig)
+        globalPrivateConfig: globalPrivateConfigObject.default(
+            {} as PrivateConfig
+        )
     }).description('全局私聊配置'),
 
     Schema.object({
-        globalGroupConfig: globalGroupConfigObject
-            .default({} as GuildConfig)
+        globalGroupConfig: globalGroupConfigObject.default({} as GuildConfig)
     }).description('全局群聊配置'),
 
     Schema.object({
@@ -449,3 +449,233 @@ export const Config = Schema.intersect([
             .description('分群配置，会覆盖上面的默认配置（键填写群号）')
     }).description('分群配置')
 ]) as unknown as Schema<Config>
+
+export function migrateConfig(config: Config): boolean {
+    let modified = false
+
+    if (
+        config.globalPrivateConfig.preset === 'CHARACTER' &&
+        config.defaultPreset
+    ) {
+        config.globalPrivateConfig.preset = config.defaultPreset
+        modified = true
+    }
+
+    if (
+        config.globalGroupConfig.preset === 'CHARACTER' &&
+        config.defaultPreset
+    ) {
+        config.globalGroupConfig.preset = config.defaultPreset
+        modified = true
+    }
+
+    if (config.globalPrivateConfig.model === '' && config.model) {
+        config.globalPrivateConfig.model = config.model
+        modified = true
+    }
+
+    if (config.globalGroupConfig.model === '' && config.model) {
+        config.globalGroupConfig.model = config.model
+        modified = true
+    }
+
+    for (const userId of Object.keys(config.privateConfigs)) {
+        if (
+            !config.privateConfigs[userId].model ||
+            config.privateConfigs[userId].model === '无'
+        ) {
+            config.privateConfigs[userId].model =
+                config.globalPrivateConfig.model
+            modified = true
+        }
+    }
+
+    for (const groupId of Object.keys(config.configs)) {
+        if (
+            !config.configs[groupId].model ||
+            config.configs[groupId].model === '无'
+        ) {
+            config.configs[groupId].model = config.globalGroupConfig.model
+            modified = true
+        }
+    }
+
+    if (config.globalPrivateConfig.maxMessages === 40 && config.maxMessages) {
+        config.globalPrivateConfig.maxMessages = config.maxMessages
+        modified = true
+    }
+
+    if (config.globalGroupConfig.maxMessages === 40 && config.maxMessages) {
+        config.globalGroupConfig.maxMessages = config.maxMessages
+        modified = true
+    }
+
+    if (config.globalPrivateConfig.maxTokens === 20000 && config.maxTokens) {
+        config.globalPrivateConfig.maxTokens = config.maxTokens
+        modified = true
+    }
+
+    if (config.globalGroupConfig.maxTokens === 20000 && config.maxTokens) {
+        config.globalGroupConfig.maxTokens = config.maxTokens
+        modified = true
+    }
+
+    if (config.globalPrivateConfig.image === false && config.image) {
+        config.globalPrivateConfig.image = config.image
+        modified = true
+    }
+
+    if (config.globalGroupConfig.image === false && config.image) {
+        config.globalGroupConfig.image = config.image
+        modified = true
+    }
+
+    if (
+        config.globalPrivateConfig.imageInputMaxCount === 9 &&
+        config.imageInputMaxCount
+    ) {
+        config.globalPrivateConfig.imageInputMaxCount =
+            config.imageInputMaxCount
+        modified = true
+    }
+
+    if (
+        config.globalGroupConfig.imageInputMaxCount === 9 &&
+        config.imageInputMaxCount
+    ) {
+        config.globalGroupConfig.imageInputMaxCount = config.imageInputMaxCount
+        modified = true
+    }
+
+    if (
+        config.globalPrivateConfig.imageInputMaxSize === 20 &&
+        config.imageInputMaxSize
+    ) {
+        config.globalPrivateConfig.imageInputMaxSize = config.imageInputMaxSize
+        modified = true
+    }
+
+    if (
+        config.globalGroupConfig.imageInputMaxSize === 20 &&
+        config.imageInputMaxSize
+    ) {
+        config.globalGroupConfig.imageInputMaxSize = config.imageInputMaxSize
+        modified = true
+    }
+
+    if (
+        config.globalPrivateConfig.multimodalFileInputMaxSize === 20 &&
+        config.multimodalFileInputMaxSize
+    ) {
+        config.globalPrivateConfig.multimodalFileInputMaxSize =
+            config.multimodalFileInputMaxSize
+        modified = true
+    }
+
+    if (
+        config.globalGroupConfig.multimodalFileInputMaxSize === 20 &&
+        config.multimodalFileInputMaxSize
+    ) {
+        config.globalGroupConfig.multimodalFileInputMaxSize =
+            config.multimodalFileInputMaxSize
+        modified = true
+    }
+
+    if (
+        config.globalPrivateConfig.toolCalling === true &&
+        config.toolCalling === false
+    ) {
+        config.globalPrivateConfig.toolCalling = config.toolCalling
+        modified = true
+    }
+
+    if (
+        config.globalGroupConfig.toolCalling === true &&
+        config.toolCalling === false
+    ) {
+        config.globalGroupConfig.toolCalling = config.toolCalling
+        modified = true
+    }
+
+    if (
+        config.globalPrivateConfig.isForceMute === true &&
+        config.isForceMute === false
+    ) {
+        config.globalPrivateConfig.isForceMute = config.isForceMute
+        modified = true
+    }
+
+    if (
+        config.globalGroupConfig.isForceMute === true &&
+        config.isForceMute === false
+    ) {
+        config.globalGroupConfig.isForceMute = config.isForceMute
+        modified = true
+    }
+
+    if (config.globalPrivateConfig.coolDownTime === 0 && config.coolDownTime) {
+        config.globalPrivateConfig.coolDownTime = config.coolDownTime
+        modified = true
+    }
+
+    if (config.globalGroupConfig.coolDownTime === 0 && config.coolDownTime) {
+        config.globalGroupConfig.coolDownTime = config.coolDownTime
+        modified = true
+    }
+
+    if (config.globalPrivateConfig.muteTime === 1000 * 60 && config.muteTime) {
+        config.globalPrivateConfig.muteTime = config.muteTime
+        modified = true
+    }
+
+    if (config.globalGroupConfig.muteTime === 1000 * 60 && config.muteTime) {
+        config.globalGroupConfig.muteTime = config.muteTime
+        modified = true
+    }
+
+    if (
+        config.globalGroupConfig.messageActivityScoreLowerLimit === 0.85 &&
+        config.messageActivityScoreLowerLimit
+    ) {
+        config.globalGroupConfig.messageActivityScoreLowerLimit =
+            config.messageActivityScoreLowerLimit
+        modified = true
+    }
+
+    if (
+        config.globalGroupConfig.messageActivityScoreUpperLimit === 0.85 &&
+        config.messageActivityScoreUpperLimit
+    ) {
+        config.globalGroupConfig.messageActivityScoreUpperLimit =
+            config.messageActivityScoreUpperLimit
+        modified = true
+    }
+
+    if (config.privateModelOverride?.length > 0) {
+        for (const override of config.privateModelOverride) {
+            config.privateConfigs[override.userId] = Object.assign(
+                {},
+                config.privateConfigs[override.userId],
+                {
+                    model: override.model
+                }
+            )
+            modified = true
+        }
+    }
+
+    if (config.modelOverride?.length > 0) {
+        for (const override of config.modelOverride) {
+            config.configs[override.groupId] = Object.assign(
+                {},
+                config.configs[override.groupId],
+                {
+                    model: override.model
+                }
+            )
+            modified = true
+        }
+    }
+
+    return modified
+}

@@ -1,13 +1,16 @@
 {
     "compilerOptions": {
+        "rootDir": "../",
         "module": "esnext",
-        "target": "esnext",
         "moduleResolution": "node",
         "jsx": "preserve",
+        "resolveJsonModule": true,
         "esModuleInterop": true,
-        "skipLibCheck": true
+        "types": ["@koishijs/client/global", "../"],
+        "baseUrl": ".",
+        "paths": {
+            "@/*": ["../src/*"]
+        }
     },
-    "include": [
-        "**/*"
-    ]
+    "include": ["."]
 }
