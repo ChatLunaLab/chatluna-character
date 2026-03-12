@@ -164,7 +164,12 @@ function resolveGuildPresetContext(
     const currentGuildConfig = isDirect
         ? config.privateConfigs[guildId]
         : config.configs[guildId]
-    const copyOfConfig = Object.assign({}, config, globalConfig, currentGuildConfig)
+    const copyOfConfig = Object.assign(
+        {},
+        config,
+        globalConfig,
+        currentGuildConfig
+    )
     if (currentGuildConfig == null) {
         return {
             copyOfConfig,

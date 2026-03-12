@@ -258,7 +258,10 @@ async function setupModelPool(
         privatePlatform,
         privateModelName
     )
-    logger.info('global private model loaded %c', config.globalPrivateConfig.model)
+    logger.info(
+        'global private model loaded %c',
+        config.globalPrivateConfig.model
+    )
 
     const [groupPlatform, groupModelName] = parseRawModelName(
         config.globalGroupConfig.model
@@ -413,9 +416,7 @@ async function prepareMessages(
         logger.debug('formatted_last_message: ' + lastMessage)
     }
 
-    const historyLast = lastMessage
-        .replaceAll('{', '{{')
-        .replaceAll('}', '}}')
+    const historyLast = lastMessage.replaceAll('{', '{{').replaceAll('}', '}}')
     const triggerReasonText = (triggerReason ?? 'Normal message trigger')
         .replaceAll('{', '{{')
         .replaceAll('}', '}}')
@@ -520,13 +521,14 @@ async function prepareMessages(
                 continue
             }
 
-            const block = content
-                .slice(start + '# 最近消息'.length, end)
-                .trim()
+            const block = content.slice(start + '# 最近消息'.length, end).trim()
 
-            const current = block.length > 0
-                ? block.split('\n\n').filter((it) => it.length > 0 && it !== '...')
-                : []
+            const current =
+                block.length > 0
+                    ? block
+                          .split('\n\n')
+                          .filter((it) => it.length > 0 && it !== '...')
+                    : []
 
             if (!previous) {
                 previous = current
@@ -544,7 +546,9 @@ async function prepareMessages(
             }
 
             if (overlap > 0) {
-                const changed = ['...'].concat(current.slice(overlap)).join('\n\n')
+                const changed = ['...']
+                    .concat(current.slice(overlap))
+                    .join('\n\n')
                 message.content =
                     content.slice(0, start + '# 最近消息'.length) +
                     '\n' +
@@ -661,7 +665,13 @@ async function handleVoiceMessage(
     elements?: h[]
 }> {
     try {
-        const rendered = await voiceRender(ctx, session, text, undefined, elements)
+        const rendered = await voiceRender(
+            ctx,
+            session,
+            text,
+            undefined,
+            elements
+        )
         const ids = await sendElements(session, rendered)
         return {
             breakSay: true,
@@ -859,12 +869,10 @@ export async function apply(ctx: Context, config: Config) {
         const key = `${session.isDirect ? 'private' : 'group'}:${guildId}`
 
         try {
-            const model = await (
-                modelPool[key] ??
+            const model = await (modelPool[key] ??
                 Promise.resolve(
                     session.isDirect ? globalPrivateModel : globalGroupModel
-                )
-            )
+                ))
 
             const { copyOfConfig, currentPreset } =
                 await getConfigAndPresetForGuild(

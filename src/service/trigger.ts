@@ -244,12 +244,7 @@ export class TriggerStore extends Service {
                     ? this._config.globalPrivateConfig
                     : this._config.globalGroupConfig
                 return createDefaultGroupInfo(
-                    Object.assign(
-                        {},
-                        this._config,
-                        globalConfig,
-                        guildConfig
-                    ),
+                    Object.assign({}, this._config, globalConfig, guildConfig),
                     now
                 )
             })()

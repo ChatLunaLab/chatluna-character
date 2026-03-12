@@ -36,17 +36,14 @@ const sendRules: Record<string, SendRule> = {
             const { user } = session.event
             const result = await (
                 session.bot as QQBot<Context>
-            ).internal.sendPrivateMessage(
-                user.id,
-                {
-                    msg_type: 2,
-                    msg_seq: 1,
-                    msg_id: session.messageId,
-                    markdown: {
-                        content: part.elements[0].attrs['content']
-                    }
+            ).internal.sendPrivateMessage(user.id, {
+                msg_type: 2,
+                msg_seq: 1,
+                msg_id: session.messageId,
+                markdown: {
+                    content: part.elements[0].attrs['content']
                 }
-            )
+            })
 
             return [String(result.id)]
         }
