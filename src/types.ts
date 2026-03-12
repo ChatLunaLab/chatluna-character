@@ -154,7 +154,7 @@ export interface PendingNextReplyConditionGroup {
 export interface PendingNextReply {
     rawReason: string
     groups: PendingNextReplyConditionGroup[]
-    createdAt: number
+    sentAt: number
 }
 
 export interface PendingWakeUpReply {

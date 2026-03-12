@@ -163,14 +163,14 @@ export function parseNextReplyReason(
 export function evaluateNextReplyGroup(
     group: PendingNextReplyConditionGroup,
     info: GroupInfo,
-    createdAt: number
+    sentAt: number
 ) {
     const now = Date.now()
     return group.predicates.every((predicate) => {
         if (predicate.type === 'time_id') {
             const lastMessageTimeByUserId =
                 info.messageTimestampsByUserId?.[predicate.userId] ?? 0
-            const anchor = Math.max(createdAt, lastMessageTimeByUserId)
+            const anchor = Math.max(sentAt, lastMessageTimeByUserId)
             return now - anchor >= predicate.seconds * 1000
         }
 
@@ -180,7 +180,7 @@ export function evaluateNextReplyGroup(
 
         const lastMessageTimeByUserId =
             info.messageTimestampsByUserId?.[predicate.userId] ?? 0
-        return lastMessageTimeByUserId >= createdAt
+        return lastMessageTimeByUserId >= sentAt
     })
 }
 
@@ -192,7 +192,7 @@ export function clearStaleNextReplyTriggers(
         return pending
     }
 
-    if (!pending.some((trigger) => info.lastResponseTime > trigger.createdAt)) {
+    if (!pending.some((trigger) => info.lastResponseTime > trigger.sentAt)) {
         return pending
     }
 
@@ -217,7 +217,7 @@ export function findNextReplyTriggerReason(
 ): string | undefined {
     for (const trigger of info.pendingNextReplies ?? []) {
         const matchedGroup = trigger.groups.find((group) =>
-            evaluateNextReplyGroup(group, info, trigger.createdAt)
+            evaluateNextReplyGroup(group, info, trigger.sentAt)
         )
 
         if (matchedGroup) {

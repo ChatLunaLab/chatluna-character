@@ -379,7 +379,10 @@ async function prepareMessages(
     chain?: ChatLunaChain,
     focusMessage?: Message,
     triggerReason?: string
-): Promise<BaseMessage[]> {
+): Promise<{
+    completionMessages: BaseMessage[]
+    persistedHumanMessage: BaseMessage
+}> {
     const [recentMessage, lastMessage] = await formatMessage(
         messages,
         config,
@@ -410,6 +413,16 @@ async function prepareMessages(
         logger.debug('formatted_last_message: ' + lastMessage)
     }
 
+    const historyLast = lastMessage
+        .replaceAll('{', '{{')
+        .replaceAll('}', '}}')
+    const triggerReasonText = (triggerReason ?? 'Normal message trigger')
+        .replaceAll('{', '{{')
+        .replaceAll('}', '}}')
+    const built = {
+        preset: currentPreset.name,
+        conversationId: session.isDirect ? session.userId : session.guildId
+    }
     const humanMessage = new HumanMessage(
         await currentPreset.input.format(
             {
@@ -417,22 +430,13 @@ async function prepareMessages(
                     .join('\n\n')
                     .replaceAll('{', '{{')
                     .replaceAll('}', '}}'),
-                history_last: lastMessage
-                    .replaceAll('{', '{{')
-                    .replaceAll('}', '}}'),
+                history_last: historyLast,
                 time: formatTimestamp(new Date()),
-                stickers: '', // JSON.stringify(stickerService.getAllStickTypes()),
+                stickers: '',
                 status: temp.status ?? currentPreset.status ?? '',
-                trigger_reason: (triggerReason ?? 'Normal message trigger')
-                    .replaceAll('{', '{{')
-                    .replaceAll('}', '}}'),
+                trigger_reason: triggerReasonText,
                 prompt: session.content,
-                built: {
-                    preset: currentPreset.name,
-                    conversationId: session.isDirect
-                        ? session.userId
-                        : session.guildId
-                }
+                built
             },
             session.app.chatluna.promptRenderer,
             {
@@ -440,7 +444,27 @@ async function prepareMessages(
             }
         )
     )
-
+    const persistedHumanMessage = new HumanMessage(
+        await currentPreset.input.format(
+            {
+                history_new: recentMessage
+                    .join('\n\n')
+                    .replaceAll('{', '{{')
+                    .replaceAll('}', '}}'),
+                history_last: historyLast,
+                time: formatTimestamp(new Date()),
+                stickers: '',
+                status: temp.status ?? currentPreset.status ?? '',
+                trigger_reason: triggerReasonText,
+                prompt: session.content,
+                built
+            },
+            session.app.chatluna.promptRenderer,
+            {
+                session
+            }
+        )
+    )
     const tempMessages: BaseMessage[] = []
 
     if (config.image) {
@@ -468,7 +492,7 @@ async function prepareMessages(
         }
     }
 
-    return formatCompletionMessages(
+    const completionMessages = await formatCompletionMessages(
         [new SystemMessage(formattedSystemPrompt)].concat(
             temp.completionMessages
         ),
@@ -477,6 +501,66 @@ async function prepareMessages(
         config,
         model
     )
+
+    if (config.modelCompletionCount > 0) {
+        let previous: string[] | undefined
+        for (const message of completionMessages) {
+            if (message.getType() !== 'human') {
+                continue
+            }
+
+            if (typeof message.content !== 'string') {
+                continue
+            }
+
+            const content = message.content
+            const start = content.indexOf('# 最近消息')
+            const end = content.indexOf('\n# 最后消息')
+            if (start < 0 || end < 0 || end <= start) {
+                continue
+            }
+
+            const block = content
+                .slice(start + '# 最近消息'.length, end)
+                .trim()
+
+            const current = block.length > 0
+                ? block.split('\n\n').filter((it) => it.length > 0 && it !== '...')
+                : []
+
+            if (!previous) {
+                previous = current
+                continue
+            }
+
+            let overlap = Math.min(previous.length, current.length)
+            while (overlap > 0) {
+                const prevTail = previous.slice(-overlap)
+                const currHead = current.slice(0, overlap)
+                if (prevTail.every((it, index) => it === currHead[index])) {
+                    break
+                }
+                overlap--
+            }
+
+            if (overlap > 0) {
+                const changed = ['...'].concat(current.slice(overlap)).join('\n\n')
+                message.content =
+                    content.slice(0, start + '# 最近消息'.length) +
+                    '\n' +
+                    changed +
+                    '\n' +
+                    content.slice(end)
+            }
+
+            previous = current
+        }
+    }
+
+    return {
+        completionMessages,
+        persistedHumanMessage
+    }
 }
 
 // eslint-disable-next-line prettier/prettier
@@ -570,18 +654,31 @@ async function handleVoiceMessage(
     ctx: Context,
     text: string,
     elements: h[]
-): Promise<{ breakSay: boolean; sent: boolean }> {
+): Promise<{
+    breakSay: boolean
+    sent: boolean
+    messageId?: string
+    elements?: h[]
+}> {
     try {
-        await sendElements(
-            session,
-            await voiceRender(ctx, session, text, undefined, elements)
-        )
-        return { breakSay: true, sent: true }
+        const rendered = await voiceRender(ctx, session, text, undefined, elements)
+        const ids = await sendElements(session, rendered)
+        return {
+            breakSay: true,
+            sent: true,
+            messageId: ids[0],
+            elements: rendered
+        }
     } catch (e) {
         logger.error(e)
         try {
-            await sendElements(session, elements)
-            return { breakSay: false, sent: true }
+            const ids = await sendElements(session, elements)
+            return {
+                breakSay: false,
+                sent: true,
+                messageId: ids[0],
+                elements
+            }
         } catch (fallbackError) {
             logger.error(fallbackError)
             return { breakSay: false, sent: false }
@@ -599,7 +696,12 @@ async function handleMessageSending(
     maxTime: number,
     emoticonStatement: string,
     breakSay: boolean
-): Promise<{ breakSay: boolean; sent: boolean }> {
+): Promise<{
+    breakSay: boolean
+    sent: boolean
+    messageId?: string
+    elements?: h[]
+}> {
     const isVoice = parsedResponse.messageType === 'voice'
     if (isVoice && emoticonStatement !== 'text') {
         return { breakSay: false, sent: false }
@@ -626,35 +728,44 @@ async function handleMessageSending(
     }
 
     let sent = false
+    let messageId: string | undefined
+    let sentElements: h[] | undefined
     try {
         switch (parsedResponse.messageType) {
             case 'text':
-                await sendElements(session, elements)
+                messageId = (await sendElements(session, elements))[0]
+                sentElements = elements
                 sent = true
                 break
             case 'voice':
-                await sendElements(
+                sentElements = await voiceRender(
+                    ctx,
                     session,
-                    await voiceRender(ctx, session, text, undefined, elements)
+                    text,
+                    undefined,
+                    elements
                 )
+                messageId = (await sendElements(session, sentElements))[0]
                 sent = true
                 break
             default:
-                await sendElements(session, elements)
+                messageId = (await sendElements(session, elements))[0]
+                sentElements = elements
                 sent = true
                 break
         }
     } catch (e) {
         logger.error(e)
         try {
-            await sendElements(session, elements)
+            messageId = (await sendElements(session, elements))[0]
+            sentElements = elements
             sent = true
         } catch (fallbackError) {
             logger.error(fallbackError)
         }
     }
 
-    return { breakSay: false, sent }
+    return { breakSay: false, sent, messageId, elements: sentElements }
 }
 
 async function handleParsedResponseChunk(
@@ -662,9 +773,14 @@ async function handleParsedResponseChunk(
     config: Config,
     ctx: Context,
     parsedResponse: ParsedResponse
-): Promise<{ breakSay: boolean; sentAny: boolean }> {
+): Promise<{
+    breakSay: boolean
+    sentAny: boolean
+    sentMessages: { elements: h[]; messageId?: string }[]
+}> {
     let breakSay = false
     let sentAny = false
+    const sentMessages: { elements: h[]; messageId?: string }[] = []
 
     for (const elements of parsedResponse.elements) {
         const text =
@@ -693,13 +809,19 @@ async function handleParsedResponseChunk(
         )
         breakSay = result.breakSay
         sentAny = sentAny || result.sent
+        if (result.sent && result.elements) {
+            sentMessages.push({
+                elements: result.elements,
+                messageId: result.messageId
+            })
+        }
 
         if (breakSay) {
             break
         }
     }
 
-    return { breakSay, sentAny }
+    return { breakSay, sentAny, sentMessages }
 }
 
 export async function apply(ctx: Context, config: Config) {
@@ -775,17 +897,18 @@ export async function apply(ctx: Context, config: Config) {
             const temp = await service.getTemp(session, latestMessages)
             const focusMessage = latestMessages[latestMessages.length - 1]
 
-            const completionMessages = await prepareMessages(
-                latestMessages,
-                copyOfConfig,
-                session,
-                model.value,
-                currentPreset,
-                temp,
-                chainPool[key]?.value,
-                focusMessage,
-                triggerReason
-            )
+            const { completionMessages, persistedHumanMessage } =
+                await prepareMessages(
+                    latestMessages,
+                    copyOfConfig,
+                    session,
+                    model.value,
+                    currentPreset,
+                    temp,
+                    chainPool[key]?.value,
+                    focusMessage,
+                    triggerReason
+                )
 
             if (!chainPool[key]) {
                 logger.debug(
@@ -829,7 +952,7 @@ export async function apply(ctx: Context, config: Config) {
                 lastResponseMessage = chunk.responseMessage
                 await ctx.chatluna_character.broadcastOnBot(
                     session,
-                    chunk.parsedResponse.elements.flat()
+                    sendResult.sentMessages
                 )
                 nextReplyReasons.push(
                     ...extractNextReplyReasons(chunk.responseContent)
@@ -858,9 +981,7 @@ export async function apply(ctx: Context, config: Config) {
                 )
             }
 
-            temp.completionMessages.push(
-                completionMessages[completionMessages.length - 1]
-            )
+            temp.completionMessages.push(persistedHumanMessage)
             if (lastResponseMessage) {
                 temp.completionMessages.push(lastResponseMessage)
             }

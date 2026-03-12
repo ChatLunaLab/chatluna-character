@@ -178,7 +178,7 @@ export class TriggerStore extends Service {
         const pending: PendingNextReply = {
             rawReason,
             groups,
-            createdAt: now
+            sentAt: now
         }
 
         info.pendingNextReplies = [pending]

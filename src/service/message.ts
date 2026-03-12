@@ -460,22 +460,27 @@ export class MessageCollector extends Service {
         }
     }
 
-    async broadcastOnBot(session: Session, elements: h[]) {
-        const content = mapElementToString(session, session.content, elements)
+    async broadcastOnBot(
+        session: Session,
+        messages: { elements: h[]; messageId?: string }[]
+    ) {
+        for (const item of messages) {
+            const content = mapElementToString(session, '', item.elements)
 
-        if (content.length < 1) {
-            return
+            if (content.length < 1) {
+                continue
+            }
+
+            const message: Message = {
+                content,
+                name: session.bot.user.name,
+                id: session.bot.selfId ?? '0',
+                messageId: item.messageId ?? session.messageId,
+                timestamp: session.event.timestamp
+            }
+
+            await this._addMessage(session, message)
         }
-
-        const message: Message = {
-            content,
-            name: session.bot.user.name,
-            id: session.bot.selfId ?? '0',
-            messageId: session.messageId,
-            timestamp: session.event.timestamp
-        }
-
-        await this._addMessage(session, message)
     }
 
     async broadcast(session: Session) {
