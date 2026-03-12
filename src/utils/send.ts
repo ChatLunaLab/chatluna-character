@@ -15,7 +15,7 @@ interface SendSplit {
 
 interface SendRule {
     split: (elements: h[], idx: number, start: number) => SendSplit
-    send?: (session: Session, part: SendPart) => Promise<void>
+    send?: (session: Session, part: SendPart) => Promise<string[]>
 }
 
 const sendRules: Record<string, SendRule> = {
@@ -27,12 +27,16 @@ const sendRules: Record<string, SendRule> = {
         }),
         send: async (session, part) => {
             if (session.platform !== 'qq' || !session.isDirect) {
-                await session.send(part.elements)
-                return
+                const result = await session.send(part.elements)
+                return Array.isArray(result)
+                    ? result.map((id) => String(id))
+                    : [String(result)]
             }
 
             const { user } = session.event
-            await (session.bot as QQBot<Context>).internal.sendPrivateMessage(
+            const result = await (
+                session.bot as QQBot<Context>
+            ).internal.sendPrivateMessage(
                 user.id,
                 {
                     msg_type: 2,
@@ -43,6 +47,8 @@ const sendRules: Record<string, SendRule> = {
                     }
                 }
             )
+
+            return [String(result.id)]
         }
     }
 }
@@ -84,17 +90,23 @@ export function splitSendElements(elements: h[]) {
 }
 
 export async function sendElements(session: Session, elements: h[]) {
-    console.log(
-        JSON.stringify(elements),
-        JSON.stringify(splitSendElements(elements))
-    )
+    const ids: string[] = []
+
     for (const part of splitSendElements(elements)) {
         const rule = sendRules[part.type]
         if (rule?.send) {
-            await rule.send(session, part)
+            ids.push(...(await rule.send(session, part)))
             continue
         }
 
-        await session.send(part.elements)
+        const result = await session.send(part.elements)
+        if (Array.isArray(result)) {
+            ids.push(...result.map((id) => String(id)))
+            continue
+        }
+
+        ids.push(String(result))
     }
+
+    return ids
 }

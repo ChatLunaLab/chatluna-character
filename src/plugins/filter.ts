@@ -463,11 +463,16 @@ async function processSchedulerTickForGuild(
 
     const nextRepliesRegisteredDuringCollect = (
         info.pendingNextReplies ?? []
-    ).filter((pending) => pending.createdAt >= triggerCollectStartedAt)
+    ).filter((pending) => pending.sentAt >= triggerCollectStartedAt)
 
     markTriggered(info, copyOfConfig, completedAt, session.isDirect)
     if (nextRepliesRegisteredDuringCollect.length > 0) {
-        info.pendingNextReplies = nextRepliesRegisteredDuringCollect
+        info.pendingNextReplies = nextRepliesRegisteredDuringCollect.map(
+            (pending) => ({
+                ...pending,
+                sentAt: completedAt
+            })
+        )
     }
 
     store.set(key, info)
