@@ -89,8 +89,16 @@ export class TriggerStore extends Service {
                         const guildConfig = isDirect
                             ? this._config.privateConfigs[id]
                             : this._config.configs[id]
+                        const globalConfig = isDirect
+                            ? this._config.globalPrivateConfig
+                            : this._config.globalGroupConfig
                         return createDefaultGroupInfo(
-                            Object.assign({}, this._config, guildConfig),
+                            Object.assign(
+                                {},
+                                this._config,
+                                globalConfig,
+                                guildConfig
+                            ),
                             now
                         )
                     })()
@@ -232,8 +240,16 @@ export class TriggerStore extends Service {
                 const guildConfig = session.isDirect
                     ? this._config.privateConfigs[session.userId]
                     : this._config.configs[session.guildId]
+                const globalConfig = session.isDirect
+                    ? this._config.globalPrivateConfig
+                    : this._config.globalGroupConfig
                 return createDefaultGroupInfo(
-                    Object.assign({}, this._config, guildConfig),
+                    Object.assign(
+                        {},
+                        this._config,
+                        globalConfig,
+                        guildConfig
+                    ),
                     now
                 )
             })()

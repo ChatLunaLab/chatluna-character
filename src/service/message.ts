@@ -297,7 +297,10 @@ export class MessageCollector extends Service {
         const guildConfig = session.isDirect
             ? this._config.privateConfigs[session.userId]
             : this._config.configs[session.guildId]
-        const config = Object.assign({}, this._config, guildConfig)
+        const globalConfig = session.isDirect
+            ? this._config.globalPrivateConfig
+            : this._config.globalGroupConfig
+        const config = Object.assign({}, this._config, globalConfig, guildConfig)
 
         if (!config.statusPersistence) {
             return
@@ -352,7 +355,15 @@ export class MessageCollector extends Service {
             const guildConfig = isDirect
                 ? this._config.privateConfigs[id]
                 : this._config.configs[id]
-            const config = Object.assign({}, this._config, guildConfig)
+            const globalConfig = isDirect
+                ? this._config.globalPrivateConfig
+                : this._config.globalGroupConfig
+            const config = Object.assign(
+                {},
+                this._config,
+                globalConfig,
+                guildConfig
+            )
             const clearedAt = new Date()
             const unlock = await this._lockByGroupId(groupId)
             try {
@@ -427,7 +438,15 @@ export class MessageCollector extends Service {
                     const guildConfig = isDirect
                         ? this._config.privateConfigs[id]
                         : this._config.configs[id]
-                    const config = Object.assign({}, this._config, guildConfig)
+                    const globalConfig = isDirect
+                        ? this._config.globalPrivateConfig
+                        : this._config.globalGroupConfig
+                    const config = Object.assign(
+                        {},
+                        this._config,
+                        globalConfig,
+                        guildConfig
+                    )
                     if (config.statusPersistence || config.historyPull) {
                         await this._store.clear(groupId, clearedAt)
                     }
@@ -465,7 +484,10 @@ export class MessageCollector extends Service {
         const guildConfig = session.isDirect
             ? this._config.privateConfigs[session.userId]
             : this._config.configs[session.guildId]
-        const config = Object.assign({}, this._config, guildConfig)
+        const globalConfig = session.isDirect
+            ? this._config.globalPrivateConfig
+            : this._config.globalGroupConfig
+        const config = Object.assign({}, this._config, globalConfig, guildConfig)
 
         const elements = session.elements
             ? session.elements
@@ -672,7 +694,10 @@ export class MessageCollector extends Service {
         const guildConfig = session.isDirect
             ? this._config.privateConfigs[session.userId]
             : this._config.configs[session.guildId]
-        const cfg = Object.assign({}, this._config, guildConfig)
+        const globalConfig = session.isDirect
+            ? this._config.globalPrivateConfig
+            : this._config.globalGroupConfig
+        const cfg = Object.assign({}, this._config, globalConfig, guildConfig)
 
         const temp = await this.getTemp(session)
 
@@ -720,7 +745,7 @@ export class MessageCollector extends Service {
             this._messages[groupId] = mergeMessages(
                 this._messages[groupId] ?? [],
                 list,
-                cfg.maxMessages
+                cfg.maxMessages ?? 40
             )
         } finally {
             unlock()
@@ -741,7 +766,18 @@ export class MessageCollector extends Service {
 
         try {
             const groupId = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
-            const maxMessageSize = this._config.maxMessages
+            const guildConfig = session.isDirect
+                ? this._config.privateConfigs[session.userId]
+                : this._config.configs[session.guildId]
+            const globalConfig = session.isDirect
+                ? this._config.globalPrivateConfig
+                : this._config.globalGroupConfig
+            const maxMessageSize = Object.assign(
+                {},
+                this._config,
+                globalConfig,
+                guildConfig
+            ).maxMessages ?? 40
             let groupArray = this._messages[groupId] ?? []
 
             groupArray.push(message)
