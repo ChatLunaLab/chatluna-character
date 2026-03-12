@@ -1,0 +1,13 @@
+{
+    "compilerOptions": {
+        "module": "esnext",
+        "target": "esnext",
+        "moduleResolution": "node",
+        "jsx": "preserve",
+        "esModuleInterop": true,
+        "skipLibCheck": true
+    },
+    "include": [
+        "**/*"
+    ]
+}

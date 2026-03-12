@@ -246,81 +246,108 @@ async function setupModelPool(
     ctx: Context,
     config: Config
 ): Promise<{
-    globalModel: ComputedRef<ChatLunaChatModel>
+    globalPrivateModel: ComputedRef<ChatLunaChatModel>
+    globalGroupModel: ComputedRef<ChatLunaChatModel>
     modelPool: Record<string, Promise<ComputedRef<ChatLunaChatModel>>>
 }> {
-    const [platform, modelName] = parseRawModelName(config.model)
-    const globalModel = await initializeModel(ctx, platform, modelName)
-    logger.info('global model loaded %c', config.model)
+    const [privatePlatform, privateModelName] = parseRawModelName(
+        config.globalPrivateConfig.model
+    )
+    const globalPrivateModel = await initializeModel(
+        ctx,
+        privatePlatform,
+        privateModelName
+    )
+    logger.info('global private model loaded %c', config.globalPrivateConfig.model)
+
+    const [groupPlatform, groupModelName] = parseRawModelName(
+        config.globalGroupConfig.model
+    )
+    const globalGroupModel = await initializeModel(
+        ctx,
+        groupPlatform,
+        groupModelName
+    )
+    logger.info('global group model loaded %c', config.globalGroupConfig.model)
 
     const modelPool: Record<
         string,
         Promise<ComputedRef<ChatLunaChatModel>>
     > = {}
 
-    if (config.modelOverride?.length > 0) {
-        for (const override of config.modelOverride) {
-            const key = `group:${override.groupId}`
-            modelPool[key] = (async () => {
-                const [platform, modelName] = parseRawModelName(override.model)
-                const loadedModel = await initializeModel(
-                    ctx,
-                    platform,
-                    modelName
-                )
-
-                logger.info(
-                    'override model loaded %c for group %c',
-                    override.model,
-                    override.groupId
-                )
-
-                modelPool[key] = Promise.resolve(loadedModel)
-                return loadedModel
-            })()
+    for (const groupId of Object.keys(config.configs)) {
+        const guildConfig = config.configs[groupId]
+        if (!guildConfig.model) {
+            continue
         }
+
+        if (guildConfig.model === config.globalGroupConfig.model) {
+            continue
+        }
+
+        const key = `group:${groupId}`
+        modelPool[key] = (async () => {
+            const [platform, modelName] = parseRawModelName(guildConfig.model)
+            const loadedModel = await initializeModel(ctx, platform, modelName)
+
+            logger.info(
+                'override model loaded %c for group %c',
+                guildConfig.model,
+                groupId
+            )
+
+            modelPool[key] = Promise.resolve(loadedModel)
+            return loadedModel
+        })()
     }
 
-    if (config.privateModelOverride?.length > 0) {
-        for (const override of config.privateModelOverride) {
-            const key = `private:${override.userId}`
-            modelPool[key] = (async () => {
-                const [platform, modelName] = parseRawModelName(override.model)
-                const loadedModel = await initializeModel(
-                    ctx,
-                    platform,
-                    modelName
-                )
-
-                logger.info(
-                    'override model loaded %c for private %c',
-                    override.model,
-                    override.userId
-                )
-
-                modelPool[key] = Promise.resolve(loadedModel)
-                return loadedModel
-            })()
+    for (const userId of Object.keys(config.privateConfigs)) {
+        const privateConfig = config.privateConfigs[userId]
+        if (!privateConfig.model) {
+            continue
         }
+
+        if (privateConfig.model === config.globalPrivateConfig.model) {
+            continue
+        }
+
+        const key = `private:${userId}`
+        modelPool[key] = (async () => {
+            const [platform, modelName] = parseRawModelName(privateConfig.model)
+            const loadedModel = await initializeModel(ctx, platform, modelName)
+
+            logger.info(
+                'override model loaded %c for private %c',
+                privateConfig.model,
+                userId
+            )
+
+            modelPool[key] = Promise.resolve(loadedModel)
+            return loadedModel
+        })()
     }
 
-    return { globalModel, modelPool }
+    return { globalPrivateModel, globalGroupModel, modelPool }
 }
 
 async function getConfigAndPresetForGuild(
     guildId: string,
     isDirect: boolean,
     config: Config,
-    globalPreset: PresetTemplate,
+    globalPrivatePreset: PresetTemplate,
+    globalGroupPreset: PresetTemplate,
     presetPool: Record<string, PresetTemplate>,
     key: string,
     preset: Preset
 ): Promise<{ copyOfConfig: Config; currentPreset: PresetTemplate }> {
+    const globalConfig = isDirect
+        ? config.globalPrivateConfig
+        : config.globalGroupConfig
     const currentGuildConfig = isDirect
         ? config.privateConfigs[guildId]
         : config.configs[guildId]
-    let copyOfConfig = { ...config }
-    let currentPreset = globalPreset
+    let copyOfConfig = Object.assign({}, config, globalConfig)
+    let currentPreset = isDirect ? globalPrivatePreset : globalGroupPreset
 
     if (currentGuildConfig) {
         copyOfConfig = Object.assign({}, copyOfConfig, currentGuildConfig)
@@ -682,15 +709,26 @@ export async function apply(ctx: Context, config: Config) {
 
     setLogger(logger)
 
-    const { globalModel, modelPool } = await setupModelPool(ctx, config)
+    const { globalPrivateModel, globalGroupModel, modelPool } =
+        await setupModelPool(ctx, config)
 
-    let globalPreset = preset.getPresetForCache(config.defaultPreset)
+    let globalPrivatePreset = preset.getPresetForCache(
+        config.globalPrivateConfig.preset
+    )
+    let globalGroupPreset = preset.getPresetForCache(
+        config.globalGroupConfig.preset
+    )
     let presetPool: Record<string, PresetTemplate> = {}
 
     const chainPool: Record<string, ComputedRef<ChatLunaChain>> = {}
 
     ctx.on('chatluna_character/preset_updated', () => {
-        globalPreset = preset.getPresetForCache(config.defaultPreset)
+        globalPrivatePreset = preset.getPresetForCache(
+            config.globalPrivateConfig.preset
+        )
+        globalGroupPreset = preset.getPresetForCache(
+            config.globalGroupConfig.preset
+        )
         presetPool = {}
     })
 
@@ -699,14 +737,20 @@ export async function apply(ctx: Context, config: Config) {
         const key = `${session.isDirect ? 'private' : 'group'}:${guildId}`
 
         try {
-            const model = await (modelPool[key] ?? Promise.resolve(globalModel))
+            const model = await (
+                modelPool[key] ??
+                Promise.resolve(
+                    session.isDirect ? globalPrivateModel : globalGroupModel
+                )
+            )
 
             const { copyOfConfig, currentPreset } =
                 await getConfigAndPresetForGuild(
                     guildId,
                     session.isDirect,
                     config,
-                    globalPreset,
+                    globalPrivatePreset,
+                    globalGroupPreset,
                     presetPool,
                     key,
                     preset

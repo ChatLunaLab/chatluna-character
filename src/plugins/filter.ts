@@ -151,20 +151,24 @@ function resolveGuildPresetContext(
     key: string,
     isDirect: boolean,
     config: Config,
-    globalPreset: PresetTemplate,
+    globalPrivatePreset: PresetTemplate,
+    globalGroupPreset: PresetTemplate,
     presetPool: Record<string, PresetTemplate>,
     preset: {
         getPresetForCache: (name: string) => PresetTemplate
     }
 ) {
+    const globalConfig = isDirect
+        ? config.globalPrivateConfig
+        : config.globalGroupConfig
     const currentGuildConfig = isDirect
         ? config.privateConfigs[guildId]
         : config.configs[guildId]
-    const copyOfConfig = Object.assign({}, config, currentGuildConfig)
+    const copyOfConfig = Object.assign({}, config, globalConfig, currentGuildConfig)
     if (currentGuildConfig == null) {
         return {
             copyOfConfig,
-            currentPreset: globalPreset
+            currentPreset: isDirect ? globalPrivatePreset : globalGroupPreset
         }
     }
 
@@ -379,10 +383,13 @@ async function processSchedulerTickForGuild(
     }
 
     const id = session.isDirect ? session.userId : session.guildId
+    const globalConfig = session.isDirect
+        ? config.globalPrivateConfig
+        : config.globalGroupConfig
     const guildConfig = session.isDirect
         ? config.privateConfigs[id]
         : config.configs[id]
-    const copyOfConfig = Object.assign({}, config, guildConfig)
+    const copyOfConfig = Object.assign({}, config, globalConfig, guildConfig)
 
     info.pendingNextReplies = clearStaleNextReplyTriggers(info)
 
@@ -472,7 +479,12 @@ export async function apply(ctx: Context, config: Config) {
     const preset = service.preset
     const logger = service.logger
 
-    const globalPreset = await preset.getPreset(config.defaultPreset)
+    const globalPrivatePreset = await preset.getPreset(
+        config.globalPrivateConfig.preset
+    )
+    const globalGroupPreset = await preset.getPreset(
+        config.globalGroupConfig.preset
+    )
     const presetPool: Record<string, PresetTemplate> = {}
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -528,7 +540,15 @@ export async function apply(ctx: Context, config: Config) {
             const guildConfig = isDirect
                 ? config.privateConfigs[id]
                 : config.configs[id]
-            const copyOfConfig = Object.assign({}, config, guildConfig)
+            const globalConfig = isDirect
+                ? config.globalPrivateConfig
+                : config.globalGroupConfig
+            const copyOfConfig = Object.assign(
+                {},
+                config,
+                globalConfig,
+                guildConfig
+            )
             const hasLastSession = session != null
 
             if (
@@ -570,7 +590,8 @@ export async function apply(ctx: Context, config: Config) {
             key,
             isPrivate,
             config,
-            globalPreset,
+            globalPrivatePreset,
+            globalGroupPreset,
             presetPool,
             preset
         )
