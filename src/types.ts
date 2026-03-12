@@ -32,6 +32,9 @@ export interface GroupTemp {
 }
 
 export interface GuildConfig {
+    remark?: string
+    model: string
+    maxMessages: number
     preset: string
     remark: string
     enableMessageId: boolean

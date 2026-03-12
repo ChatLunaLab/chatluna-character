@@ -4,8 +4,172 @@ import { plugins } from './plugin'
 import type { Config } from './config'
 import { MessageCollector } from './service/message'
 import { TriggerStore } from './service/trigger'
+import { dirname, resolve } from 'path'
+import { fileURLToPath } from 'url'
 
 export function apply(ctx: Context, config: Config) {
+    if (config.globalPrivateConfig.preset === 'CHARACTER' && config.defaultPreset) {
+        config.globalPrivateConfig.preset = config.defaultPreset
+    }
+
+    if (config.globalGroupConfig.preset === 'CHARACTER' && config.defaultPreset) {
+        config.globalGroupConfig.preset = config.defaultPreset
+    }
+
+    if (config.globalPrivateConfig.model === '' && config.model) {
+        config.globalPrivateConfig.model = config.model
+    }
+
+    if (config.globalGroupConfig.model === '' && config.model) {
+        config.globalGroupConfig.model = config.model
+    }
+
+    for (const userId of Object.keys(config.privateConfigs)) {
+        if (
+            !config.privateConfigs[userId].model ||
+            config.privateConfigs[userId].model === '无'
+        ) {
+            config.privateConfigs[userId].model = config.globalPrivateConfig.model
+        }
+    }
+
+    for (const groupId of Object.keys(config.configs)) {
+        if (
+            !config.configs[groupId].model ||
+            config.configs[groupId].model === '无'
+        ) {
+            config.configs[groupId].model = config.globalGroupConfig.model
+        }
+    }
+
+    if (config.globalPrivateConfig.maxMessages === 40 && config.maxMessages) {
+        config.globalPrivateConfig.maxMessages = config.maxMessages
+    }
+
+    if (config.globalGroupConfig.maxMessages === 40 && config.maxMessages) {
+        config.globalGroupConfig.maxMessages = config.maxMessages
+    }
+
+    if (config.globalPrivateConfig.maxTokens === 20000 && config.maxTokens) {
+        config.globalPrivateConfig.maxTokens = config.maxTokens
+    }
+
+    if (config.globalGroupConfig.maxTokens === 20000 && config.maxTokens) {
+        config.globalGroupConfig.maxTokens = config.maxTokens
+    }
+
+    if (config.globalPrivateConfig.image === false && config.image) {
+        config.globalPrivateConfig.image = config.image
+    }
+
+    if (config.globalGroupConfig.image === false && config.image) {
+        config.globalGroupConfig.image = config.image
+    }
+
+    if (config.globalPrivateConfig.imageInputMaxCount === 9 && config.imageInputMaxCount) {
+        config.globalPrivateConfig.imageInputMaxCount = config.imageInputMaxCount
+    }
+
+    if (config.globalGroupConfig.imageInputMaxCount === 9 && config.imageInputMaxCount) {
+        config.globalGroupConfig.imageInputMaxCount = config.imageInputMaxCount
+    }
+
+    if (config.globalPrivateConfig.imageInputMaxSize === 20 && config.imageInputMaxSize) {
+        config.globalPrivateConfig.imageInputMaxSize = config.imageInputMaxSize
+    }
+
+    if (config.globalGroupConfig.imageInputMaxSize === 20 && config.imageInputMaxSize) {
+        config.globalGroupConfig.imageInputMaxSize = config.imageInputMaxSize
+    }
+
+    if (
+        config.globalPrivateConfig.multimodalFileInputMaxSize === 20 &&
+        config.multimodalFileInputMaxSize
+    ) {
+        config.globalPrivateConfig.multimodalFileInputMaxSize =
+            config.multimodalFileInputMaxSize
+    }
+
+    if (
+        config.globalGroupConfig.multimodalFileInputMaxSize === 20 &&
+        config.multimodalFileInputMaxSize
+    ) {
+        config.globalGroupConfig.multimodalFileInputMaxSize =
+            config.multimodalFileInputMaxSize
+    }
+
+    if (config.globalPrivateConfig.toolCalling === true && config.toolCalling === false) {
+        config.globalPrivateConfig.toolCalling = config.toolCalling
+    }
+
+    if (config.globalGroupConfig.toolCalling === true && config.toolCalling === false) {
+        config.globalGroupConfig.toolCalling = config.toolCalling
+    }
+
+    if (config.globalPrivateConfig.isForceMute === true && config.isForceMute === false) {
+        config.globalPrivateConfig.isForceMute = config.isForceMute
+    }
+
+    if (config.globalGroupConfig.isForceMute === true && config.isForceMute === false) {
+        config.globalGroupConfig.isForceMute = config.isForceMute
+    }
+
+    if (config.globalPrivateConfig.coolDownTime === 0 && config.coolDownTime) {
+        config.globalPrivateConfig.coolDownTime = config.coolDownTime
+    }
+
+    if (config.globalGroupConfig.coolDownTime === 0 && config.coolDownTime) {
+        config.globalGroupConfig.coolDownTime = config.coolDownTime
+    }
+
+    if (config.globalPrivateConfig.muteTime === 1000 * 60 && config.muteTime) {
+        config.globalPrivateConfig.muteTime = config.muteTime
+    }
+
+    if (config.globalGroupConfig.muteTime === 1000 * 60 && config.muteTime) {
+        config.globalGroupConfig.muteTime = config.muteTime
+    }
+
+    if (
+        config.globalGroupConfig.messageActivityScoreLowerLimit === 0.85 &&
+        config.messageActivityScoreLowerLimit
+    ) {
+        config.globalGroupConfig.messageActivityScoreLowerLimit =
+            config.messageActivityScoreLowerLimit
+    }
+
+    if (
+        config.globalGroupConfig.messageActivityScoreUpperLimit === 0.85 &&
+        config.messageActivityScoreUpperLimit
+    ) {
+        config.globalGroupConfig.messageActivityScoreUpperLimit =
+            config.messageActivityScoreUpperLimit
+    }
+
+    if (config.privateModelOverride?.length > 0) {
+        for (const override of config.privateModelOverride) {
+            config.privateConfigs[override.userId] = Object.assign(
+                {},
+                config.privateConfigs[override.userId],
+                {
+                    model: override.model
+                }
+            )
+        }
+    }
+
+    if (config.modelOverride?.length > 0) {
+        for (const override of config.modelOverride) {
+            config.configs[override.groupId] = Object.assign(
+                {},
+                config.configs[override.groupId],
+                {
+                    model: override.model
+                }
+            )
+        }
+    }
+
     ctx.plugin(TriggerStore, config)
     ctx.plugin(MessageCollector, config)
     ctx.plugin(
@@ -28,6 +192,18 @@ export function apply(ctx: Context, config: Config) {
         },
         config
     )
+
+    ctx.inject(['console'], (ctx) => {
+        const baseDir =
+            typeof __dirname !== 'undefined'
+                ? __dirname
+                : dirname(fileURLToPath(import.meta.url))
+
+        ;(ctx as any).console.addEntry({
+            dev: resolve(baseDir, '../dist'),
+            prod: resolve(baseDir, '../dist')
+        })
+    })
 
     ctx.middleware((session, next) => {
         if (!ctx.chatluna_character) {
@@ -67,7 +243,7 @@ export function apply(ctx: Context, config: Config) {
 
 export const inject = {
     required: ['chatluna', 'database'],
-    optional: ['chatluna_character', 'chatluna_character_trigger', 'vits']
+    optional: ['chatluna_character', 'chatluna_character_trigger', 'vits', 'console']
 }
 
 export const inject2 = {
@@ -81,6 +257,9 @@ export const inject2 = {
         required: false
     },
     vits: {
+        required: false
+    },
+    console: {
         required: false
     },
     database: {

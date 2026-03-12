@@ -19,7 +19,7 @@ export async function pullHistory(cfg: PullHistoryConfig) {
         return null
     }
 
-    const count = Math.max(0, cfg.config.maxMessages - cfg.messageCount)
+    const count = Math.max(0, (cfg.config.maxMessages ?? 40) - cfg.messageCount)
     if (count < 1) {
         return []
     }

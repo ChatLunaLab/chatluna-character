@@ -41,173 +41,13 @@ import { ComputedRef } from 'koishi-plugin-chatluna'
 
 let logger: Logger
 
-export async function apply(ctx: Context, config: Config) {
-    const service = ctx.chatluna_character
-    const preset = service.preset
-    logger = service.logger
+type ParsedResponse = Awaited<ReturnType<typeof parseResponse>>
+type StreamedParsedResponseChunk = StreamedModelResponseChunk<ParsedResponse>
 
-    setLogger(logger)
-
-    const { globalModel, modelPool } = await setupModelPool(ctx, config)
-
-    let globalPreset = preset.getPresetForCache(config.defaultPreset)
-    let presetPool: Record<string, PresetTemplate> = {}
-
-    const chainPool: Record<string, ComputedRef<ChatLunaChain>> = {}
-
-    ctx.on('chatluna_character/preset_updated', () => {
-        globalPreset = preset.getPresetForCache(config.defaultPreset)
-        presetPool = {}
-    })
-
-    service.collect(async (session, messages, triggerReason, signal) => {
-        const guildId = session.isDirect ? session.userId : session.guildId
-        const key = `${session.isDirect ? 'private' : 'group'}:${guildId}`
-
-        try {
-            const model = await (modelPool[key] ?? Promise.resolve(globalModel))
-
-            const { copyOfConfig, currentPreset } =
-                await getConfigAndPresetForGuild(
-                    guildId,
-                    session.isDirect,
-                    config,
-                    globalPreset,
-                    presetPool,
-                    key,
-                    preset
-                )
-
-            if (model.value == null) {
-                logger.warn(
-                    `Model ${copyOfConfig.model} load not successful. ` +
-                        'Please check your logs output.'
-                )
-                return
-            }
-
-            if (copyOfConfig.toolCalling) {
-                chainPool[key] =
-                    chainPool[key] ??
-                    (await createChatLunaChain(ctx, model, session))
-            }
-
-            const latestMessages = service.getMessages(key) ?? messages
-            const count = latestMessages.length
-            const temp = await service.getTemp(session, latestMessages)
-            const focusMessage = latestMessages[latestMessages.length - 1]
-
-            const completionMessages = await prepareMessages(
-                latestMessages,
-                copyOfConfig,
-                session,
-                model.value,
-                currentPreset,
-                temp,
-                chainPool[key]?.value,
-                focusMessage,
-                triggerReason
-            )
-
-            if (!chainPool[key]) {
-                logger.debug(
-                    'completion message: ' +
-                        JSON.stringify(
-                            completionMessages.map((it) => it.content)
-                        )
-                )
-            }
-
-            let lastResponseMessage: BaseMessage | undefined
-            const nextReplyReasons: string[] = []
-            const wakeUpReplies: ReturnType<typeof extractWakeUpReplies> = []
-            let latestStatus = temp.status
-            let sentAny = false
-
-            for await (const chunk of streamModelResponse(
-                ctx,
-                session,
-                model.value,
-                completionMessages,
-                copyOfConfig,
-                currentPreset.name,
-                chainPool[key]?.value,
-                signal
-            )) {
-                latestStatus = chunk.parsedResponse.status ?? latestStatus
-
-                const sendResult = await handleParsedResponseChunk(
-                    session,
-                    copyOfConfig,
-                    ctx,
-                    chunk.parsedResponse
-                )
-
-                if (!sendResult.sentAny) {
-                    continue
-                }
-
-                sentAny = true
-                lastResponseMessage = chunk.responseMessage
-                await ctx.chatluna_character.broadcastOnBot(
-                    session,
-                    chunk.parsedResponse.elements.flat()
-                )
-                nextReplyReasons.push(
-                    ...extractNextReplyReasons(chunk.responseContent)
-                )
-                wakeUpReplies.push(
-                    ...extractWakeUpReplies(chunk.responseContent)
-                )
-
-                if (sendResult.breakSay) {
-                    break
-                }
-            }
-
-            if (!sentAny) {
-                service.mute(session, copyOfConfig.muteTime)
-                return
-            }
-
-            const persistedMessages = service.getMessages(key) ?? latestMessages
-            if (persistedMessages.length > count) {
-                temp.status = latestStatus
-                await service.persistStatus(
-                    session,
-                    latestStatus,
-                    persistedMessages[persistedMessages.length - 1]
-                )
-            }
-
-            temp.completionMessages.push(
-                completionMessages[completionMessages.length - 1]
-            )
-            if (lastResponseMessage) {
-                temp.completionMessages.push(lastResponseMessage)
-            }
-
-            trimCompletionMessages(
-                temp.completionMessages,
-                copyOfConfig.modelCompletionCount
-            )
-
-            await registerResponseTriggers(
-                ctx,
-                session,
-                key,
-                copyOfConfig,
-                nextReplyReasons,
-                wakeUpReplies
-            )
-
-            service.muteAtLeast(session, copyOfConfig.coolDownTime * 1000)
-        } catch (e) {
-            logger.error(e)
-        } finally {
-            await service.releaseResponseLock(session)
-        }
-    })
+interface StreamedResponseContentChunk {
+    responseMessage: BaseMessage
+    responseContent: string
+    isIntermediate: boolean
 }
 
 function stripInternalTriggerTags(content: string) {
@@ -406,81 +246,108 @@ async function setupModelPool(
     ctx: Context,
     config: Config
 ): Promise<{
-    globalModel: ComputedRef<ChatLunaChatModel>
+    globalPrivateModel: ComputedRef<ChatLunaChatModel>
+    globalGroupModel: ComputedRef<ChatLunaChatModel>
     modelPool: Record<string, Promise<ComputedRef<ChatLunaChatModel>>>
 }> {
-    const [platform, modelName] = parseRawModelName(config.model)
-    const globalModel = await initializeModel(ctx, platform, modelName)
-    logger.info('global model loaded %c', config.model)
+    const [privatePlatform, privateModelName] = parseRawModelName(
+        config.globalPrivateConfig.model
+    )
+    const globalPrivateModel = await initializeModel(
+        ctx,
+        privatePlatform,
+        privateModelName
+    )
+    logger.info('global private model loaded %c', config.globalPrivateConfig.model)
+
+    const [groupPlatform, groupModelName] = parseRawModelName(
+        config.globalGroupConfig.model
+    )
+    const globalGroupModel = await initializeModel(
+        ctx,
+        groupPlatform,
+        groupModelName
+    )
+    logger.info('global group model loaded %c', config.globalGroupConfig.model)
 
     const modelPool: Record<
         string,
         Promise<ComputedRef<ChatLunaChatModel>>
     > = {}
 
-    if (config.modelOverride?.length > 0) {
-        for (const override of config.modelOverride) {
-            const key = `group:${override.groupId}`
-            modelPool[key] = (async () => {
-                const [platform, modelName] = parseRawModelName(override.model)
-                const loadedModel = await initializeModel(
-                    ctx,
-                    platform,
-                    modelName
-                )
-
-                logger.info(
-                    'override model loaded %c for group %c',
-                    override.model,
-                    override.groupId
-                )
-
-                modelPool[key] = Promise.resolve(loadedModel)
-                return loadedModel
-            })()
+    for (const groupId of Object.keys(config.configs)) {
+        const guildConfig = config.configs[groupId]
+        if (!guildConfig.model) {
+            continue
         }
+
+        if (guildConfig.model === config.globalGroupConfig.model) {
+            continue
+        }
+
+        const key = `group:${groupId}`
+        modelPool[key] = (async () => {
+            const [platform, modelName] = parseRawModelName(guildConfig.model)
+            const loadedModel = await initializeModel(ctx, platform, modelName)
+
+            logger.info(
+                'override model loaded %c for group %c',
+                guildConfig.model,
+                groupId
+            )
+
+            modelPool[key] = Promise.resolve(loadedModel)
+            return loadedModel
+        })()
     }
 
-    if (config.privateModelOverride?.length > 0) {
-        for (const override of config.privateModelOverride) {
-            const key = `private:${override.userId}`
-            modelPool[key] = (async () => {
-                const [platform, modelName] = parseRawModelName(override.model)
-                const loadedModel = await initializeModel(
-                    ctx,
-                    platform,
-                    modelName
-                )
-
-                logger.info(
-                    'override model loaded %c for private %c',
-                    override.model,
-                    override.userId
-                )
-
-                modelPool[key] = Promise.resolve(loadedModel)
-                return loadedModel
-            })()
+    for (const userId of Object.keys(config.privateConfigs)) {
+        const privateConfig = config.privateConfigs[userId]
+        if (!privateConfig.model) {
+            continue
         }
+
+        if (privateConfig.model === config.globalPrivateConfig.model) {
+            continue
+        }
+
+        const key = `private:${userId}`
+        modelPool[key] = (async () => {
+            const [platform, modelName] = parseRawModelName(privateConfig.model)
+            const loadedModel = await initializeModel(ctx, platform, modelName)
+
+            logger.info(
+                'override model loaded %c for private %c',
+                privateConfig.model,
+                userId
+            )
+
+            modelPool[key] = Promise.resolve(loadedModel)
+            return loadedModel
+        })()
     }
 
-    return { globalModel, modelPool }
+    return { globalPrivateModel, globalGroupModel, modelPool }
 }
 
 async function getConfigAndPresetForGuild(
     guildId: string,
     isDirect: boolean,
     config: Config,
-    globalPreset: PresetTemplate,
+    globalPrivatePreset: PresetTemplate,
+    globalGroupPreset: PresetTemplate,
     presetPool: Record<string, PresetTemplate>,
     key: string,
     preset: Preset
 ): Promise<{ copyOfConfig: Config; currentPreset: PresetTemplate }> {
+    const globalConfig = isDirect
+        ? config.globalPrivateConfig
+        : config.globalGroupConfig
     const currentGuildConfig = isDirect
         ? config.privateConfigs[guildId]
         : config.configs[guildId]
-    let copyOfConfig = { ...config }
-    let currentPreset = globalPreset
+    let copyOfConfig = Object.assign({}, config, globalConfig)
+    let currentPreset = isDirect ? globalPrivatePreset : globalGroupPreset
 
     if (currentGuildConfig) {
         copyOfConfig = Object.assign({}, copyOfConfig, currentGuildConfig)
@@ -835,11 +702,188 @@ async function handleParsedResponseChunk(
     return { breakSay, sentAny }
 }
 
-type ParsedResponse = Awaited<ReturnType<typeof parseResponse>>
-type StreamedParsedResponseChunk = StreamedModelResponseChunk<ParsedResponse>
+export async function apply(ctx: Context, config: Config) {
+    const service = ctx.chatluna_character
+    const preset = service.preset
+    logger = service.logger
 
-interface StreamedResponseContentChunk {
-    responseMessage: BaseMessage
-    responseContent: string
-    isIntermediate: boolean
+    setLogger(logger)
+
+    const { globalPrivateModel, globalGroupModel, modelPool } =
+        await setupModelPool(ctx, config)
+
+    let globalPrivatePreset = preset.getPresetForCache(
+        config.globalPrivateConfig.preset
+    )
+    let globalGroupPreset = preset.getPresetForCache(
+        config.globalGroupConfig.preset
+    )
+    let presetPool: Record<string, PresetTemplate> = {}
+
+    const chainPool: Record<string, ComputedRef<ChatLunaChain>> = {}
+
+    ctx.on('chatluna_character/preset_updated', () => {
+        globalPrivatePreset = preset.getPresetForCache(
+            config.globalPrivateConfig.preset
+        )
+        globalGroupPreset = preset.getPresetForCache(
+            config.globalGroupConfig.preset
+        )
+        presetPool = {}
+    })
+
+    service.collect(async (session, messages, triggerReason, signal) => {
+        const guildId = session.isDirect ? session.userId : session.guildId
+        const key = `${session.isDirect ? 'private' : 'group'}:${guildId}`
+
+        try {
+            const model = await (
+                modelPool[key] ??
+                Promise.resolve(
+                    session.isDirect ? globalPrivateModel : globalGroupModel
+                )
+            )
+
+            const { copyOfConfig, currentPreset } =
+                await getConfigAndPresetForGuild(
+                    guildId,
+                    session.isDirect,
+                    config,
+                    globalPrivatePreset,
+                    globalGroupPreset,
+                    presetPool,
+                    key,
+                    preset
+                )
+
+            if (model.value == null) {
+                logger.warn(
+                    `Model ${copyOfConfig.model} load not successful. ` +
+                        'Please check your logs output.'
+                )
+                return
+            }
+
+            if (copyOfConfig.toolCalling) {
+                chainPool[key] =
+                    chainPool[key] ??
+                    (await createChatLunaChain(ctx, model, session))
+            }
+
+            const latestMessages = service.getMessages(key) ?? messages
+            const count = latestMessages.length
+            const temp = await service.getTemp(session, latestMessages)
+            const focusMessage = latestMessages[latestMessages.length - 1]
+
+            const completionMessages = await prepareMessages(
+                latestMessages,
+                copyOfConfig,
+                session,
+                model.value,
+                currentPreset,
+                temp,
+                chainPool[key]?.value,
+                focusMessage,
+                triggerReason
+            )
+
+            if (!chainPool[key]) {
+                logger.debug(
+                    'completion message: ' +
+                        JSON.stringify(
+                            completionMessages.map((it) => it.content)
+                        )
+                )
+            }
+
+            let lastResponseMessage: BaseMessage | undefined
+            const nextReplyReasons: string[] = []
+            const wakeUpReplies: ReturnType<typeof extractWakeUpReplies> = []
+            let latestStatus = temp.status
+            let sentAny = false
+
+            for await (const chunk of streamModelResponse(
+                ctx,
+                session,
+                model.value,
+                completionMessages,
+                copyOfConfig,
+                currentPreset.name,
+                chainPool[key]?.value,
+                signal
+            )) {
+                latestStatus = chunk.parsedResponse.status ?? latestStatus
+
+                const sendResult = await handleParsedResponseChunk(
+                    session,
+                    copyOfConfig,
+                    ctx,
+                    chunk.parsedResponse
+                )
+
+                if (!sendResult.sentAny) {
+                    continue
+                }
+
+                sentAny = true
+                lastResponseMessage = chunk.responseMessage
+                await ctx.chatluna_character.broadcastOnBot(
+                    session,
+                    chunk.parsedResponse.elements.flat()
+                )
+                nextReplyReasons.push(
+                    ...extractNextReplyReasons(chunk.responseContent)
+                )
+                wakeUpReplies.push(
+                    ...extractWakeUpReplies(chunk.responseContent)
+                )
+
+                if (sendResult.breakSay) {
+                    break
+                }
+            }
+
+            if (!sentAny) {
+                service.mute(session, copyOfConfig.muteTime)
+                return
+            }
+
+            const persistedMessages = service.getMessages(key) ?? latestMessages
+            if (persistedMessages.length > count) {
+                temp.status = latestStatus
+                await service.persistStatus(
+                    session,
+                    latestStatus,
+                    persistedMessages[persistedMessages.length - 1]
+                )
+            }
+
+            temp.completionMessages.push(
+                completionMessages[completionMessages.length - 1]
+            )
+            if (lastResponseMessage) {
+                temp.completionMessages.push(lastResponseMessage)
+            }
+
+            trimCompletionMessages(
+                temp.completionMessages,
+                copyOfConfig.modelCompletionCount
+            )
+
+            await registerResponseTriggers(
+                ctx,
+                session,
+                key,
+                copyOfConfig,
+                nextReplyReasons,
+                wakeUpReplies
+            )
+
+            service.muteAtLeast(session, copyOfConfig.coolDownTime * 1000)
+        } catch (e) {
+            logger.error(e)
+        } finally {
+            await service.releaseResponseLock(session)
+        }
+    })
 }
