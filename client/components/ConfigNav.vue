@@ -242,7 +242,7 @@ const toTop = (id: 'base' | 'global-private' | 'global-group') => {
         const node = nodes[i] as HTMLElement
         const text = getText(node)
         if (keys[id].some((key) => text.includes(key))) {
-            node.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            node.scrollIntoView({ block: 'center' })
             activeItem.value = id
             return
         }
@@ -264,7 +264,7 @@ const toItem = (
         const node = nodes[i] as HTMLElement
         const text = getText(node)
         if (marks.some((mark) => text.includes(mark))) {
-            node.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            node.scrollIntoView({ block: 'center' })
             activeItem.value = `${type}-${id}`
             return
         }
