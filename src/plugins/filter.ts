@@ -298,7 +298,14 @@ function resolveImmediateTriggerReason(
     isDirectTrigger: boolean,
     isAppel: boolean
 ) {
-    if (info.messageCount > copyOfConfig.messageInterval) {
+    if (copyOfConfig.messageInterval === 0) {
+        if (isDirectTrigger) {
+            return isAppel ? 'Mention or quote trigger' : 'Nickname trigger'
+        }
+        return undefined
+    }
+
+    if (info.messageCount >= copyOfConfig.messageInterval) {
         return `Message interval reached (${info.messageCount}/${copyOfConfig.messageInterval})`
     }
 
@@ -307,6 +314,32 @@ function resolveImmediateTriggerReason(
     }
 
     return undefined
+}
+
+function findZeroIntervalTriggerReason(
+    info: GroupInfo,
+    copyOfConfig: Config,
+    now: number,
+    isDirect: boolean
+) {
+    if (!isDirect) {
+        return undefined
+    }
+
+    if (copyOfConfig.messageInterval !== 0) {
+        return undefined
+    }
+
+    if (info.messageCount < 1) {
+        return undefined
+    }
+
+    const wait = Math.max(copyOfConfig.messageWaitTime, 0)
+    if (now - info.lastUserMessageTime < wait * 1000) {
+        return undefined
+    }
+
+    return `Message wait reached (${wait}s)`
 }
 
 function resolveTriggerReason(
@@ -339,6 +372,7 @@ function resolveTriggerReason(
 
 function hasPendingSchedulerWork(info: GroupInfo, copyOfConfig: Config) {
     return (
+        (copyOfConfig.messageInterval === 0 && info.messageCount > 0) ||
         copyOfConfig.idleTrigger.enableLongWaitTrigger ||
         (info.pendingNextReplies?.length ?? 0) > 0 ||
         (info.pendingWakeUpReplies?.length ?? 0) > 0
@@ -447,6 +481,7 @@ async function processSchedulerTickForGuild(
             ? `Triggered by wake_up_reply: ${triggeredWakeUpReply.naturalReason}`
             : undefined) ??
         findNextReplyTriggerReason(info) ??
+        findZeroIntervalTriggerReason(info, copyOfConfig, now, session.isDirect) ??
         findIdleTriggerReason(info, copyOfConfig, now)
 
     if (!triggerReason) {
