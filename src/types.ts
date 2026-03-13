@@ -74,7 +74,9 @@ export interface GuildConfig {
 export type PrivateConfig = Omit<
     GuildConfig,
     'messageActivityScoreLowerLimit' | 'messageActivityScoreUpperLimit' | 'isAt'
->
+> & {
+    messageWaitTime: number
+}
 
 export interface CharacterVariableRecord {
     sessionKey: string
