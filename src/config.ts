@@ -12,6 +12,7 @@ export interface Config extends ChatLunaPlugin.Config {
     maxMessages?: number
 
     messageInterval: number
+    messageWaitTime?: number
     idleTrigger: {
         enableLongWaitTrigger: boolean
         idleTriggerIntervalMinutes: number
@@ -179,14 +180,14 @@ const privateIdleConfig = Schema.object({
         .min(1)
         .max(60 * 24 * 7)
         .description(
-            '空闲触发间隔（分钟）：当超过该时间未收到新消息时，将自动触发一次回复请求。'
+            '空闲触发间隔（分钟）：当超过该时间未收到新消息时，将自动触发一次回复请求'
         ),
     idleTriggerRetryStyle: Schema.union([
         Schema.const('exponential').description(
-            '指数退避（默认）：首次触发后若仍无新消息，按“空闲触发间隔（分钟）”作为起始值每次乘 2（例如 2→4→8→16）。'
+            '指数退避（默认）（首次触发后若仍无新消息，按“空闲触发间隔（分钟）”作为起始值每次乘 2，例如 2→4→8→16）'
         ),
         Schema.const('fixed').description(
-            '固定重试：始终按“空闲触发间隔（分钟）”重复触发。'
+            '固定重试（始终按“空闲触发间隔”重复触发）'
         )
     ])
         .default('exponential')
@@ -196,7 +197,7 @@ const privateIdleConfig = Schema.object({
         .min(1)
         .max(60 * 24 * 30)
         .description(
-            '指数退避空闲触发最大间隔（分钟）：达到该间隔后，不再继续空闲重试。'
+            '指数退避空闲触发最大间隔（分钟）：达到该间隔后，不再继续空闲重试'
         ),
     idleTriggerFixedMaxRetries: Schema.number()
         .default(3)
@@ -206,7 +207,7 @@ const privateIdleConfig = Schema.object({
     enableIdleTriggerJitter: Schema.boolean()
         .default(true)
         .description(
-            '是否启用空闲触发随机抖动：对固定重试与指数退避都生效，每轮会随机提前或延后 5%-10%。'
+            '是否启用空闲触发随机抖动（对固定重试与指数退避都生效，每轮会随机提前或延后 5%-10%，提高随机性）'
         )
 })
 
@@ -219,14 +220,14 @@ const groupIdleConfig = Schema.object({
         .min(1)
         .max(60 * 24 * 7)
         .description(
-            '空闲触发间隔（分钟）：当超过该时间未收到新消息时，将自动触发一次回复请求。'
+            '空闲触发间隔（分钟）：当超过该时间未收到新消息时，将自动触发一次回复请求'
         ),
     idleTriggerRetryStyle: Schema.union([
         Schema.const('exponential').description(
-            '指数退避（默认）：首次触发后若仍无新消息，按“空闲触发间隔（分钟）”作为起始值每次乘 2（例如 2→4→8→16）。'
+            '指数退避（默认）（首次触发后若仍无新消息，按“空闲触发间隔（分钟）”作为起始值每次乘 2，例如 2→4→8→16）'
         ),
         Schema.const('fixed').description(
-            '固定重试：始终按“空闲触发间隔（分钟）”重复触发。'
+            '固定重试（始终按“空闲触发间隔”重复触发）'
         )
     ])
         .default('exponential')
@@ -236,7 +237,7 @@ const groupIdleConfig = Schema.object({
         .min(1)
         .max(60 * 24 * 30)
         .description(
-            '指数退避空闲触发最大间隔（分钟）：达到该间隔后，不再继续空闲重试。'
+            '指数退避空闲触发最大间隔（分钟）：达到该间隔后，不再继续空闲重试'
         ),
     idleTriggerFixedMaxRetries: Schema.number()
         .default(3)
@@ -246,7 +247,7 @@ const groupIdleConfig = Schema.object({
     enableIdleTriggerJitter: Schema.boolean()
         .default(true)
         .description(
-            '是否启用空闲触发随机抖动：对固定重试与指数退避都生效，每轮会随机提前或延后 5%-10%。'
+            '是否启用空闲触发随机抖动（对固定重试与指数退避都生效，每轮会随机提前或延后 5%-10%，提高随机性）'
         )
 })
 
@@ -256,14 +257,14 @@ const commonConversationConfig = Schema.object({
         .min(0)
         .max(60 * 24 * 24)
         .description(
-            '冷却发言时间（秒）：当上一条消息发送完成后的 n 秒内触发的新请求会暂存，冷却结束后再发送，模拟发完消息后看新消息时的延迟。'
+            '冷却发言时间（秒）：当上一条消息发送完成后的 n 秒内触发的新请求会暂存，冷却结束后再发送，模拟发完消息后看新消息时的延迟'
         ),
     typingTime: Schema.number()
         .default(200)
         .min(100)
         .role('slider')
         .max(1700)
-        .description('模拟打字时每个字的“输入”时长（毫秒）'),
+        .description('模拟打字时每个字的“输入”时长（毫秒）：模拟发消息时的输入时间'),
     largeTextSize: Schema.number()
         .default(100)
         .min(100)
@@ -272,8 +273,9 @@ const commonConversationConfig = Schema.object({
     largeTextTypingTime: Schema.number()
         .default(10)
         .min(10)
+        .role('slider')
         .max(1500)
-        .description('发送大文本消息模拟打字时，每个字的“输入”时长（毫秒）')
+        .description('发送大文本消息模拟打字时，每个字的“输入”时长（毫秒）：缩小以减少长文本发送时的等待时长')
 }).description('延迟与模拟打字').collapse()
 
 const globalPrivateConfigObject = Schema.intersect([
@@ -288,7 +290,14 @@ const globalPrivateConfigObject = Schema.intersect([
             .role('slider')
             .max(10000)
             .description(
-                '随机发送消息的间隔（条）：私聊需要更低，若设为 0 间隔，则每条消息都会触发请求。'
+                '随机发送消息的间隔（条）：私聊需要更低，若设为 0 间隔，则每条消息都会触发请求'
+            ),
+        messageWaitTime: Schema.number()
+            .default(10)
+            .min(0)
+            .max(300)
+            .description(
+                '发言等待时长（秒）：在“随机发送消息的间隔”为 0 时生效，当连续 Bot 连续 N 秒没有收到新消息后，才会触发请求，改善偶尔向 Bot 连续发送多条消息时的体验'
             )
     }).description('基础').collapse(),
     commonModelFeatureConfig,
@@ -316,7 +325,14 @@ const privateConfigObject = Schema.intersect([
             .role('slider')
             .max(10000)
             .description(
-                '随机发送消息的间隔（条）：私聊需要更低，若设为 0 间隔，则每条消息都会触发请求。'
+                '随机发送消息的间隔（条）：私聊需要更低，若设为 0 间隔，则每条消息都会触发请求'
+            ),
+        messageWaitTime: Schema.number()
+            .default(10)
+            .min(0)
+            .max(300)
+            .description(
+                '发言等待时长（秒）：在“随机发送消息的间隔”为 0 时生效，当连续 Bot 连续 N 秒没有收到新消息后，才会触发请求，改善偶尔向 Bot 连续发送多条消息时的体验'
             )
     }).description('基础').collapse(),
     commonModelFeatureConfig,
@@ -341,8 +357,8 @@ const globalGroupConfigObject = Schema.intersect([
             .role('slider')
             .max(10000)
             .description(
-                '随机发送消息的间隔（条）：群越活跃，这个值就越需要调高，否则将一直被高强度触发。'
-            )
+                '随机发送消息的间隔（条）：群越活跃，这个值就越需要调高，否则将一直被高强度触发'
+            ),
     }).description('基础').collapse(),
     commonModelFeatureConfig,
     commonModelConfig,
@@ -392,8 +408,8 @@ const guildConfigObject = Schema.intersect([
             .role('slider')
             .max(10000)
             .description(
-                '随机发送消息的间隔（条）：群越活跃，这个值就越需要调高，否则将一直被高强度触发。'
-            )
+                '随机发送消息的间隔（条）：群越活跃，这个值就越需要调高，否则将一直被高强度触发'
+            ),
     }).description('基础').collapse(),
     commonModelFeatureConfig,
     commonModelConfig,
@@ -433,7 +449,7 @@ export const Config = Schema.intersect([
         privateWhitelistMode: Schema.boolean()
             .default(true)
             .description(
-                '是否启用私聊白名单模式：开启后，将仅允许 applyPrivate 中的用户使用伪装插件私聊功能'
+                '是否启用私聊白名单模式（开启后，将仅允许 applyPrivate 中的用户使用伪装插件私聊功能）'
             ),
         applyPrivate: Schema.array(Schema.string())
             .description('应用到的私聊')
@@ -441,7 +457,7 @@ export const Config = Schema.intersect([
         groupWhitelistMode: Schema.boolean()
             .default(true)
             .description(
-                '是否启用群聊白名单模式：开启后，将仅允许 applyGroup 中的群组使用伪装插件群聊功能'
+                '是否启用群聊白名单模式（开启后，将仅允许 applyGroup 中的群组使用伪装插件群聊功能）'
             ),
         applyGroup: Schema.array(Schema.string())
             .description('应用到的群组')
@@ -465,7 +481,7 @@ export const Config = Schema.intersect([
 
     Schema.object({
         globalGroupConfig: globalGroupConfigObject.default({} as GuildConfig)
-    }).description('全局群聊').collapse(),
+    }).description('全局群聊配置').collapse(),
 
     Schema.object({
         privateConfigs: Schema.dict(privateConfigObject)
@@ -473,17 +489,49 @@ export const Config = Schema.intersect([
             .description(
                 '分私聊配置，会覆盖上面的默认配置（键填写私聊用户 ID）'
             )
-    }).description('分私聊').collapse(),
+    }).description('分私聊配置').collapse(),
 
     Schema.object({
         configs: Schema.dict(guildConfigObject)
             .role('table')
             .description('分群聊配置，会覆盖上面的默认配置（键填写群号）')
-    }).description('分群聊').collapse()
+    }).description('分群聊配置').collapse()
 ]) as unknown as Schema<Config>
 
 export function migrateConfig(config: Config): boolean {
     let modified = false
+
+    const legacy = config as Config & {
+        defaultPreset?: string
+        model?: string
+        maxMessages?: number
+        maxTokens?: number
+        image?: boolean
+        imageInputMaxCount?: number
+        imageInputMaxSize?: number
+        multimodalFileInputMaxSize?: number
+        toolCalling?: boolean
+        isForceMute?: boolean
+        coolDownTime?: number
+        muteTime?: number
+        enableLongWaitTrigger?: boolean
+        idleTriggerIntervalMinutes?: number
+        idleTriggerRetryStyle?: 'exponential' | 'fixed'
+        idleTriggerMaxIntervalMinutes?: number
+        idleTriggerFixedMaxRetries?: number
+        enableIdleTriggerJitter?: boolean
+        messageInterval?: number
+        splitVoice?: boolean
+        isNickname?: boolean
+        isNickNameWithContent?: boolean
+        statusPersistence?: boolean
+        historyPull?: boolean
+        modelCompletionCount?: number
+        isAt?: boolean
+        enableMessageId?: boolean
+        messageActivityScoreLowerLimit?: number
+        messageActivityScoreUpperLimit?: number
+    }
 
     if (
         config.globalPrivateConfig.preset === 'CHARACTER' &&
@@ -532,414 +580,416 @@ export function migrateConfig(config: Config): boolean {
         }
     }
 
-    if (config.globalPrivateConfig.maxMessages === 40 && config.maxMessages) {
-        config.globalPrivateConfig.maxMessages = config.maxMessages
+    if (
+        config.globalPrivateConfig.maxMessages === 40 &&
+        legacy.maxMessages != null
+    ) {
+        config.globalPrivateConfig.maxMessages = legacy.maxMessages
         modified = true
     }
 
-    if (config.globalGroupConfig.maxMessages === 40 && config.maxMessages) {
-        config.globalGroupConfig.maxMessages = config.maxMessages
+    if (
+        config.globalGroupConfig.maxMessages === 40 &&
+        legacy.maxMessages != null
+    ) {
+        config.globalGroupConfig.maxMessages = legacy.maxMessages
         modified = true
     }
 
-    if (config.globalPrivateConfig.maxTokens === 20000 && config.maxTokens) {
-        config.globalPrivateConfig.maxTokens = config.maxTokens
+    if (
+        config.globalPrivateConfig.maxTokens === 20000 &&
+        legacy.maxTokens != null
+    ) {
+        config.globalPrivateConfig.maxTokens = legacy.maxTokens
         modified = true
     }
 
-    if (config.globalGroupConfig.maxTokens === 20000 && config.maxTokens) {
-        config.globalGroupConfig.maxTokens = config.maxTokens
+    if (
+        config.globalGroupConfig.maxTokens === 20000 &&
+        legacy.maxTokens != null
+    ) {
+        config.globalGroupConfig.maxTokens = legacy.maxTokens
         modified = true
     }
 
-    if (config.globalPrivateConfig.image === false && config.image) {
-        config.globalPrivateConfig.image = config.image
+    if (config.globalPrivateConfig.image === false && legacy.image != null) {
+        config.globalPrivateConfig.image = legacy.image
         modified = true
     }
 
-    if (config.globalGroupConfig.image === false && config.image) {
-        config.globalGroupConfig.image = config.image
+    if (config.globalGroupConfig.image === false && legacy.image != null) {
+        config.globalGroupConfig.image = legacy.image
         modified = true
     }
 
     if (
         config.globalPrivateConfig.imageInputMaxCount === 9 &&
-        config.imageInputMaxCount
+        legacy.imageInputMaxCount != null
     ) {
         config.globalPrivateConfig.imageInputMaxCount =
-            config.imageInputMaxCount
+            legacy.imageInputMaxCount
         modified = true
     }
 
     if (
         config.globalGroupConfig.imageInputMaxCount === 9 &&
-        config.imageInputMaxCount
+        legacy.imageInputMaxCount != null
     ) {
-        config.globalGroupConfig.imageInputMaxCount = config.imageInputMaxCount
+        config.globalGroupConfig.imageInputMaxCount = legacy.imageInputMaxCount
         modified = true
     }
 
     if (
         config.globalPrivateConfig.imageInputMaxSize === 20 &&
-        config.imageInputMaxSize
+        legacy.imageInputMaxSize != null
     ) {
-        config.globalPrivateConfig.imageInputMaxSize = config.imageInputMaxSize
+        config.globalPrivateConfig.imageInputMaxSize = legacy.imageInputMaxSize
         modified = true
     }
 
     if (
         config.globalGroupConfig.imageInputMaxSize === 20 &&
-        config.imageInputMaxSize
+        legacy.imageInputMaxSize != null
     ) {
-        config.globalGroupConfig.imageInputMaxSize = config.imageInputMaxSize
+        config.globalGroupConfig.imageInputMaxSize = legacy.imageInputMaxSize
         modified = true
     }
 
     if (
         config.globalPrivateConfig.multimodalFileInputMaxSize === 20 &&
-        config.multimodalFileInputMaxSize
+        legacy.multimodalFileInputMaxSize != null
     ) {
         config.globalPrivateConfig.multimodalFileInputMaxSize =
-            config.multimodalFileInputMaxSize
+            legacy.multimodalFileInputMaxSize
         modified = true
     }
 
     if (
         config.globalGroupConfig.multimodalFileInputMaxSize === 20 &&
-        config.multimodalFileInputMaxSize
+        legacy.multimodalFileInputMaxSize != null
     ) {
         config.globalGroupConfig.multimodalFileInputMaxSize =
-            config.multimodalFileInputMaxSize
+            legacy.multimodalFileInputMaxSize
         modified = true
     }
 
     if (
         config.globalPrivateConfig.toolCalling === true &&
-        config.toolCalling === false
+        legacy.toolCalling === false
     ) {
-        config.globalPrivateConfig.toolCalling = config.toolCalling
+        config.globalPrivateConfig.toolCalling = legacy.toolCalling
         modified = true
     }
 
     if (
         config.globalGroupConfig.toolCalling === true &&
-        config.toolCalling === false
+        legacy.toolCalling === false
     ) {
-        config.globalGroupConfig.toolCalling = config.toolCalling
+        config.globalGroupConfig.toolCalling = legacy.toolCalling
         modified = true
     }
 
     if (
         config.globalPrivateConfig.isForceMute === true &&
-        config.isForceMute === false
+        legacy.isForceMute === false
     ) {
-        config.globalPrivateConfig.isForceMute = config.isForceMute
+        config.globalPrivateConfig.isForceMute = legacy.isForceMute
         modified = true
     }
 
     if (
         config.globalGroupConfig.isForceMute === true &&
-        config.isForceMute === false
+        legacy.isForceMute === false
     ) {
-        config.globalGroupConfig.isForceMute = config.isForceMute
+        config.globalGroupConfig.isForceMute = legacy.isForceMute
         modified = true
     }
 
-    if (config.globalPrivateConfig.coolDownTime === 0 && config.coolDownTime) {
-        config.globalPrivateConfig.coolDownTime = config.coolDownTime
+    if (
+        config.globalPrivateConfig.coolDownTime === 0 &&
+        legacy.coolDownTime != null
+    ) {
+        config.globalPrivateConfig.coolDownTime = legacy.coolDownTime
         modified = true
     }
 
-    if (config.globalGroupConfig.coolDownTime === 0 && config.coolDownTime) {
-        config.globalGroupConfig.coolDownTime = config.coolDownTime
+    if (
+        config.globalGroupConfig.coolDownTime === 0 &&
+        legacy.coolDownTime != null
+    ) {
+        config.globalGroupConfig.coolDownTime = legacy.coolDownTime
         modified = true
     }
 
-    if (config.globalPrivateConfig.muteTime === 60 && config.muteTime) {
+    if (config.globalPrivateConfig.muteTime === 60 && legacy.muteTime != null) {
         config.globalPrivateConfig.muteTime =
-            config.muteTime > 1000
-                ? Math.max(Math.floor(config.muteTime / 1000), 1)
-                : config.muteTime
+            legacy.muteTime > 1000
+                ? Math.max(Math.floor(legacy.muteTime / 1000), 1)
+                : legacy.muteTime
         modified = true
     }
 
-    if (config.globalGroupConfig.muteTime === 60 && config.muteTime) {
+    if (config.globalGroupConfig.muteTime === 60 && legacy.muteTime != null) {
         config.globalGroupConfig.muteTime =
-            config.muteTime > 1000
-                ? Math.max(Math.floor(config.muteTime / 1000), 1)
-                : config.muteTime
+            legacy.muteTime > 1000
+                ? Math.max(Math.floor(legacy.muteTime / 1000), 1)
+                : legacy.muteTime
         modified = true
     }
 
     if (
         config.globalGroupConfig.messageActivityScoreLowerLimit === 0.85 &&
-        config.messageActivityScoreLowerLimit
+        legacy.messageActivityScoreLowerLimit != null
     ) {
         config.globalGroupConfig.messageActivityScoreLowerLimit =
-            config.messageActivityScoreLowerLimit
+            legacy.messageActivityScoreLowerLimit
         modified = true
     }
 
     if (
         config.globalGroupConfig.messageActivityScoreUpperLimit === 0.85 &&
-        config.messageActivityScoreUpperLimit
+        legacy.messageActivityScoreUpperLimit != null
     ) {
         config.globalGroupConfig.messageActivityScoreUpperLimit =
-            config.messageActivityScoreUpperLimit
+            legacy.messageActivityScoreUpperLimit
         modified = true
     }
 
     if (
         config.globalPrivateConfig.idleTrigger.enableLongWaitTrigger === false &&
-        config.enableLongWaitTrigger
+        legacy.enableLongWaitTrigger != null
     ) {
         config.globalPrivateConfig.idleTrigger.enableLongWaitTrigger =
-            config.enableLongWaitTrigger
+            legacy.enableLongWaitTrigger
         modified = true
     }
 
     if (
         config.globalGroupConfig.idleTrigger.enableLongWaitTrigger === false &&
-        config.enableLongWaitTrigger
+        legacy.enableLongWaitTrigger != null
     ) {
         config.globalGroupConfig.idleTrigger.enableLongWaitTrigger =
-            config.enableLongWaitTrigger
+            legacy.enableLongWaitTrigger
         modified = true
     }
 
     if (
         config.globalPrivateConfig.idleTrigger.idleTriggerIntervalMinutes ===
             60 * 8 &&
-        config.idleTriggerIntervalMinutes
+        legacy.idleTriggerIntervalMinutes != null
     ) {
         config.globalPrivateConfig.idleTrigger.idleTriggerIntervalMinutes =
-            config.idleTriggerIntervalMinutes
+            legacy.idleTriggerIntervalMinutes
         modified = true
     }
 
     if (
         config.globalGroupConfig.idleTrigger.idleTriggerIntervalMinutes ===
             60 * 3 &&
-        config.idleTriggerIntervalMinutes
+        legacy.idleTriggerIntervalMinutes != null
     ) {
         config.globalGroupConfig.idleTrigger.idleTriggerIntervalMinutes =
-            config.idleTriggerIntervalMinutes
+            legacy.idleTriggerIntervalMinutes
         modified = true
     }
 
     if (
-        config.idleTriggerRetryStyle != null &&
+        legacy.idleTriggerRetryStyle != null &&
         config.globalPrivateConfig.idleTrigger.idleTriggerRetryStyle ===
             'exponential'
     ) {
         config.globalPrivateConfig.idleTrigger.idleTriggerRetryStyle =
-            config.idleTriggerRetryStyle
+            legacy.idleTriggerRetryStyle
         modified = true
     }
 
     if (
-        config.idleTriggerRetryStyle != null &&
+        legacy.idleTriggerRetryStyle != null &&
         config.globalGroupConfig.idleTrigger.idleTriggerRetryStyle ===
             'exponential'
     ) {
         config.globalGroupConfig.idleTrigger.idleTriggerRetryStyle =
-            config.idleTriggerRetryStyle
+            legacy.idleTriggerRetryStyle
         modified = true
     }
 
     if (
         config.globalPrivateConfig.idleTrigger.idleTriggerMaxIntervalMinutes ===
             60 * 24 &&
-        config.idleTriggerMaxIntervalMinutes
+        legacy.idleTriggerMaxIntervalMinutes != null
     ) {
         config.globalPrivateConfig.idleTrigger.idleTriggerMaxIntervalMinutes =
-            config.idleTriggerMaxIntervalMinutes
+            legacy.idleTriggerMaxIntervalMinutes
         modified = true
     }
 
     if (
         config.globalGroupConfig.idleTrigger.idleTriggerMaxIntervalMinutes ===
             60 * 24 &&
-        config.idleTriggerMaxIntervalMinutes
+        legacy.idleTriggerMaxIntervalMinutes != null
     ) {
         config.globalGroupConfig.idleTrigger.idleTriggerMaxIntervalMinutes =
-            config.idleTriggerMaxIntervalMinutes
+            legacy.idleTriggerMaxIntervalMinutes
         modified = true
     }
 
     if (
         config.globalPrivateConfig.idleTrigger.enableIdleTriggerJitter === true &&
-        config.enableIdleTriggerJitter === false
+        legacy.enableIdleTriggerJitter === false
     ) {
         config.globalPrivateConfig.idleTrigger.enableIdleTriggerJitter =
-            config.enableIdleTriggerJitter
+            legacy.enableIdleTriggerJitter
         modified = true
     }
 
     if (
         config.globalGroupConfig.idleTrigger.enableIdleTriggerJitter === true &&
-        config.enableIdleTriggerJitter === false
+        legacy.enableIdleTriggerJitter === false
     ) {
         config.globalGroupConfig.idleTrigger.enableIdleTriggerJitter =
-            config.enableIdleTriggerJitter
+            legacy.enableIdleTriggerJitter
         modified = true
     }
 
     if (
-        config.idleTriggerFixedMaxRetries != null &&
+        legacy.idleTriggerFixedMaxRetries != null &&
         config.globalPrivateConfig.idleTrigger.idleTriggerFixedMaxRetries === 3
     ) {
         config.globalPrivateConfig.idleTrigger.idleTriggerFixedMaxRetries =
-            config.idleTriggerFixedMaxRetries
+            legacy.idleTriggerFixedMaxRetries
         modified = true
     }
 
     if (
-        config.idleTriggerFixedMaxRetries != null &&
+        legacy.idleTriggerFixedMaxRetries != null &&
         config.globalGroupConfig.idleTrigger.idleTriggerFixedMaxRetries === 3
     ) {
         config.globalGroupConfig.idleTrigger.idleTriggerFixedMaxRetries =
-            config.idleTriggerFixedMaxRetries
+            legacy.idleTriggerFixedMaxRetries
         modified = true
     }
 
     if (
         config.globalPrivateConfig.splitVoice === false &&
-        config.splitVoice != null
+        legacy.splitVoice != null
     ) {
-        config.globalPrivateConfig.splitVoice = config.splitVoice
+        config.globalPrivateConfig.splitVoice = legacy.splitVoice
         modified = true
     }
 
     if (
         config.globalGroupConfig.splitVoice === false &&
-        config.splitVoice != null
+        legacy.splitVoice != null
     ) {
-        config.globalGroupConfig.splitVoice = config.splitVoice
+        config.globalGroupConfig.splitVoice = legacy.splitVoice
         modified = true
     }
 
     if (
         config.globalPrivateConfig.isNickname === true &&
-        config.isNickname != null
+        legacy.isNickname != null
     ) {
-        config.globalPrivateConfig.isNickname = config.isNickname
+        config.globalPrivateConfig.isNickname = legacy.isNickname
         modified = true
     }
 
     if (
         config.globalGroupConfig.isNickname === true &&
-        config.isNickname != null
+        legacy.isNickname != null
     ) {
-        config.globalGroupConfig.isNickname = config.isNickname
+        config.globalGroupConfig.isNickname = legacy.isNickname
         modified = true
     }
 
     if (
         config.globalPrivateConfig.isNickNameWithContent === false &&
-        config.isNickNameWithContent != null
+        legacy.isNickNameWithContent != null
     ) {
         config.globalPrivateConfig.isNickNameWithContent =
-            config.isNickNameWithContent
+            legacy.isNickNameWithContent
         modified = true
     }
 
     if (
         config.globalGroupConfig.isNickNameWithContent === false &&
-        config.isNickNameWithContent != null
+        legacy.isNickNameWithContent != null
     ) {
         config.globalGroupConfig.isNickNameWithContent =
-            config.isNickNameWithContent
+            legacy.isNickNameWithContent
         modified = true
     }
 
     if (
         config.globalPrivateConfig.statusPersistence === true &&
-        config.statusPersistence != null
+        legacy.statusPersistence != null
     ) {
-        config.globalPrivateConfig.statusPersistence = config.statusPersistence
+        config.globalPrivateConfig.statusPersistence = legacy.statusPersistence
         modified = true
     }
 
     if (
         config.globalGroupConfig.statusPersistence === true &&
-        config.statusPersistence != null
+        legacy.statusPersistence != null
     ) {
-        config.globalGroupConfig.statusPersistence = config.statusPersistence
+        config.globalGroupConfig.statusPersistence = legacy.statusPersistence
         modified = true
     }
 
     if (
         config.globalPrivateConfig.historyPull === true &&
-        config.historyPull != null
+        legacy.historyPull != null
     ) {
-        config.globalPrivateConfig.historyPull = config.historyPull
+        config.globalPrivateConfig.historyPull = legacy.historyPull
         modified = true
     }
 
     if (
         config.globalGroupConfig.historyPull === true &&
-        config.historyPull != null
+        legacy.historyPull != null
     ) {
-        config.globalGroupConfig.historyPull = config.historyPull
+        config.globalGroupConfig.historyPull = legacy.historyPull
         modified = true
     }
 
     if (
         config.globalPrivateConfig.modelCompletionCount === 1 &&
-        config.modelCompletionCount != null
+        legacy.modelCompletionCount != null
     ) {
         config.globalPrivateConfig.modelCompletionCount =
-            config.modelCompletionCount
+            legacy.modelCompletionCount
         modified = true
     }
 
     if (
         config.globalGroupConfig.modelCompletionCount === 1 &&
-        config.modelCompletionCount != null
+        legacy.modelCompletionCount != null
     ) {
         config.globalGroupConfig.modelCompletionCount =
-            config.modelCompletionCount
+            legacy.modelCompletionCount
         modified = true
     }
 
     if (
         config.globalPrivateConfig.enableMessageId === true &&
-        config.enableMessageId != null
+        legacy.enableMessageId != null
     ) {
-        config.globalPrivateConfig.enableMessageId = config.enableMessageId
+        config.globalPrivateConfig.enableMessageId = legacy.enableMessageId
         modified = true
     }
 
     if (
         config.globalGroupConfig.enableMessageId === true &&
-        config.enableMessageId != null
+        legacy.enableMessageId != null
     ) {
-        config.globalGroupConfig.enableMessageId = config.enableMessageId
+        config.globalGroupConfig.enableMessageId = legacy.enableMessageId
         modified = true
     }
 
     if (
         config.globalGroupConfig.isAt === false &&
-        config.isAt != null
+        legacy.isAt != null
     ) {
-        config.globalGroupConfig.isAt = config.isAt
-        modified = true
-    }
-
-    if (
-        config.globalGroupConfig.messageInterval === 20 &&
-        config.messageInterval != null
-    ) {
-        config.globalGroupConfig.messageInterval = config.messageInterval
-        modified = true
-    }
-
-    if (
-        config.globalPrivateConfig.messageInterval === 0 &&
-        config.messageInterval != null
-    ) {
-        config.globalPrivateConfig.messageInterval = config.messageInterval
+        config.globalGroupConfig.isAt = legacy.isAt
         modified = true
     }
 
@@ -967,38 +1017,6 @@ export function migrateConfig(config: Config): boolean {
             )
             modified = true
         }
-    }
-
-    const legacy = config as Config & {
-        defaultPreset?: string
-        model?: string
-        maxMessages?: number
-        maxTokens?: number
-        image?: boolean
-        imageInputMaxCount?: number
-        imageInputMaxSize?: number
-        multimodalFileInputMaxSize?: number
-        toolCalling?: boolean
-        isForceMute?: boolean
-        coolDownTime?: number
-        muteTime?: number
-        enableLongWaitTrigger?: boolean
-        idleTriggerIntervalMinutes?: number
-        idleTriggerRetryStyle?: 'exponential' | 'fixed'
-        idleTriggerMaxIntervalMinutes?: number
-        idleTriggerFixedMaxRetries?: number
-        enableIdleTriggerJitter?: boolean
-        messageInterval?: number
-        splitVoice?: boolean
-        isNickname?: boolean
-        isNickNameWithContent?: boolean
-        statusPersistence?: boolean
-        historyPull?: boolean
-        modelCompletionCount?: number
-        isAt?: boolean
-        enableMessageId?: boolean
-        messageActivityScoreLowerLimit?: number
-        messageActivityScoreUpperLimit?: number
     }
 
     if (legacy.defaultPreset != null) {
@@ -1092,6 +1110,16 @@ export function migrateConfig(config: Config): boolean {
     }
 
     if (legacy.messageInterval != null) {
+        if (config.globalPrivateConfig.messageInterval === 0) {
+            config.globalPrivateConfig.messageInterval = legacy.messageInterval
+            modified = true
+        }
+
+        if (config.globalGroupConfig.messageInterval === 20) {
+            config.globalGroupConfig.messageInterval = legacy.messageInterval
+            modified = true
+        }
+
         delete legacy.messageInterval
         modified = true
     }
