@@ -1,5 +1,6 @@
 import { Context, h, Logger, Session } from 'koishi'
 import OneBotBot from 'koishi-plugin-adapter-onebot'
+import { hashString } from 'koishi-plugin-chatluna/utils/string'
 import { Config } from '..'
 import { parseCQCode } from '../onebot/cqcode'
 import {
@@ -136,8 +137,9 @@ async function pullBot(
             break
         }
 
-        const list = batch
-            .map((msg) => toBotMsg(cfg.session, msg))
+        const list = (await Promise.all(
+            batch.map((msg) => toBotMsg(cfg.session, msg))
+        ))
             .filter((msg): msg is Message => msg != null)
             .filter((msg) => !sameMessage(msg, cfg.focusMessage))
             .filter(
@@ -242,8 +244,9 @@ async function pullOneBot(
             messageSeq = oldest.message_seq
         }
 
-        return results
-            .map((msg) => toOneBotMsg(cfg.session, msg))
+        return (await Promise.all(
+            results.map((msg) => toOneBotMsg(cfg.session, msg))
+        ))
             .filter((msg): msg is Message => msg != null)
             .filter((msg) => !sameMessage(msg, cfg.focusMessage))
             .filter(
@@ -331,8 +334,9 @@ async function pullOneBot(
         messageId = oldest.message_id
     }
 
-    return results
-        .map((msg) => toOneBotMsg(cfg.session, msg))
+    return (await Promise.all(
+        results.map((msg) => toOneBotMsg(cfg.session, msg))
+    ))
         .filter((msg): msg is Message => msg != null)
         .filter((msg) => !sameMessage(msg, cfg.focusMessage))
         .filter(
@@ -343,11 +347,15 @@ async function pullOneBot(
         .slice(-count)
 }
 
-function toBotMsg(session: Session, msg: KoishiMessage): Message | null {
+async function toBotMsg(
+    session: Session,
+    msg: KoishiMessage
+): Promise<Message | null> {
     const text = msg.content ?? ''
     const id = msg.user?.id ?? '0'
     const elements = msg.elements ?? h.parse(text)
-    const images = getElementImages(elements)
+    normalizeElementAssets(elements)
+    const images = await getElementImages(elements)
     const content = mapElementToString(
         session,
         text,
@@ -390,13 +398,14 @@ function toBotMsg(session: Session, msg: KoishiMessage): Message | null {
     }
 }
 
-function toOneBotMsg(
+async function toOneBotMsg(
     session: Session,
     msg: OneBotHistoryMessage
-): Message | null {
+): Promise<Message | null> {
     const raw = msg.raw_message ?? ''
     const elements = parseCQCode(raw)
-    const images = getElementImages(elements)
+    normalizeElementAssets(elements)
+    const images = await getElementImages(elements)
     const content = mapElementToString(session, raw, elements, images)
 
     if (content.length < 1) {
@@ -424,7 +433,34 @@ function toOneBotMsg(
     }
 }
 
-function getElementImages(elements: h[]): MessageImage[] | undefined {
+function normalizeElementAssets(elements: h[]) {
+    for (const element of elements) {
+        if (element.type === 'img') {
+            element.attrs.imageUrl ??=
+                element.attrs.src ??
+                element.attrs.url ??
+                element.attrs.file ??
+                element.attrs.path
+            continue
+        }
+
+        if (
+            element.type === 'file' ||
+            element.type === 'video' ||
+            element.type === 'audio'
+        ) {
+            element.attrs.chatluna_file_url ??=
+                element.attrs.src ??
+                element.attrs.url ??
+                element.attrs.file ??
+                element.attrs.path
+        }
+    }
+}
+
+async function getElementImages(
+    elements: h[]
+): Promise<MessageImage[] | undefined> {
     const images: MessageImage[] = []
     const keys = new Set<string>()
 
@@ -433,12 +469,7 @@ function getElementImages(elements: h[]): MessageImage[] | undefined {
             continue
         }
 
-        const url =
-            (element.attrs.imageUrl ??
-                element.attrs.src ??
-                element.attrs.url ??
-                element.attrs.file ??
-                element.attrs.path) as string | undefined
+        const url = element.attrs.imageUrl as string | undefined
 
         if (!url) {
             continue
@@ -446,7 +477,10 @@ function getElementImages(elements: h[]): MessageImage[] | undefined {
 
         element.attrs.imageUrl ??= url
 
-        const hash = (element.attrs.imageHash ?? element.attrs.file ?? '') as string
+        let hash = (element.attrs.imageHash ?? element.attrs.file ?? '') as string
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            hash = await hashString(url, 8)
+        }
         const key = `${hash}:${url}`
 
         if (keys.has(key)) {
