@@ -47,22 +47,21 @@ function getPassiveRetryIntervalSeconds(
     info: GroupInfo,
     config: Config
 ): number {
-    const baseMinutes = Math.max(config.idleTriggerIntervalMinutes, 1)
+    const baseMinutes = Math.max(
+        config.idleTrigger.idleTriggerIntervalMinutes,
+        1
+    )
     const baseSeconds = baseMinutes * 60
 
-    if (config.idleTriggerRetryStyle === 'fixed') {
+    if (config.idleTrigger.idleTriggerRetryStyle === 'fixed') {
         return baseSeconds
     }
 
     const retried = Math.max(info.passiveRetryCount ?? 0, 0)
     const backoffSeconds = baseSeconds * Math.pow(2, retried)
 
-    if (config.enableIdleTriggerMaxInterval === false) {
-        return backoffSeconds
-    }
-
     const maxMinutes = Math.max(
-        config.idleTriggerMaxIntervalMinutes ?? 60 * 24,
+        config.idleTrigger.idleTriggerMaxIntervalMinutes ?? 60 * 24,
         1
     )
     const maxSeconds = maxMinutes * 60
@@ -70,7 +69,7 @@ function getPassiveRetryIntervalSeconds(
 }
 
 function applyIdleTriggerJitter(waitSeconds: number, config: Config): number {
-    if (!config.enableIdleTriggerJitter) {
+    if (!config.idleTrigger.enableIdleTriggerJitter) {
         return waitSeconds
     }
 
@@ -86,7 +85,7 @@ function findIdleTriggerReason(
     copyOfConfig: Config,
     now: number
 ): string | undefined {
-    if (!copyOfConfig.enableLongWaitTrigger) {
+    if (!copyOfConfig.idleTrigger.enableLongWaitTrigger) {
         return undefined
     }
 
@@ -94,10 +93,37 @@ function findIdleTriggerReason(
         info.lastPassiveTriggerAt != null &&
         info.lastPassiveTriggerAt >= info.lastUserMessageTime
 
+    if (
+        hasTriggeredSinceLastMessage &&
+        copyOfConfig.idleTrigger.idleTriggerRetryStyle === 'fixed' &&
+        (info.passiveRetryCount ?? 0) >
+            copyOfConfig.idleTrigger.idleTriggerFixedMaxRetries
+    ) {
+        return undefined
+    }
+
+    if (
+        hasTriggeredSinceLastMessage &&
+        copyOfConfig.idleTrigger.idleTriggerRetryStyle === 'exponential'
+    ) {
+        const baseSeconds =
+            Math.max(copyOfConfig.idleTrigger.idleTriggerIntervalMinutes, 1) *
+            60
+        const backoffSeconds =
+            baseSeconds * Math.pow(2, Math.max(info.passiveRetryCount ?? 0, 0))
+        const maxSeconds =
+            Math.max(copyOfConfig.idleTrigger.idleTriggerMaxIntervalMinutes, 1) *
+            60
+        if (backoffSeconds >= maxSeconds) {
+            return undefined
+        }
+    }
+
     if (info.currentIdleWaitSeconds == null) {
         const baseWaitSeconds = hasTriggeredSinceLastMessage
             ? getPassiveRetryIntervalSeconds(info, copyOfConfig)
-            : Math.max(copyOfConfig.idleTriggerIntervalMinutes, 1) * 60
+            : Math.max(copyOfConfig.idleTrigger.idleTriggerIntervalMinutes, 1) *
+              60
         info.currentIdleWaitSeconds = applyIdleTriggerJitter(
             baseWaitSeconds,
             copyOfConfig
@@ -313,7 +339,7 @@ function resolveTriggerReason(
 
 function hasPendingSchedulerWork(info: GroupInfo, copyOfConfig: Config) {
     return (
-        copyOfConfig.enableLongWaitTrigger ||
+        copyOfConfig.idleTrigger.enableLongWaitTrigger ||
         (info.pendingNextReplies?.length ?? 0) > 0 ||
         (info.pendingWakeUpReplies?.length ?? 0) > 0
     )
@@ -647,18 +673,21 @@ export async function apply(ctx: Context, config: Config) {
             session.isDirect
         )
 
-        const botId = session.bot.selfId
-        let appel = session.stripped.appel
-        if (!appel) {
-            appel = session.elements.some(
-                (element) =>
-                    element.type === 'at' && element.attrs?.['id'] === botId
-            )
+        let isAppel = false
+        if (!session.isDirect) {
+            const botId = session.bot.selfId
+            let appel = session.stripped.appel
+            if (!appel) {
+                appel = session.elements.some(
+                    (element) =>
+                        element.type === 'at' && element.attrs?.['id'] === botId
+                )
+            }
+            if (!appel) {
+                appel = session.quote?.user?.id === botId
+            }
+            isAppel = Boolean(appel)
         }
-        if (!appel) {
-            appel = session.quote?.user?.id === botId
-        }
-        const isAppel = Boolean(appel)
 
         const muteKeywords = currentPreset.mute_keyword ?? []
         const forceMuteActive =
@@ -682,7 +711,7 @@ export async function apply(ctx: Context, config: Config) {
 
             if (needMute) {
                 logger.debug(`mute content: ${message.content}`)
-                service.mute(session, copyOfConfig.muteTime)
+                service.mute(session, copyOfConfig.muteTime * 1000)
             }
         }
 

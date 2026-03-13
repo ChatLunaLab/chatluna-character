@@ -39,12 +39,14 @@ export interface GuildConfig {
     remark: string
     enableMessageId: boolean
     messageInterval: number
-    enableLongWaitTrigger: boolean
-    idleTriggerIntervalMinutes: number
-    idleTriggerRetryStyle: 'exponential' | 'fixed'
-    enableIdleTriggerMaxInterval: boolean
-    idleTriggerMaxIntervalMinutes: number
-    enableIdleTriggerJitter: boolean
+    idleTrigger: {
+        enableLongWaitTrigger: boolean
+        idleTriggerIntervalMinutes: number
+        idleTriggerRetryStyle: 'exponential' | 'fixed'
+        idleTriggerMaxIntervalMinutes: number
+        idleTriggerFixedMaxRetries: number
+        enableIdleTriggerJitter: boolean
+    }
     messageActivityScoreLowerLimit: number
     messageActivityScoreUpperLimit: number
     maxTokens: number
@@ -71,7 +73,7 @@ export interface GuildConfig {
 
 export type PrivateConfig = Omit<
     GuildConfig,
-    'messageActivityScoreLowerLimit' | 'messageActivityScoreUpperLimit'
+    'messageActivityScoreLowerLimit' | 'messageActivityScoreUpperLimit' | 'isAt'
 >
 
 export interface CharacterVariableRecord {
