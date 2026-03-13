@@ -1,14 +1,8 @@
 import { Context, h, Logger, Session } from 'koishi'
 import OneBotBot from 'koishi-plugin-adapter-onebot'
-import { hashString } from 'koishi-plugin-chatluna/utils/string'
 import { Config } from '..'
 import { parseCQCode } from '../onebot/cqcode'
-import {
-    KoishiMessage,
-    Message,
-    MessageImage,
-    OneBotHistoryMessage
-} from '../types'
+import { KoishiMessage, Message, OneBotHistoryMessage } from '../types'
 import { getNotEmptyString, mapElementToString } from './messages'
 
 export interface PullHistoryConfig {
@@ -138,7 +132,7 @@ async function pullBot(
         }
 
         const list = (await Promise.all(
-            batch.map((msg) => toBotMsg(cfg.session, msg))
+            batch.map((msg) => toBotMsg(cfg, msg))
         ))
             .filter((msg): msg is Message => msg != null)
             .filter((msg) => !sameMessage(msg, cfg.focusMessage))
@@ -245,7 +239,7 @@ async function pullOneBot(
         }
 
         return (await Promise.all(
-            results.map((msg) => toOneBotMsg(cfg.session, msg))
+            results.map((msg) => toOneBotMsg(cfg, msg))
         ))
             .filter((msg): msg is Message => msg != null)
             .filter((msg) => !sameMessage(msg, cfg.focusMessage))
@@ -335,7 +329,7 @@ async function pullOneBot(
     }
 
     return (await Promise.all(
-        results.map((msg) => toOneBotMsg(cfg.session, msg))
+        results.map((msg) => toOneBotMsg(cfg, msg))
     ))
         .filter((msg): msg is Message => msg != null)
         .filter((msg) => !sameMessage(msg, cfg.focusMessage))
@@ -348,20 +342,16 @@ async function pullOneBot(
 }
 
 async function toBotMsg(
-    session: Session,
+    cfg: PullHistoryConfig,
     msg: KoishiMessage
 ): Promise<Message | null> {
+    const session = cfg.session
     const text = msg.content ?? ''
     const id = msg.user?.id ?? '0'
-    const elements = msg.elements ?? h.parse(text)
-    normalizeElementAssets(elements)
-    const images = await getElementImages(elements)
-    const content = mapElementToString(
-        session,
-        text,
-        elements,
-        images
-    )
+    const elements = (msg.elements ?? h.parse(text)).filter((element) => {
+        return element.type === 'text'
+    })
+    const content = mapElementToString(session, text, elements)
 
     if (content.length < 1) {
         return null
@@ -378,7 +368,6 @@ async function toBotMsg(
         id,
         messageId: msg.messageId ?? msg.id,
         timestamp: msg.timestamp ?? msg.createdAt,
-        images,
         quote: msg.quote
             ? {
                   content: mapElementToString(
@@ -399,14 +388,15 @@ async function toBotMsg(
 }
 
 async function toOneBotMsg(
-    session: Session,
+    cfg: PullHistoryConfig,
     msg: OneBotHistoryMessage
 ): Promise<Message | null> {
+    const session = cfg.session
     const raw = msg.raw_message ?? ''
-    const elements = parseCQCode(raw)
-    normalizeElementAssets(elements)
-    const images = await getElementImages(elements)
-    const content = mapElementToString(session, raw, elements, images)
+    const elements = parseCQCode(raw).filter((element) => {
+        return element.type === 'text'
+    })
+    const content = mapElementToString(session, raw, elements)
 
     if (content.length < 1) {
         return null
@@ -423,7 +413,6 @@ async function toOneBotMsg(
         ),
         id: id != null ? String(id) : '0',
         messageId: msg.message_id != null ? String(msg.message_id) : undefined,
-        images,
         timestamp:
             msg.time == null
                 ? undefined
@@ -431,76 +420,6 @@ async function toOneBotMsg(
                   ? msg.time * 1000
                   : msg.time
     }
-}
-
-function normalizeElementAssets(elements: h[]) {
-    for (const element of elements) {
-        if (element.type === 'img') {
-            element.attrs.imageUrl ??=
-                element.attrs.src ??
-                element.attrs.url ??
-                element.attrs.file ??
-                element.attrs.path
-            continue
-        }
-
-        if (
-            element.type === 'file' ||
-            element.type === 'video' ||
-            element.type === 'audio'
-        ) {
-            element.attrs.chatluna_file_url ??=
-                element.attrs.src ??
-                element.attrs.url ??
-                element.attrs.file ??
-                element.attrs.path
-        }
-    }
-}
-
-async function getElementImages(
-    elements: h[]
-): Promise<MessageImage[] | undefined> {
-    const images: MessageImage[] = []
-    const keys = new Set<string>()
-
-    for (const element of elements) {
-        if (element.type !== 'img') {
-            continue
-        }
-
-        const url = element.attrs.imageUrl as string | undefined
-
-        if (!url) {
-            continue
-        }
-
-        element.attrs.imageUrl ??= url
-
-        let hash = (element.attrs.imageHash ?? element.attrs.file ?? '') as string
-        if (!url.startsWith('http://') && !url.startsWith('https://')) {
-            hash = await hashString(url, 8)
-        }
-        const key = `${hash}:${url}`
-
-        if (keys.has(key)) {
-            continue
-        }
-
-        keys.add(key)
-
-        images.push({
-            url,
-            hash,
-            formatted: hash ? `[image:${hash}]` : `<sticker>${url}</sticker>`
-        })
-    }
-
-    if (images.length < 1) {
-        return undefined
-    }
-
-    return images
 }
 
 function beforeFocus(msg: OneBotHistoryMessage, focus: Message) {
