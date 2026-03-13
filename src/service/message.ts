@@ -762,8 +762,6 @@ export class MessageCollector extends Service {
                 list,
                 cfg.maxMessages ?? 40
             )
-
-            await this._processImages(this._messages[groupId], cfg)
         } finally {
             unlock()
         }
