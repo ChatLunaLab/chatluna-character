@@ -2,7 +2,12 @@ import { Context, h, Logger, Session } from 'koishi'
 import OneBotBot from 'koishi-plugin-adapter-onebot'
 import { Config } from '..'
 import { parseCQCode } from '../onebot/cqcode'
-import { KoishiMessage, Message, OneBotHistoryMessage } from '../types'
+import {
+    KoishiMessage,
+    Message,
+    MessageImage,
+    OneBotHistoryMessage
+} from '../types'
 import { getNotEmptyString, mapElementToString } from './messages'
 
 export interface PullHistoryConfig {
@@ -341,10 +346,13 @@ async function pullOneBot(
 function toBotMsg(session: Session, msg: KoishiMessage): Message | null {
     const text = msg.content ?? ''
     const id = msg.user?.id ?? '0'
+    const elements = msg.elements ?? h.parse(text)
+    const images = getElementImages(elements)
     const content = mapElementToString(
         session,
         text,
-        msg.elements ?? h.parse(text)
+        elements,
+        images
     )
 
     if (content.length < 1) {
@@ -362,6 +370,7 @@ function toBotMsg(session: Session, msg: KoishiMessage): Message | null {
         id,
         messageId: msg.messageId ?? msg.id,
         timestamp: msg.timestamp ?? msg.createdAt,
+        images,
         quote: msg.quote
             ? {
                   content: mapElementToString(
@@ -386,7 +395,9 @@ function toOneBotMsg(
     msg: OneBotHistoryMessage
 ): Message | null {
     const raw = msg.raw_message ?? ''
-    const content = mapElementToString(session, raw, parseCQCode(raw))
+    const elements = parseCQCode(raw)
+    const images = getElementImages(elements)
+    const content = mapElementToString(session, raw, elements, images)
 
     if (content.length < 1) {
         return null
@@ -403,6 +414,7 @@ function toOneBotMsg(
         ),
         id: id != null ? String(id) : '0',
         messageId: msg.message_id != null ? String(msg.message_id) : undefined,
+        images,
         timestamp:
             msg.time == null
                 ? undefined
@@ -410,6 +422,51 @@ function toOneBotMsg(
                   ? msg.time * 1000
                   : msg.time
     }
+}
+
+function getElementImages(elements: h[]): MessageImage[] | undefined {
+    const images: MessageImage[] = []
+    const keys = new Set<string>()
+
+    for (const element of elements) {
+        if (element.type !== 'img') {
+            continue
+        }
+
+        const url =
+            (element.attrs.imageUrl ??
+                element.attrs.src ??
+                element.attrs.url ??
+                element.attrs.file ??
+                element.attrs.path) as string | undefined
+
+        if (!url) {
+            continue
+        }
+
+        element.attrs.imageUrl ??= url
+
+        const hash = (element.attrs.imageHash ?? element.attrs.file ?? '') as string
+        const key = `${hash}:${url}`
+
+        if (keys.has(key)) {
+            continue
+        }
+
+        keys.add(key)
+
+        images.push({
+            url,
+            hash,
+            formatted: hash ? `[image:${hash}]` : `<sticker>${url}</sticker>`
+        })
+    }
+
+    if (images.length < 1) {
+        return undefined
+    }
+
+    return images
 }
 
 function beforeFocus(msg: OneBotHistoryMessage, focus: Message) {
