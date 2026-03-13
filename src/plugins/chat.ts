@@ -93,7 +93,7 @@ async function parseResponseContent(
             ctx,
             session,
             stripInternalTriggerTags(responseContent),
-            config.isAt,
+            session.isDirect ? false : (config.isAt ?? false),
             config
         )
     } catch (error) {
@@ -975,7 +975,7 @@ export async function apply(ctx: Context, config: Config) {
             }
 
             if (!sentAny) {
-                service.mute(session, copyOfConfig.muteTime)
+                service.mute(session, copyOfConfig.muteTime * 1000)
                 return
             }
 
