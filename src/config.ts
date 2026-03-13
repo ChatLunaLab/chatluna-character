@@ -12,12 +12,14 @@ export interface Config extends ChatLunaPlugin.Config {
     maxMessages?: number
 
     messageInterval: number
-    enableLongWaitTrigger: boolean
-    idleTriggerIntervalMinutes: number
-    idleTriggerRetryStyle: 'exponential' | 'fixed'
-    enableIdleTriggerMaxInterval: boolean
-    idleTriggerMaxIntervalMinutes: number
-    enableIdleTriggerJitter: boolean
+    idleTrigger: {
+        enableLongWaitTrigger: boolean
+        idleTriggerIntervalMinutes: number
+        idleTriggerRetryStyle: 'exponential' | 'fixed'
+        idleTriggerMaxIntervalMinutes: number
+        idleTriggerFixedMaxRetries: number
+        enableIdleTriggerJitter: boolean
+    }
     messageActivityScoreLowerLimit: number
     messageActivityScoreUpperLimit: number
 
@@ -56,13 +58,20 @@ export interface Config extends ChatLunaPlugin.Config {
     typingTime: number
     muteTime: number
 
+    enableLongWaitTrigger?: boolean
+    idleTriggerIntervalMinutes?: number
+    idleTriggerRetryStyle?: 'exponential' | 'fixed'
+    idleTriggerMaxIntervalMinutes?: number
+    idleTriggerFixedMaxRetries?: number
+    enableIdleTriggerJitter?: boolean
+
     disableChatLuna: boolean
     whiteListDisableChatLunaPrivate: string[]
     whiteListDisableChatLuna: string[]
 
     splitVoice: boolean
     splitSentence: boolean
-    isAt: boolean
+    isAt?: boolean
 
     enableMessageId: boolean
 }
@@ -74,6 +83,11 @@ const commonModelConfig = Schema.object({
         .min(3)
         .role('slider')
         .max(100),
+    modelCompletionCount: Schema.number()
+        .default(1)
+        .min(0)
+        .max(6)
+        .description('模型历史消息轮数，为 0 不发送之前的历史轮次'),
     maxTokens: Schema.number()
         .default(20000)
         .min(1024)
@@ -81,42 +95,6 @@ const commonModelConfig = Schema.object({
         .description('使用聊天的最大 token 数'),
     enableMessageId: Schema.boolean()
         .description('向模型暴露平台消息 ID，以允许发送引用消息。')
-        .default(true)
-})
-
-const globalPrivateModelConfig = Schema.object({
-    model: Schema.dynamic('model').default('').description('使用的模型')
-})
-
-const globalGroupModelConfig = Schema.object({
-    model: Schema.dynamic('model').default('').description('使用的模型')
-})
-
-const privateModelConfig = Schema.object({
-    model: Schema.dynamic('model')
-        .default('无')
-        .description('使用的模型（选择“无”/恢复默认值后将使用全局私聊配置）')
-})
-
-const groupModelConfig = Schema.object({
-    model: Schema.dynamic('model')
-        .default('无')
-        .description('使用的模型（选择“无”/恢复默认值后将使用全局群聊配置）')
-})
-
-const commonChatBehaviorConfig = Schema.object({
-    isAt: Schema.boolean().description('是否启用@').default(false),
-    splitVoice: Schema.boolean().description('是否分段发送语音').default(false),
-    isNickname: Schema.boolean()
-        .description('允许 bot 配置中的昵称引发回复')
-        .default(true),
-    isNickNameWithContent: Schema.boolean()
-        .description('是否允许在对话内容里任意匹配 bot 配置中的昵称来触发对话')
-        .default(false),
-    isForceMute: Schema.boolean()
-        .description(
-            '是否启用强制禁言（当聊天涉及到关键词时则会禁言，关键词需要在预设文件里配置）'
-        )
         .default(true),
     statusPersistence: Schema.boolean()
         .default(true)
@@ -129,41 +107,38 @@ const commonChatBehaviorConfig = Schema.object({
             '是否在缺失历史消息时自动从支持的 API ' +
                 '（如 OneBot 及所有支持 getMessageList 的适配器）' +
                 '获取历史消息，使重启插件时可以获取刚刚的上下文'
-        ),
-    enableLongWaitTrigger: Schema.boolean()
+        )
+}).description('上下文').collapse()
+
+const commonChatBehaviorConfig = Schema.object({
+    splitVoice: Schema.boolean().description('是否分段发送语音').default(false),
+    isNickname: Schema.boolean()
+        .description('允许 bot 配置中的昵称引发回复')
+        .default(true),
+    isNickNameWithContent: Schema.boolean()
+        .description('是否允许在对话内容里任意匹配 bot 配置中的昵称来触发对话')
         .default(false)
-        .description('是否启用空闲触发')
-})
+}).description('行为').collapse()
 
-const commonIdleStrategyConfig = Schema.object({
-    idleTriggerRetryStyle: Schema.union([
-        Schema.const('exponential').description(
-            '指数退避（默认）：首次触发后若仍无新消息，按“空闲触发间隔（分钟）”作为起始值每次乘 2（例如 2→4→8→16）。'
-        ),
-        Schema.const('fixed').description(
-            '固定重试：始终按“空闲触发间隔（分钟）”重复触发。'
+const groupChatBehaviorConfig = Schema.object({
+    ...commonChatBehaviorConfig.dict,
+    isAt: Schema.boolean().description('是否启用@').default(false)
+}).description('行为').collapse()
+
+const commonMuteConfig = Schema.object({
+    isForceMute: Schema.boolean()
+        .description(
+            '是否启用关键词触发闭嘴（当收到包含关键词的消息时会沉默，一段时间内无法被任何方式触发，关键词需要在预设文件里配置）'
         )
-    ])
-        .default('exponential')
-        .description('空闲触发重试风格'),
-    enableIdleTriggerMaxInterval: Schema.boolean()
-        .default(true)
-        .description('是否启用空闲触发最大间隔限制'),
-    idleTriggerMaxIntervalMinutes: Schema.number()
-        .default(60 * 24)
+        .default(false),
+    muteTime: Schema.number()
+        .default(60)
         .min(1)
-        .max(60 * 24 * 30)
-        .description(
-            '空闲触发最大间隔（分钟）：仅在“指数退避”下生效，关闭上面的限制时不封顶。'
-        ),
-    enableIdleTriggerJitter: Schema.boolean()
-        .default(true)
-        .description(
-            '是否启用空闲触发随机抖动：对固定重试与指数退避都生效，每轮会随机提前或延后 5%-10%。'
-        )
-})
+        .max(1000 * 60 * 10)
+        .description('关键词触发闭嘴时的沉默时长（秒）')
+}).description('闭嘴').collapse()
 
-const commonConversationConfig = Schema.object({
+const commonModelFeatureConfig = Schema.object({
     toolCalling: Schema.boolean()
         .description(
             '是否启用工具调用功能（可在[**这里**]' +
@@ -192,127 +167,186 @@ const commonConversationConfig = Schema.object({
         .max(100)
         .description(
             '最大的多模态文件输入大小（MB）：过大可能造成服务器卡顿、回复延迟'
+        )
+}).description('工具与多模态').collapse()
+
+const privateIdleConfig = Schema.object({
+    enableLongWaitTrigger: Schema.boolean()
+        .default(false)
+        .description('是否启用空闲触发'),
+    idleTriggerIntervalMinutes: Schema.number()
+        .default(60 * 8)
+        .min(1)
+        .max(60 * 24 * 7)
+        .description(
+            '空闲触发间隔（分钟）：当超过该时间未收到新消息时，将自动触发一次回复请求。'
         ),
+    idleTriggerRetryStyle: Schema.union([
+        Schema.const('exponential').description(
+            '指数退避（默认）：首次触发后若仍无新消息，按“空闲触发间隔（分钟）”作为起始值每次乘 2（例如 2→4→8→16）。'
+        ),
+        Schema.const('fixed').description(
+            '固定重试：始终按“空闲触发间隔（分钟）”重复触发。'
+        )
+    ])
+        .default('exponential')
+        .description('空闲触发重试风格'),
+    idleTriggerMaxIntervalMinutes: Schema.number()
+        .default(60 * 24)
+        .min(1)
+        .max(60 * 24 * 30)
+        .description(
+            '指数退避空闲触发最大间隔（分钟）：达到该间隔后，不再继续空闲重试。'
+        ),
+    idleTriggerFixedMaxRetries: Schema.number()
+        .default(3)
+        .min(0)
+        .max(20)
+        .description('固定重试空闲触发最大连续重试次数（首次空闲触发后的重试次数）'),
+    enableIdleTriggerJitter: Schema.boolean()
+        .default(true)
+        .description(
+            '是否启用空闲触发随机抖动：对固定重试与指数退避都生效，每轮会随机提前或延后 5%-10%。'
+        )
+})
+
+const groupIdleConfig = Schema.object({
+    enableLongWaitTrigger: Schema.boolean()
+        .default(false)
+        .description('是否启用空闲触发'),
+    idleTriggerIntervalMinutes: Schema.number()
+        .default(60 * 3)
+        .min(1)
+        .max(60 * 24 * 7)
+        .description(
+            '空闲触发间隔（分钟）：当超过该时间未收到新消息时，将自动触发一次回复请求。'
+        ),
+    idleTriggerRetryStyle: Schema.union([
+        Schema.const('exponential').description(
+            '指数退避（默认）：首次触发后若仍无新消息，按“空闲触发间隔（分钟）”作为起始值每次乘 2（例如 2→4→8→16）。'
+        ),
+        Schema.const('fixed').description(
+            '固定重试：始终按“空闲触发间隔（分钟）”重复触发。'
+        )
+    ])
+        .default('exponential')
+        .description('空闲触发重试风格'),
+    idleTriggerMaxIntervalMinutes: Schema.number()
+        .default(60 * 24)
+        .min(1)
+        .max(60 * 24 * 30)
+        .description(
+            '指数退避空闲触发最大间隔（分钟）：达到该间隔后，不再继续空闲重试。'
+        ),
+    idleTriggerFixedMaxRetries: Schema.number()
+        .default(3)
+        .min(0)
+        .max(20)
+        .description('固定重试空闲触发最大连续重试次数（首次空闲触发后的重试次数）'),
+    enableIdleTriggerJitter: Schema.boolean()
+        .default(true)
+        .description(
+            '是否启用空闲触发随机抖动：对固定重试与指数退避都生效，每轮会随机提前或延后 5%-10%。'
+        )
+})
+
+const commonConversationConfig = Schema.object({
     coolDownTime: Schema.number()
         .default(0)
         .min(0)
         .max(60 * 24 * 24)
         .description(
-            '冷却发言时间（秒）：当上一条消息发送完成后的 n 秒内发出的请求将被丢弃。'
+            '冷却发言时间（秒）：当上一条消息发送完成后的 n 秒内触发的新请求会暂存，冷却结束后再发送，模拟发完消息后看新消息时的延迟。'
         ),
     typingTime: Schema.number()
         .default(200)
         .min(100)
         .role('slider')
         .max(1700)
-        .description('模拟打字时的间隔（毫秒）'),
+        .description('模拟打字时每个字的“输入”时长（毫秒）'),
     largeTextSize: Schema.number()
         .default(100)
         .min(100)
         .max(1000)
-        .description('大文本消息的判断阈值（每段分句的字符数）'),
+        .description('大文本消息的判断阈值（每个消息的字符数）'),
     largeTextTypingTime: Schema.number()
         .default(10)
         .min(10)
         .max(1500)
-        .description('大文本消息的模拟打字间隔（毫秒）'),
-    muteTime: Schema.number()
-        .default(1000 * 60)
-        .min(1000)
-        .max(1000 * 60 * 10 * 10)
-        .description('闭嘴时的禁言时间（毫秒）'),
-    modelCompletionCount: Schema.number()
-        .default(1)
-        .min(0)
-        .max(6)
-        .description('模型历史消息轮数，为 0 不发送之前的历史轮次')
-})
+        .description('发送大文本消息模拟打字时，每个字的“输入”时长（毫秒）')
+}).description('延迟与模拟打字').collapse()
 
 const globalPrivateConfigObject = Schema.intersect([
-    globalPrivateModelConfig,
-    commonModelConfig,
-    Schema.object({
-        messageInterval: Schema.number()
-            .default(5)
-            .min(0)
-            .role('slider')
-            .max(10000)
-            .description('随机发送消息的间隔。私聊默认更积极。')
-    }),
-    commonChatBehaviorConfig,
-    Schema.object({
-        idleTriggerIntervalMinutes: Schema.number()
-            .default(60 * 8)
-            .min(1)
-            .max(60 * 24 * 7)
-            .description(
-                '空闲触发间隔（分钟）：当超过该时间未收到新消息时，将自动触发一次回复请求。'
-            )
-    }),
-    commonIdleStrategyConfig,
-    commonConversationConfig,
     Schema.object({
         preset: Schema.dynamic('character-preset')
             .description('使用的伪装预设')
-            .default('CHARACTER')
-    })
+            .default('CHARACTER'),
+        model: Schema.dynamic('model').default('').description('使用的模型'),
+        messageInterval: Schema.number()
+            .default(0)
+            .min(0)
+            .role('slider')
+            .max(10000)
+            .description(
+                '随机发送消息的间隔（条）：私聊需要更低，若设为 0 间隔，则每条消息都会触发请求。'
+            )
+    }).description('基础').collapse(),
+    commonModelFeatureConfig,
+    commonModelConfig,
+    commonChatBehaviorConfig,
+    Schema.object({
+        idleTrigger: privateIdleConfig.default({} as Config['idleTrigger'])
+    }).description('空闲触发').collapse(),
+    commonMuteConfig,
+    commonConversationConfig
 ]) as Schema<PrivateConfig>
 
 const privateConfigObject = Schema.intersect([
     Schema.object({
-        remark: Schema.string().default('').description('备注（无作用）')
-    }),
-    privateModelConfig,
-    commonModelConfig,
-    Schema.object({
+        preset: Schema.dynamic('character-preset')
+            .description('使用的伪装预设')
+            .default('CHARACTER'),
+        remark: Schema.string().default('').description('备注（无作用）'),
+        model: Schema.dynamic('model')
+            .default('无')
+            .description('使用的模型（选择“无”后将使用全局私聊配置）'),
         messageInterval: Schema.number()
-            .default(5)
+            .default(0)
             .min(0)
             .role('slider')
             .max(10000)
-            .description('随机发送消息的间隔。私聊默认更积极。')
-    }),
+            .description(
+                '随机发送消息的间隔（条）：私聊需要更低，若设为 0 间隔，则每条消息都会触发请求。'
+            )
+    }).description('基础').collapse(),
+    commonModelFeatureConfig,
+    commonModelConfig,
     commonChatBehaviorConfig,
     Schema.object({
-        idleTriggerIntervalMinutes: Schema.number()
-            .default(60 * 8)
-            .min(1)
-            .max(60 * 24 * 7)
-            .description(
-                '空闲触发间隔（分钟）：当超过该时间未收到新消息时，将自动触发一次回复请求。'
-            )
-    }),
-    commonIdleStrategyConfig,
-    commonConversationConfig,
-    Schema.object({
-        preset: Schema.dynamic('character-preset')
-            .description('使用的伪装预设')
-            .default('CHARACTER')
-    })
+        idleTrigger: privateIdleConfig.default({} as Config['idleTrigger'])
+    }).description('空闲触发').collapse(),
+    commonMuteConfig,
+    commonConversationConfig
 ]) as Schema<PrivateConfig>
 
 const globalGroupConfigObject = Schema.intersect([
-    globalGroupModelConfig,
-    commonModelConfig,
     Schema.object({
+        preset: Schema.dynamic('character-preset')
+            .description('使用的伪装预设')
+            .default('CHARACTER'),
+        model: Schema.dynamic('model').default('').description('使用的模型'),
         messageInterval: Schema.number()
             .default(20)
             .min(0)
             .role('slider')
             .max(10000)
-            .description('随机发送消息的间隔。群越活跃，这个值就会越高。')
-    }),
-    commonChatBehaviorConfig,
-    Schema.object({
-        idleTriggerIntervalMinutes: Schema.number()
-            .default(60 * 3)
-            .min(1)
-            .max(60 * 24 * 7)
             .description(
-                '空闲触发间隔（分钟）：当超过该时间未收到新消息时，将自动触发一次回复请求。'
+                '随机发送消息的间隔（条）：群越活跃，这个值就越需要调高，否则将一直被高强度触发。'
             )
-    }),
-    commonIdleStrategyConfig,
+    }).description('基础').collapse(),
+    commonModelFeatureConfig,
+    commonModelConfig,
+    groupChatBehaviorConfig,
     Schema.object({
         messageActivityScoreLowerLimit: Schema.number()
             .default(0.85)
@@ -335,40 +369,35 @@ const globalGroupConfigObject = Schema.intersect([
                     '若下限 > 上限（如 0.9 → 0.2），则会越聊越多。' +
                     '十分钟内无人回复时，会自动回退到下限。'
             )
-    }),
-    commonConversationConfig,
+    }).description('活跃度').collapse(),
     Schema.object({
-        preset: Schema.dynamic('character-preset')
-            .description('使用的伪装预设')
-            .default('CHARACTER')
-    })
+        idleTrigger: groupIdleConfig.default({} as Config['idleTrigger'])
+    }).description('空闲触发').collapse(),
+    commonMuteConfig,
+    commonConversationConfig
 ]) as Schema<GuildConfig>
 
 const guildConfigObject = Schema.intersect([
     Schema.object({
-        remark: Schema.string().default('').description('备注（无作用）')
-    }),
-    groupModelConfig,
-    commonModelConfig,
-    Schema.object({
+        preset: Schema.dynamic('character-preset')
+            .description('使用的伪装预设')
+            .default('CHARACTER'),
+        remark: Schema.string().default('').description('备注（无作用）'),
+        model: Schema.dynamic('model')
+            .default('无')
+            .description('使用的模型（选择“无”后将使用全局群聊配置）'),
         messageInterval: Schema.number()
             .default(20)
             .min(0)
             .role('slider')
             .max(10000)
-            .description('随机发送消息的间隔。群越活跃，这个值就会越高。')
-    }),
-    commonChatBehaviorConfig,
-    Schema.object({
-        idleTriggerIntervalMinutes: Schema.number()
-            .default(60 * 3)
-            .min(1)
-            .max(60 * 24 * 7)
             .description(
-                '空闲触发间隔（分钟）：当超过该时间未收到新消息时，将自动触发一次回复请求。'
+                '随机发送消息的间隔（条）：群越活跃，这个值就越需要调高，否则将一直被高强度触发。'
             )
-    }),
-    commonIdleStrategyConfig,
+    }).description('基础').collapse(),
+    commonModelFeatureConfig,
+    commonModelConfig,
+    groupChatBehaviorConfig,
     Schema.object({
         messageActivityScoreLowerLimit: Schema.number()
             .default(0.85)
@@ -391,13 +420,12 @@ const guildConfigObject = Schema.intersect([
                     '若下限 > 上限（如 0.9 → 0.2），则会越聊越多。' +
                     '十分钟内无人回复时，会自动回退到下限。'
             )
-    }),
-    commonConversationConfig,
+    }).description('活跃度').collapse(),
     Schema.object({
-        preset: Schema.dynamic('character-preset')
-            .description('使用的伪装预设')
-            .default('CHARACTER')
-    })
+        idleTrigger: groupIdleConfig.default({} as Config['idleTrigger'])
+    }).description('空闲触发').collapse(),
+    commonMuteConfig,
+    commonConversationConfig
 ]) as Schema<GuildConfig>
 
 export const Config = Schema.intersect([
@@ -407,13 +435,17 @@ export const Config = Schema.intersect([
             .description(
                 '是否启用私聊白名单模式：开启后，将仅允许 applyPrivate 中的用户使用伪装插件私聊功能'
             ),
-        applyPrivate: Schema.array(Schema.string()).description('应用到的私聊'),
+        applyPrivate: Schema.array(Schema.string())
+            .description('应用到的私聊')
+            .collapse(),
         groupWhitelistMode: Schema.boolean()
             .default(true)
             .description(
                 '是否启用群聊白名单模式：开启后，将仅允许 applyGroup 中的群组使用伪装插件群聊功能'
             ),
-        applyGroup: Schema.array(Schema.string()).description('应用到的群组'),
+        applyGroup: Schema.array(Schema.string())
+            .description('应用到的群组')
+            .collapse(),
         disableChatLuna: Schema.boolean()
             .default(true)
             .description('在使用此插件的会话里，是否禁用 ChatLuna 主功能'),
@@ -422,18 +454,18 @@ export const Config = Schema.intersect([
         ).description('启用此插件时，不禁用 ChatLuna 主功能的私聊用户 ID 列表'),
         whiteListDisableChatLuna: Schema.array(Schema.string()).description(
             '启用此插件时，不禁用 ChatLuna 主功能的群聊 ID 列表'
-        )
-    }).description('基础配置'),
+        ),
+    }).description('基础配置').collapse(),
 
     Schema.object({
         globalPrivateConfig: globalPrivateConfigObject.default(
             {} as PrivateConfig
         )
-    }).description('全局私聊配置'),
+    }).description('全局私聊配置').collapse(),
 
     Schema.object({
         globalGroupConfig: globalGroupConfigObject.default({} as GuildConfig)
-    }).description('全局群聊配置'),
+    }).description('全局群聊').collapse(),
 
     Schema.object({
         privateConfigs: Schema.dict(privateConfigObject)
@@ -441,13 +473,13 @@ export const Config = Schema.intersect([
             .description(
                 '分私聊配置，会覆盖上面的默认配置（键填写私聊用户 ID）'
             )
-    }).description('分私聊配置'),
+    }).description('分私聊').collapse(),
 
     Schema.object({
         configs: Schema.dict(guildConfigObject)
             .role('table')
-            .description('分群配置，会覆盖上面的默认配置（键填写群号）')
-    }).description('分群配置')
+            .description('分群聊配置，会覆盖上面的默认配置（键填写群号）')
+    }).description('分群聊').collapse()
 ]) as unknown as Schema<Config>
 
 export function migrateConfig(config: Config): boolean {
@@ -623,13 +655,19 @@ export function migrateConfig(config: Config): boolean {
         modified = true
     }
 
-    if (config.globalPrivateConfig.muteTime === 1000 * 60 && config.muteTime) {
-        config.globalPrivateConfig.muteTime = config.muteTime
+    if (config.globalPrivateConfig.muteTime === 60 && config.muteTime) {
+        config.globalPrivateConfig.muteTime =
+            config.muteTime > 1000
+                ? Math.max(Math.floor(config.muteTime / 1000), 1)
+                : config.muteTime
         modified = true
     }
 
-    if (config.globalGroupConfig.muteTime === 1000 * 60 && config.muteTime) {
-        config.globalGroupConfig.muteTime = config.muteTime
+    if (config.globalGroupConfig.muteTime === 60 && config.muteTime) {
+        config.globalGroupConfig.muteTime =
+            config.muteTime > 1000
+                ? Math.max(Math.floor(config.muteTime / 1000), 1)
+                : config.muteTime
         modified = true
     }
 
@@ -648,6 +686,260 @@ export function migrateConfig(config: Config): boolean {
     ) {
         config.globalGroupConfig.messageActivityScoreUpperLimit =
             config.messageActivityScoreUpperLimit
+        modified = true
+    }
+
+    if (
+        config.globalPrivateConfig.idleTrigger.enableLongWaitTrigger === false &&
+        config.enableLongWaitTrigger
+    ) {
+        config.globalPrivateConfig.idleTrigger.enableLongWaitTrigger =
+            config.enableLongWaitTrigger
+        modified = true
+    }
+
+    if (
+        config.globalGroupConfig.idleTrigger.enableLongWaitTrigger === false &&
+        config.enableLongWaitTrigger
+    ) {
+        config.globalGroupConfig.idleTrigger.enableLongWaitTrigger =
+            config.enableLongWaitTrigger
+        modified = true
+    }
+
+    if (
+        config.globalPrivateConfig.idleTrigger.idleTriggerIntervalMinutes ===
+            60 * 8 &&
+        config.idleTriggerIntervalMinutes
+    ) {
+        config.globalPrivateConfig.idleTrigger.idleTriggerIntervalMinutes =
+            config.idleTriggerIntervalMinutes
+        modified = true
+    }
+
+    if (
+        config.globalGroupConfig.idleTrigger.idleTriggerIntervalMinutes ===
+            60 * 3 &&
+        config.idleTriggerIntervalMinutes
+    ) {
+        config.globalGroupConfig.idleTrigger.idleTriggerIntervalMinutes =
+            config.idleTriggerIntervalMinutes
+        modified = true
+    }
+
+    if (
+        config.idleTriggerRetryStyle != null &&
+        config.globalPrivateConfig.idleTrigger.idleTriggerRetryStyle ===
+            'exponential'
+    ) {
+        config.globalPrivateConfig.idleTrigger.idleTriggerRetryStyle =
+            config.idleTriggerRetryStyle
+        modified = true
+    }
+
+    if (
+        config.idleTriggerRetryStyle != null &&
+        config.globalGroupConfig.idleTrigger.idleTriggerRetryStyle ===
+            'exponential'
+    ) {
+        config.globalGroupConfig.idleTrigger.idleTriggerRetryStyle =
+            config.idleTriggerRetryStyle
+        modified = true
+    }
+
+    if (
+        config.globalPrivateConfig.idleTrigger.idleTriggerMaxIntervalMinutes ===
+            60 * 24 &&
+        config.idleTriggerMaxIntervalMinutes
+    ) {
+        config.globalPrivateConfig.idleTrigger.idleTriggerMaxIntervalMinutes =
+            config.idleTriggerMaxIntervalMinutes
+        modified = true
+    }
+
+    if (
+        config.globalGroupConfig.idleTrigger.idleTriggerMaxIntervalMinutes ===
+            60 * 24 &&
+        config.idleTriggerMaxIntervalMinutes
+    ) {
+        config.globalGroupConfig.idleTrigger.idleTriggerMaxIntervalMinutes =
+            config.idleTriggerMaxIntervalMinutes
+        modified = true
+    }
+
+    if (
+        config.globalPrivateConfig.idleTrigger.enableIdleTriggerJitter === true &&
+        config.enableIdleTriggerJitter === false
+    ) {
+        config.globalPrivateConfig.idleTrigger.enableIdleTriggerJitter =
+            config.enableIdleTriggerJitter
+        modified = true
+    }
+
+    if (
+        config.globalGroupConfig.idleTrigger.enableIdleTriggerJitter === true &&
+        config.enableIdleTriggerJitter === false
+    ) {
+        config.globalGroupConfig.idleTrigger.enableIdleTriggerJitter =
+            config.enableIdleTriggerJitter
+        modified = true
+    }
+
+    if (
+        config.idleTriggerFixedMaxRetries != null &&
+        config.globalPrivateConfig.idleTrigger.idleTriggerFixedMaxRetries === 3
+    ) {
+        config.globalPrivateConfig.idleTrigger.idleTriggerFixedMaxRetries =
+            config.idleTriggerFixedMaxRetries
+        modified = true
+    }
+
+    if (
+        config.idleTriggerFixedMaxRetries != null &&
+        config.globalGroupConfig.idleTrigger.idleTriggerFixedMaxRetries === 3
+    ) {
+        config.globalGroupConfig.idleTrigger.idleTriggerFixedMaxRetries =
+            config.idleTriggerFixedMaxRetries
+        modified = true
+    }
+
+    if (
+        config.globalPrivateConfig.splitVoice === false &&
+        config.splitVoice != null
+    ) {
+        config.globalPrivateConfig.splitVoice = config.splitVoice
+        modified = true
+    }
+
+    if (
+        config.globalGroupConfig.splitVoice === false &&
+        config.splitVoice != null
+    ) {
+        config.globalGroupConfig.splitVoice = config.splitVoice
+        modified = true
+    }
+
+    if (
+        config.globalPrivateConfig.isNickname === true &&
+        config.isNickname != null
+    ) {
+        config.globalPrivateConfig.isNickname = config.isNickname
+        modified = true
+    }
+
+    if (
+        config.globalGroupConfig.isNickname === true &&
+        config.isNickname != null
+    ) {
+        config.globalGroupConfig.isNickname = config.isNickname
+        modified = true
+    }
+
+    if (
+        config.globalPrivateConfig.isNickNameWithContent === false &&
+        config.isNickNameWithContent != null
+    ) {
+        config.globalPrivateConfig.isNickNameWithContent =
+            config.isNickNameWithContent
+        modified = true
+    }
+
+    if (
+        config.globalGroupConfig.isNickNameWithContent === false &&
+        config.isNickNameWithContent != null
+    ) {
+        config.globalGroupConfig.isNickNameWithContent =
+            config.isNickNameWithContent
+        modified = true
+    }
+
+    if (
+        config.globalPrivateConfig.statusPersistence === true &&
+        config.statusPersistence != null
+    ) {
+        config.globalPrivateConfig.statusPersistence = config.statusPersistence
+        modified = true
+    }
+
+    if (
+        config.globalGroupConfig.statusPersistence === true &&
+        config.statusPersistence != null
+    ) {
+        config.globalGroupConfig.statusPersistence = config.statusPersistence
+        modified = true
+    }
+
+    if (
+        config.globalPrivateConfig.historyPull === true &&
+        config.historyPull != null
+    ) {
+        config.globalPrivateConfig.historyPull = config.historyPull
+        modified = true
+    }
+
+    if (
+        config.globalGroupConfig.historyPull === true &&
+        config.historyPull != null
+    ) {
+        config.globalGroupConfig.historyPull = config.historyPull
+        modified = true
+    }
+
+    if (
+        config.globalPrivateConfig.modelCompletionCount === 1 &&
+        config.modelCompletionCount != null
+    ) {
+        config.globalPrivateConfig.modelCompletionCount =
+            config.modelCompletionCount
+        modified = true
+    }
+
+    if (
+        config.globalGroupConfig.modelCompletionCount === 1 &&
+        config.modelCompletionCount != null
+    ) {
+        config.globalGroupConfig.modelCompletionCount =
+            config.modelCompletionCount
+        modified = true
+    }
+
+    if (
+        config.globalPrivateConfig.enableMessageId === true &&
+        config.enableMessageId != null
+    ) {
+        config.globalPrivateConfig.enableMessageId = config.enableMessageId
+        modified = true
+    }
+
+    if (
+        config.globalGroupConfig.enableMessageId === true &&
+        config.enableMessageId != null
+    ) {
+        config.globalGroupConfig.enableMessageId = config.enableMessageId
+        modified = true
+    }
+
+    if (
+        config.globalGroupConfig.isAt === false &&
+        config.isAt != null
+    ) {
+        config.globalGroupConfig.isAt = config.isAt
+        modified = true
+    }
+
+    if (
+        config.globalGroupConfig.messageInterval === 20 &&
+        config.messageInterval != null
+    ) {
+        config.globalGroupConfig.messageInterval = config.messageInterval
+        modified = true
+    }
+
+    if (
+        config.globalPrivateConfig.messageInterval === 0 &&
+        config.messageInterval != null
+    ) {
+        config.globalPrivateConfig.messageInterval = config.messageInterval
         modified = true
     }
 
@@ -675,6 +967,193 @@ export function migrateConfig(config: Config): boolean {
             )
             modified = true
         }
+    }
+
+    const legacy = config as Config & {
+        defaultPreset?: string
+        model?: string
+        maxMessages?: number
+        maxTokens?: number
+        image?: boolean
+        imageInputMaxCount?: number
+        imageInputMaxSize?: number
+        multimodalFileInputMaxSize?: number
+        toolCalling?: boolean
+        isForceMute?: boolean
+        coolDownTime?: number
+        muteTime?: number
+        enableLongWaitTrigger?: boolean
+        idleTriggerIntervalMinutes?: number
+        idleTriggerRetryStyle?: 'exponential' | 'fixed'
+        idleTriggerMaxIntervalMinutes?: number
+        idleTriggerFixedMaxRetries?: number
+        enableIdleTriggerJitter?: boolean
+        messageInterval?: number
+        splitVoice?: boolean
+        isNickname?: boolean
+        isNickNameWithContent?: boolean
+        statusPersistence?: boolean
+        historyPull?: boolean
+        modelCompletionCount?: number
+        isAt?: boolean
+        enableMessageId?: boolean
+        messageActivityScoreLowerLimit?: number
+        messageActivityScoreUpperLimit?: number
+    }
+
+    if (legacy.defaultPreset != null) {
+        delete legacy.defaultPreset
+        modified = true
+    }
+
+    if (legacy.model != null) {
+        delete legacy.model
+        modified = true
+    }
+
+    if (legacy.maxMessages != null) {
+        delete legacy.maxMessages
+        modified = true
+    }
+
+    if (legacy.maxTokens != null) {
+        delete legacy.maxTokens
+        modified = true
+    }
+
+    if (legacy.image != null) {
+        delete legacy.image
+        modified = true
+    }
+
+    if (legacy.imageInputMaxCount != null) {
+        delete legacy.imageInputMaxCount
+        modified = true
+    }
+
+    if (legacy.imageInputMaxSize != null) {
+        delete legacy.imageInputMaxSize
+        modified = true
+    }
+
+    if (legacy.multimodalFileInputMaxSize != null) {
+        delete legacy.multimodalFileInputMaxSize
+        modified = true
+    }
+
+    if (legacy.toolCalling != null) {
+        delete legacy.toolCalling
+        modified = true
+    }
+
+    if (legacy.isForceMute != null) {
+        delete legacy.isForceMute
+        modified = true
+    }
+
+    if (legacy.coolDownTime != null) {
+        delete legacy.coolDownTime
+        modified = true
+    }
+
+    if (legacy.muteTime != null) {
+        delete legacy.muteTime
+        modified = true
+    }
+
+    if (legacy.enableLongWaitTrigger != null) {
+        delete legacy.enableLongWaitTrigger
+        modified = true
+    }
+
+    if (legacy.idleTriggerIntervalMinutes != null) {
+        delete legacy.idleTriggerIntervalMinutes
+        modified = true
+    }
+
+    if (legacy.idleTriggerRetryStyle != null) {
+        delete legacy.idleTriggerRetryStyle
+        modified = true
+    }
+
+    if (legacy.idleTriggerMaxIntervalMinutes != null) {
+        delete legacy.idleTriggerMaxIntervalMinutes
+        modified = true
+    }
+
+    if (legacy.idleTriggerFixedMaxRetries != null) {
+        delete legacy.idleTriggerFixedMaxRetries
+        modified = true
+    }
+
+    if (legacy.enableIdleTriggerJitter != null) {
+        delete legacy.enableIdleTriggerJitter
+        modified = true
+    }
+
+    if (legacy.messageInterval != null) {
+        delete legacy.messageInterval
+        modified = true
+    }
+
+    if (legacy.splitVoice != null) {
+        delete legacy.splitVoice
+        modified = true
+    }
+
+    if (legacy.isNickname != null) {
+        delete legacy.isNickname
+        modified = true
+    }
+
+    if (legacy.isNickNameWithContent != null) {
+        delete legacy.isNickNameWithContent
+        modified = true
+    }
+
+    if (legacy.statusPersistence != null) {
+        delete legacy.statusPersistence
+        modified = true
+    }
+
+    if (legacy.historyPull != null) {
+        delete legacy.historyPull
+        modified = true
+    }
+
+    if (legacy.modelCompletionCount != null) {
+        delete legacy.modelCompletionCount
+        modified = true
+    }
+
+    if (legacy.isAt != null) {
+        delete legacy.isAt
+        modified = true
+    }
+
+    if (legacy.enableMessageId != null) {
+        delete legacy.enableMessageId
+        modified = true
+    }
+
+    if (legacy.messageActivityScoreLowerLimit != null) {
+        delete legacy.messageActivityScoreLowerLimit
+        modified = true
+    }
+
+    if (legacy.messageActivityScoreUpperLimit != null) {
+        delete legacy.messageActivityScoreUpperLimit
+        modified = true
+    }
+
+    if (config.privateModelOverride != null) {
+        delete config.privateModelOverride
+        modified = true
+    }
+
+    if (config.modelOverride != null) {
+        delete config.modelOverride
+        modified = true
     }
 
     return modified
