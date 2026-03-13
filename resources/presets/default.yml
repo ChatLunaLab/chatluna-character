@@ -24,13 +24,13 @@
 #     - 在“XML 工具”中启用全部选项
 #     - 其他选项全部关闭
 # - chatluna-storage-service
-#   - 插件用途：提供文件存储服务，防止QQ图床链接过期
+#   - 插件用途：提供文件存储服务，防止 QQ 图床链接过期
 #   - 配置说明：
 #     - 将“存储后端类型”改为“本地文件存储”
-#     - 将“Koishi 在公网或者局域网中的路径”改为你的环境中实际的路径，确保此路径可以被你的Napcat或LLBot正常访问。
+#     - 将“Koishi 在公网或者局域网中的路径”改为你的环境中实际的路径，确保此路径可以被你的 Napcat 或 LLBot 正常访问。
 #       - Linux Docker部署：
-#         - 若Koishi与你的Napcat或LLBot使用Docker部署在同一个容器中，请尝试保持默认地址“http://127.0.0.1:5140”，不要修改
-#         - 若Koishi与你的Napcat或LLBot使用Docker部署在不同容器中、但使用同一个Docker网桥时，可以填写“http://koishi:5140”，5140为你的Koishi容器内端口
+#         - 若 Koishi 与你的 Napcat 或 LLBot 使用Docker部署在同一个容器中，请尝试保持默认地址“http://127.0.0.1:5140”，不要修改
+#         - 若 Koishi 与你的 Napcat 或 LLBot 使用Docker部署在不同容器中、但使用同一个 Docker 网桥时，可以填写“http://koishi:5140”，5140 为你的 Koishi 容器内端口
 #           - 如果不会，请尝试咨询AI
 #           - 不建议使用容器在宿主机的内网IP连接，因为容器的内网IP可能会在重启后重新分配，导致原有连接断开
 #       - 其他部署：
@@ -60,11 +60,11 @@
 #   - 如果随机发送消息的间隔设定为 0，将会启用发言等待功能，建议删去预设中的 next_reply 相关内容避免冲突
 # - 确保各种涉及工具的内容已经配置妥当、Bot 拥有相关权限
 # - 若没有安装对应的插件或是无管理员权限、不是官方 Bot 而无法发送 Markdown 消息等，请自行根据情况删改预设中的描述！尤其是表情包、Markdown 消息相关！
-# - <think> 部分的示例内容可以在 Bo t运行一段时间后挑一些看起来比较好的思考内容放进去
+# - <think> 部分的示例内容可以在 Bot 运行一段时间后挑一些看起来比较好的思考内容放进去
 # - 如果你在使用官方 Bot 进行私聊（目前伪装插件对于官方 Bot 仅支持私聊），请开启Koishi插件 inspect，并向 Bot 发送 inspect，将其中“用户ID”的值填写至 chatluna-character 的“应用到的私聊”配置中
 # 
 # 作者的话：
-# 感谢你使用了卢恩伪装插件预设模板！如有问题，敬请优先查询ChatLuna文档：
+# 感谢你使用了卢恩伪装插件预设模板！如有问题，敬请优先查询 ChatLuna 文档：
 # 通用文档：https://chatluna.chat/guide/introduction.html
 # 伪装插件文档：https://chatluna.chat/ecosystem/other/character.html
 # 查询无果后可以加入ChatLuna官方交流群：282381753，作者Cook Sleep和其他群友将在空闲时为你解答，请提前准备好你的各种截图（如去除或抹去敏感信息后的配置、报错）！
