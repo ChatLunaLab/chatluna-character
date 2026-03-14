@@ -297,7 +297,7 @@ const globalPrivateConfigObject = Schema.intersect([
             .min(0)
             .max(300)
             .description(
-                '发言等待时长（秒）：在“随机发送消息的间隔”为 0 时生效，当连续 Bot 连续 N 秒没有收到新消息后，才会触发请求，改善偶尔向 Bot 连续发送多条消息时的体验'
+                '发言等待时长（秒）：在“随机发送消息的间隔”为 0 时生效，当 Bot 收到一消息后，连续 N 秒没有再收到新消息，才会触发请求，改善偶尔向 Bot 连续发送多条消息时的体验'
             )
     }).description('基础').collapse(),
     commonModelFeatureConfig,
@@ -332,7 +332,7 @@ const privateConfigObject = Schema.intersect([
             .min(0)
             .max(300)
             .description(
-                '发言等待时长（秒）：在“随机发送消息的间隔”为 0 时生效，当连续 Bot 连续 N 秒没有收到新消息后，才会触发请求，改善偶尔向 Bot 连续发送多条消息时的体验'
+                '发言等待时长（秒）：在“随机发送消息的间隔”为 0 时生效，当 Bot 收到一消息后，连续 N 秒没有再收到新消息，才会触发请求，改善偶尔向 Bot 连续发送多条消息时的体验'
             )
     }).description('基础').collapse(),
     commonModelFeatureConfig,
