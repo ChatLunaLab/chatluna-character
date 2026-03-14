@@ -6,21 +6,7 @@ import { MessageCollector } from './service/message'
 import { TriggerStore } from './service/trigger'
 import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
-
-type ConsoleCtx = Context & {
-    console: {
-        addEntry: (entry: { dev: string; prod: string }) => void
-    }
-}
-
-type WriteCtx = Context & {
-    loader: {
-        writeConfig: () => Promise<void>
-    }
-    scope: {
-        config: Record<string, unknown>
-    }
-}
+import type {} from '@koishijs/plugin-console'
 
 export function apply(ctx: Context, config: Config) {
     const changed = migrateConfig(config)
@@ -37,9 +23,8 @@ export function apply(ctx: Context, config: Config) {
                     }
                     started = true
                     if (changed) {
-                        const x = ctx as WriteCtx
-                        Object.assign(x.scope.config, config)
-                        await x.loader.writeConfig()
+                        Object.assign(ctx.scope.config, config)
+                        await ctx.loader.writeConfig()
                     }
                     await ctx.chatluna_character.preset.init()
                     await plugins(ctx, config)
@@ -64,7 +49,7 @@ export function apply(ctx: Context, config: Config) {
                 ? __dirname
                 : dirname(fileURLToPath(import.meta.url))
 
-        ;(ctx as ConsoleCtx).console.addEntry({
+        ctx.console.addEntry({
             dev: resolve(baseDir, '../dist'),
             prod: resolve(baseDir, '../dist')
         })
