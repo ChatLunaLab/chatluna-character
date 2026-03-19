@@ -36,6 +36,10 @@ class ElementFragmentCollector {
         return this.getLastFragment()?.at(-1)?.type === 'face'
     }
 
+    private shouldAppendText() {
+        return this.shouldAppendAfterAt() || this.shouldAppendAfterFace()
+    }
+
     // Attach the quote only once, right before the first fragment that carries content.
     private attachPendingQuote(target: ElementFragment, quote?: PendingQuote) {
         if (!quote?.id || quote.used) return
@@ -98,11 +102,7 @@ class ElementFragmentCollector {
             return
         }
 
-        this.writeFragment(
-            [el],
-            quote,
-            this.shouldAppendAfterAt() || this.shouldAppendAfterFace()
-        )
+        this.writeFragment([el], quote, this.shouldAppendText())
     }
 
     private async handleMessageElement(el: Element, quote?: PendingQuote) {
