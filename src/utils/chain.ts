@@ -4,7 +4,7 @@ import {
     BaseMessage,
     HumanMessage
 } from '@langchain/core/messages'
-import { Context, Session } from 'koishi'
+import { Context } from 'koishi'
 import { computed, ComputedRef } from 'koishi-plugin-chatluna'
 import {
     AgentStep,
@@ -150,8 +150,7 @@ function createAsyncChunkQueue<T>(): AsyncChunkQueue<T> {
 
 export async function createChatLunaChain(
     ctx: Context,
-    llmRef: ComputedRef<ChatLunaChatModel>,
-    session: Session
+    llmRef: ComputedRef<ChatLunaChatModel>
 ): Promise<ComputedRef<ChatLunaChain>> {
     const logger = ctx.chatluna_character.logger
     const currentPreset = computed(
@@ -199,30 +198,43 @@ export async function createChatLunaChain(
     })
 
     return computed(() => {
-        const updateToolsIfNeeded = (
+        const updateToolsIfNeeded = async (
             input: ChatLunaChatPromptFormat,
             options?: ChatLunaRunnableConfig
         ) => {
-            // Update tools before execution
-            if (options?.configurable?.session) {
-                const copyOfMessages =
-                    typeof input['chat_history'] === 'string'
-                        ? [new HumanMessage(input['chat_history'])]
-                        : [...input['chat_history']]
+            const session = options?.configurable?.session
+            const toolMask = options?.configurable?.toolMask
 
-                if (copyOfMessages.length === 0) {
-                    copyOfMessages.push(input.input)
-                }
-
-                toolsRef.update(options.configurable.session, copyOfMessages)
+            if (!session) {
+                return toolMask
             }
+
+            const copyOfMessages =
+                typeof input['chat_history'] === 'string'
+                    ? [new HumanMessage(input['chat_history'])]
+                    : [...input['chat_history']]
+
+            if (copyOfMessages.length === 0) {
+                copyOfMessages.push(input.input)
+            }
+
+            const mask =
+                toolMask ??
+                (await ctx.chatluna.resolveToolMask({
+                    session,
+                    room: null
+                }))
+
+            toolsRef.update(session, copyOfMessages, mask)
+
+            return mask
         }
 
         async function* stream(
             input: ChatLunaChatPromptFormat,
             options?: ChatLunaRunnableConfig
         ): AsyncGenerator<ChatLunaChainStreamChunk> {
-            updateToolsIfNeeded(input, options)
+            const toolMask = await updateToolsIfNeeded(input, options)
 
             const chunkQueue = createAsyncChunkQueue<ChatLunaChainStreamChunk>()
             let buf = ''
@@ -252,6 +264,10 @@ export async function createChatLunaChain(
 
             const streamOptions: ChatLunaRunnableConfig = {
                 ...(options ?? {}),
+                configurable: {
+                    ...(options?.configurable ?? {}),
+                    ...(toolMask != null ? { toolMask } : {})
+                },
                 callbacks: [
                     ...existingCallbacks,
                     {
@@ -328,11 +344,19 @@ export async function createChatLunaChain(
 
         return {
             async invoke(input, options) {
-                updateToolsIfNeeded(input, options)
+                const toolMask = await updateToolsIfNeeded(input, options)
+
+                const nextOptions: ChatLunaRunnableConfig = {
+                    ...(options ?? {}),
+                    configurable: {
+                        ...(options?.configurable ?? {}),
+                        ...(toolMask != null ? { toolMask } : {})
+                    }
+                }
 
                 const response = (await executorRef.value.invoke(
                     input,
-                    options ?? {}
+                    nextOptions
                 )) as AgentExecutorStreamChunk
 
                 return new AIMessageChunk({

@@ -67,7 +67,9 @@ export async function formatMessage(
     currentTokens += await model.getNumTokens(historyPrompt)
 
     const calculatedMessages: string[] = []
+    const selectedMessages: Message[] = []
     let lastMessage: string | undefined
+    let lastSelectedMessage: Message | undefined
 
     if (focusMessage && messages.includes(focusMessage)) {
         const xmlFocusMessage = formatMessageString(
@@ -79,6 +81,7 @@ export async function formatMessage(
         if (currentTokens + xmlFocusMessageToken <= maxTokens - 4) {
             currentTokens += xmlFocusMessageToken
             lastMessage = xmlFocusMessage
+            lastSelectedMessage = focusMessage
         }
     }
 
@@ -98,19 +101,25 @@ export async function formatMessage(
 
         currentTokens += xmlMessageToken
         calculatedMessages.unshift(xmlMessage)
+        selectedMessages.unshift(messages[i])
     }
 
     if (lastMessage === undefined) {
         lastMessage = calculatedMessages.pop()
+        lastSelectedMessage = selectedMessages.pop()
     }
 
-    if (lastMessage === undefined) {
+    if (lastMessage === undefined || lastSelectedMessage === undefined) {
         throw new Error(
             'lastMessage is undefined, please set the max token to be bigger'
         )
     }
 
-    return [calculatedMessages, lastMessage] as const
+    return {
+        recentMessages: calculatedMessages,
+        lastMessage,
+        contextMessages: selectedMessages.concat(lastSelectedMessage)
+    } as const
 }
 
 export async function formatCompletionMessages(
@@ -135,7 +144,8 @@ export async function formatCompletionMessages(
 
     result.unshift(humanMessage)
 
-    for (const imageMessage of tempMessages) {
+    for (let index = tempMessages.length - 1; index >= 0; index--) {
+        const imageMessage = tempMessages[index]
         // Only calculate the text content
         const imageTokens = await model.getNumTokens(
             getMessageContent(imageMessage.content)
