@@ -47,6 +47,20 @@ const sendRules: Record<string, SendRule> = {
         }),
         send: async (session, part) => {
             if (session.platform !== 'onebot') {
+                if (session.platform === 'qq') {
+                    const out = part.elements.map((el) => {
+                        if (el.type !== 'file') {
+                            return el
+                        }
+
+                        return h.text(String(el.attrs['chatluna_file_url']))
+                    })
+                    const result = await session.send(out)
+                    return Array.isArray(result)
+                        ? result.map((id) => String(id))
+                        : [String(result)]
+                }
+
                 for (const el of part.elements) {
                     if (el.type !== 'file') {
                         continue
