@@ -48,17 +48,40 @@ const sendRules: Record<string, SendRule> = {
         send: async (session, part) => {
             if (session.platform !== 'onebot') {
                 if (session.platform === 'qq') {
-                    const out = part.elements.map((el) => {
-                        if (el.type !== 'file') {
-                            return el
-                        }
+                    const el = part.elements[part.elements.length - 1]
+                    const file = String(el.attrs['chatluna_file_url'] ?? '').trim()
+                    if (file.length < 1) {
+                        logger.warn('file send skipped: missing file')
+                        return []
+                    }
 
-                        return h.text(String(el.attrs['chatluna_file_url']))
-                    })
-                    const result = await session.send(out)
-                    return Array.isArray(result)
-                        ? result.map((id) => String(id))
-                        : [String(result)]
+                    const bot = session.bot as QQBot<Context>
+                    const data: {
+                        file_type: 4
+                        srv_send_msg: true
+                        url?: string
+                        file_data?: string
+                    } = {
+                        file_type: 4,
+                        srv_send_msg: true
+                    }
+                    const capture = /^data:([\w/.+-]+);base64,(.*)$/.exec(file)
+                    if (capture?.[2]) {
+                        data.file_data = capture[2]
+                    } else if (await bot.ctx.http.isLocal(file)) {
+                        const local = await bot.ctx.http.file(file)
+                        data.file_data = Buffer.from(local.data).toString('base64')
+                    } else {
+                        data.url = file
+                    }
+
+                    if (session.isDirect) {
+                        await bot.internal.sendFilePrivate(session.userId, data)
+                    } else {
+                        await bot.internal.sendFileGuild(session.channelId, data)
+                    }
+
+                    return []
                 }
 
                 for (const el of part.elements) {
