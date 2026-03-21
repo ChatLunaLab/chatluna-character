@@ -1,3 +1,6 @@
+import { readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+
 import type { QQBot } from '@koishijs/plugin-adapter-qq'
 import OneBotBot from 'koishi-plugin-adapter-onebot'
 
@@ -47,13 +50,17 @@ const sendRules: Record<string, SendRule> = {
         }),
         send: async (session, part) => {
             if (session.platform !== 'onebot') {
-                if (session.platform === 'qq') {
+                if (session.platform.includes('qq')) {
                     const el = part.elements[part.elements.length - 1]
                     const file = String(el.attrs['chatluna_file_url'] ?? '').trim()
                     if (file.length < 1) {
                         logger.warn('file send skipped: missing file')
                         return []
                     }
+
+                    logger.info(
+                        `file send start: qq platform=${session.platform} direct=${session.isDirect}`
+                    )
 
                     const bot = session.bot as QQBot<Context>
                     const data: {
@@ -68,9 +75,23 @@ const sendRules: Record<string, SendRule> = {
                     const capture = /^data:([\w/.+-]+);base64,(.*)$/.exec(file)
                     if (capture?.[2]) {
                         data.file_data = capture[2]
+                    } else if (
+                        file.startsWith('http://') ||
+                        file.startsWith('https://')
+                    ) {
+                        const resp = await fetch(file)
+                        if (!resp.ok) {
+                            throw new Error(`qq file fetch failed: ${resp.status}`)
+                        }
+
+                        const buf = Buffer.from(await resp.arrayBuffer())
+                        data.file_data = buf.toString('base64')
+                    } else if (file.startsWith('file://')) {
+                        const buf = await readFile(fileURLToPath(file))
+                        data.file_data = buf.toString('base64')
                     } else {
-                        const local = await bot.ctx.http.file(file)
-                        data.file_data = Buffer.from(local.data).toString('base64')
+                        const buf = await readFile(file)
+                        data.file_data = buf.toString('base64')
                     }
 
                     if (session.isDirect) {
@@ -78,6 +99,10 @@ const sendRules: Record<string, SendRule> = {
                     } else {
                         await bot.internal.sendFileGuild(session.channelId, data)
                     }
+
+                    logger.info(
+                        `file send success: qq platform=${session.platform} direct=${session.isDirect}`
+                    )
 
                     return []
                 }
