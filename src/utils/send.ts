@@ -74,9 +74,9 @@ const sendRules: Record<string, SendRule> = {
         }
     },
     file: {
-        split: (_elements, idx) => ({
+        split: (_elements, idx, start) => ({
             type: 'file',
-            start: idx,
+            start: idx > start ? idx - 1 : idx,
             end: idx + 1
         }),
         send: async (session, part) => {
@@ -115,18 +115,19 @@ const sendRules: Record<string, SendRule> = {
                     )
                 }
 
-                const fileId =
-                    String(data?.file_id ?? data?.data?.file_id ?? '').trim() ||
-                    file
+                const fileId = String(
+                    data?.file_id ?? data?.data?.file_id ?? ''
+                ).trim()
+                if (fileId.length < 1) {
+                    throw new Error('upload_private_file did not return file_id')
+                }
                 logger.info(
                     `file send success: private user=${session.userId} name=${name} fileId=${fileId}`
                 )
-                return [fileId]
+                return []
             }
 
-            logger.info(
-                `file send start: group group=${session.guildId} name=${name} file=${file}`
-            )
+            logger.info(`file send start: group group=${session.guildId} name=${name}`)
 
             const data = await callOnebotApi(internal, 'upload_group_file', {
                 group_id: Number(session.guildId),
@@ -140,12 +141,16 @@ const sendRules: Record<string, SendRule> = {
                 )
             }
 
-            const fileId =
-                String(data?.file_id ?? data?.data?.file_id ?? '').trim() || file
+            const fileId = String(
+                data?.file_id ?? data?.data?.file_id ?? ''
+            ).trim()
+            if (fileId.length < 1) {
+                throw new Error('upload_group_file did not return file_id')
+            }
             logger.info(
                 `file send success: group group=${session.guildId} name=${name} fileId=${fileId}`
             )
-            return [fileId]
+            return []
         }
     }
 }

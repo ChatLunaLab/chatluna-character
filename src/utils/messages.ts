@@ -273,8 +273,17 @@ export function mapElementToString(
                 element.attrs['name'] ??
                 element.attrs['filename'] ??
                 'file'
+            const escapedName = String(name)
+                .replaceAll('&', '&amp;')
+                .replaceAll('"', '&quot;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+            const escapedUrl = String(url)
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
 
-            filteredBuffer.push(`<file name="${name}">${url}</file>`)
+            filteredBuffer.push(`<file name="${escapedName}">${escapedUrl}</file>`)
         } else if (element.type === 'video' || element.type === 'audio') {
             const url = element.attrs['chatluna_file_url']
             if (!url) {
