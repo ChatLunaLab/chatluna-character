@@ -21,33 +21,24 @@ interface SendRule {
 }
 
 interface OneBotUploadResponse {
-    status?: string
-    wording?: string
-    message?: string
-    retcode?: number | string
-    file_id?: string
+    status: 'ok' | 'failed'
+    retcode: number
     data?: {
         file_id?: string
     }
+    message: string
+    wording: string
+    stream?: string
+    file_id?: string
 }
 
 function getUploadFileId(data: OneBotUploadResponse, action: string) {
-    if (data.status && data.status !== 'ok') {
-        let msg = 'unknown error'
-        if (data.wording) {
-            msg = data.wording
-        } else if (data.message) {
-            msg = data.message
-        } else if (data.retcode != null) {
-            msg = String(data.retcode)
-        }
-
-        throw new Error(
-            `${action} failed: ${msg}`
-        )
+    if (data.status !== 'ok') {
+        const msg = data.wording || data.message || 'unknown error'
+        throw new Error(`${action} failed: ${msg}`)
     }
 
-    const raw = data.file_id || data.data?.file_id || ''
+    const raw = data.data?.file_id || data.file_id || ''
     const id = String(raw).trim()
     if (id.length < 1) {
         throw new Error(`${action} did not return file_id`)
