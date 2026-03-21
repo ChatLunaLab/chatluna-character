@@ -70,7 +70,8 @@ const sendRules: Record<string, SendRule> = {
                         file_data?: string
                     } = {
                         file_type: 4,
-                        srv_send_msg: true
+                        srv_send_msg: true,
+                        url: file
                     }
                     const capture = /^data:([\w/.+-]+);base64,(.*)$/.exec(file)
                     if (capture?.[2]) {
@@ -94,17 +95,30 @@ const sendRules: Record<string, SendRule> = {
                         data.file_data = buf.toString('base64')
                     }
 
-                    if (session.isDirect) {
-                        await bot.internal.sendFilePrivate(session.userId, data)
-                    } else {
-                        await bot.internal.sendFileGuild(session.channelId, data)
+                    if (!session.isDirect) {
+                        logger.warn('qq file send skipped: group is not supported')
+                        const result = await session.send(h.text(file))
+                        return Array.isArray(result)
+                            ? result.map((id) => String(id))
+                            : [String(result)]
+                    }
+
+                    const resp = (await bot.internal.sendFilePrivate(
+                        session.userId,
+                        data
+                    )) as {
+                        id?: string
+                    }
+                    const id = String(resp.id ?? '').trim()
+                    if (id.length < 1) {
+                        throw new Error('qq file message did not return id')
                     }
 
                     logger.info(
-                        `file send success: qq platform=${session.platform} direct=${session.isDirect}`
+                        `file send success: qq platform=${session.platform} direct=${session.isDirect} id=${id}`
                     )
 
-                    return []
+                    return [id]
                 }
 
                 for (const el of part.elements) {
