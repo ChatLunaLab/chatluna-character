@@ -1,6 +1,3 @@
-import { readFile } from 'node:fs/promises'
-import { fileURLToPath } from 'node:url'
-
 import type { QQBot } from '@koishijs/plugin-adapter-qq'
 import OneBotBot from 'koishi-plugin-adapter-onebot'
 
@@ -50,75 +47,11 @@ const sendRules: Record<string, SendRule> = {
         }),
         send: async (session, part) => {
             if (session.platform !== 'onebot') {
-                if (session.platform.includes('qq')) {
-                    const el = part.elements[part.elements.length - 1]
-                    const file = String(el.attrs['chatluna_file_url'] ?? '').trim()
-                    if (file.length < 1) {
-                        logger.warn('file send skipped: missing file')
-                        return []
-                    }
-
-                    logger.info(
-                        `file send start: qq platform=${session.platform} direct=${session.isDirect}`
+                if (session.platform === 'qq') {
+                    logger.warn(
+                        `file send skipped: qq platform is disabled platform=${session.platform}`
                     )
-
-                    const bot = session.bot as QQBot<Context>
-                    const data: {
-                        file_type: 4
-                        srv_send_msg: true
-                        url?: string
-                        file_data?: string
-                    } = {
-                        file_type: 4,
-                        srv_send_msg: true,
-                        url: file
-                    }
-                    const capture = /^data:([\w/.+-]+);base64,(.*)$/.exec(file)
-                    if (capture?.[2]) {
-                        data.file_data = capture[2]
-                    } else if (
-                        file.startsWith('http://') ||
-                        file.startsWith('https://')
-                    ) {
-                        const resp = await fetch(file)
-                        if (!resp.ok) {
-                            throw new Error(`qq file fetch failed: ${resp.status}`)
-                        }
-
-                        const buf = Buffer.from(await resp.arrayBuffer())
-                        data.file_data = buf.toString('base64')
-                    } else if (file.startsWith('file://')) {
-                        const buf = await readFile(fileURLToPath(file))
-                        data.file_data = buf.toString('base64')
-                    } else {
-                        const buf = await readFile(file)
-                        data.file_data = buf.toString('base64')
-                    }
-
-                    if (!session.isDirect) {
-                        logger.warn('qq file send skipped: group is not supported')
-                        const result = await session.send(h.text(file))
-                        return Array.isArray(result)
-                            ? result.map((id) => String(id))
-                            : [String(result)]
-                    }
-
-                    const resp = (await bot.internal.sendFilePrivate(
-                        session.userId,
-                        data
-                    )) as {
-                        id?: string
-                    }
-                    const id = String(resp.id ?? '').trim()
-                    if (id.length < 1) {
-                        throw new Error('qq file message did not return id')
-                    }
-
-                    logger.info(
-                        `file send success: qq platform=${session.platform} direct=${session.isDirect} id=${id}`
-                    )
-
-                    return [id]
+                    return []
                 }
 
                 for (const el of part.elements) {
