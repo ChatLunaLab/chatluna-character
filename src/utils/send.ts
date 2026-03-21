@@ -53,17 +53,6 @@ const sendRules: Record<string, SendRule> = {
                     : [String(result)]
             }
 
-            const ids: string[] = []
-            const quote = part.elements[0]
-            if (part.elements.length > 1 && quote.type === 'quote') {
-                const result = await session.send([quote])
-                if (Array.isArray(result)) {
-                    ids.push(...result.map((id) => String(id)))
-                } else {
-                    ids.push(String(result))
-                }
-            }
-
             const el = part.elements[part.elements.length - 1]
             const file = String(el.attrs['chatluna_file_url'] ?? '').trim()
             const name = String(el.attrs['name'] ?? '').trim()
@@ -71,7 +60,7 @@ const sendRules: Record<string, SendRule> = {
                 logger.warn(
                     `file send skipped: missing ${file.length < 1 ? 'file' : 'name'}`
                 )
-                return ids
+                return []
             }
 
             const bot = session.bot as OneBotBot<Context>
@@ -99,7 +88,7 @@ const sendRules: Record<string, SendRule> = {
                 logger.info(
                     `file send success: private user=${session.userId} name=${name} fileId=${fileId}`
                 )
-                return ids
+                return []
             }
 
             logger.info(`file send start: group group=${session.guildId} name=${name}`)
@@ -122,7 +111,7 @@ const sendRules: Record<string, SendRule> = {
             logger.info(
                 `file send success: group group=${session.guildId} name=${name} fileId=${fileId}`
             )
-            return ids
+            return []
         }
     }
 }
