@@ -12,6 +12,18 @@ import { Config } from '..'
 import { Message, MessageImage } from '../types'
 import { logger } from './logger'
 
+function escapeXml(text: string, attr: boolean = false) {
+    const escaped = text
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+    if (attr) {
+        return escaped.replaceAll('"', '&quot;')
+    }
+
+    return escaped
+}
+
 export function formatTimestamp(timestamp: number | Date): string {
     const date = timestamp instanceof Date ? timestamp : new Date(timestamp)
     return date.toLocaleString('en-US', {
@@ -44,7 +56,7 @@ function formatMessageString(message: Message, enableMessageId: boolean) {
     }
 
     if (message.quote) {
-        xmlMessage += ` quote="${formatMessageString(message.quote, enableMessageId).replaceAll('&', '&amp;').replaceAll('"', '&quot;')}"`
+        xmlMessage += ` quote="${escapeXml(formatMessageString(message.quote, enableMessageId), true)}"`
     }
 
     xmlMessage += `>${message.content}</message>`
@@ -273,15 +285,8 @@ export function mapElementToString(
                 element.attrs['name'] ??
                 element.attrs['filename'] ??
                 'file'
-            const escapedName = String(name)
-                .replaceAll('&', '&amp;')
-                .replaceAll('"', '&quot;')
-                .replaceAll('<', '&lt;')
-                .replaceAll('>', '&gt;')
-            const escapedUrl = String(url)
-                .replaceAll('&', '&amp;')
-                .replaceAll('<', '&lt;')
-                .replaceAll('>', '&gt;')
+            const escapedName = escapeXml(String(name), true)
+            const escapedUrl = escapeXml(String(url))
 
             filteredBuffer.push(`<file name="${escapedName}">${escapedUrl}</file>`)
         } else if (element.type === 'video' || element.type === 'audio') {

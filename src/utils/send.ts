@@ -20,6 +20,42 @@ interface SendRule {
     send?: (session: Session, part: SendPart) => Promise<string[]>
 }
 
+interface OneBotUploadResponse {
+    status?: string
+    wording?: string
+    message?: string
+    retcode?: number | string
+    file_id?: string
+    data?: {
+        file_id?: string
+    }
+}
+
+function getUploadFileId(data: OneBotUploadResponse, action: string) {
+    if (data.status && data.status !== 'ok') {
+        let msg = 'unknown error'
+        if (data.wording) {
+            msg = data.wording
+        } else if (data.message) {
+            msg = data.message
+        } else if (data.retcode != null) {
+            msg = String(data.retcode)
+        }
+
+        throw new Error(
+            `${action} failed: ${msg}`
+        )
+    }
+
+    const raw = data.file_id || data.data?.file_id || ''
+    const id = String(raw).trim()
+    if (id.length < 1) {
+        throw new Error(`${action} did not return file_id`)
+    }
+
+    return id
+}
+
 const sendRules: Record<string, SendRule> = {
     'markdown-qq': {
         split: (_elements, idx, start) => ({
@@ -79,24 +115,13 @@ const sendRules: Record<string, SendRule> = {
                 logger.info(
                     `file send start: private user=${session.userId} name=${name}`
                 )
-                const data: any = await bot.internal._request('upload_private_file', {
-                    user_id: Number(session.userId),
-                    file,
-                    name
-                })
-
-                if (data?.status && data.status !== 'ok') {
-                    throw new Error(
-                        `upload_private_file failed: ${data?.wording ?? data?.message ?? data?.retcode ?? 'unknown error'}`
-                    )
-                }
-
-                const fileId = String(
-                    data?.file_id ?? data?.data?.file_id ?? ''
-                ).trim()
-                if (fileId.length < 1) {
-                    throw new Error('upload_private_file did not return file_id')
-                }
+                const data =
+                    (await bot.internal._request('upload_private_file', {
+                        user_id: Number(session.userId),
+                        file,
+                        name
+                    })) as OneBotUploadResponse
+                const fileId = getUploadFileId(data, 'upload_private_file')
                 logger.info(
                     `file send success: private user=${session.userId} name=${name} fileId=${fileId}`
                 )
@@ -105,24 +130,13 @@ const sendRules: Record<string, SendRule> = {
 
             logger.info(`file send start: group group=${session.guildId} name=${name}`)
 
-            const data: any = await bot.internal._request('upload_group_file', {
-                group_id: Number(session.guildId),
-                file,
-                name
-            })
-
-            if (data?.status && data.status !== 'ok') {
-                throw new Error(
-                    `upload_group_file failed: ${data?.wording ?? data?.message ?? data?.retcode ?? 'unknown error'}`
-                )
-            }
-
-            const fileId = String(
-                data?.file_id ?? data?.data?.file_id ?? ''
-            ).trim()
-            if (fileId.length < 1) {
-                throw new Error('upload_group_file did not return file_id')
-            }
+            const data =
+                (await bot.internal._request('upload_group_file', {
+                    group_id: Number(session.guildId),
+                    file,
+                    name
+                })) as OneBotUploadResponse
+            const fileId = getUploadFileId(data, 'upload_group_file')
             logger.info(
                 `file send success: group group=${session.guildId} name=${name} fileId=${fileId}`
             )
