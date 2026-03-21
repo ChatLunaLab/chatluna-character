@@ -69,8 +69,7 @@ const sendRules: Record<string, SendRule> = {
             const name = String(el.attrs['name'] ?? '').trim()
             if (file.length < 1 || name.length < 1) {
                 logger.warn(
-                    'file send skipped: file or name is empty attrs=' +
-                        JSON.stringify(el.attrs)
+                    `file send skipped: missing ${file.length < 1 ? 'file' : 'name'}`
                 )
                 return []
             }
