@@ -19,15 +19,12 @@ const sendRules: Record<string, SendRule> = {
         send: async (session, part) => {
             if (session.platform !== 'qq' || !session.isDirect) {
                 const result = await session.send(part.elements)
-                return Array.isArray(result)
-                    ? result.map((id) => String(id))
-                    : [String(result)]
+                return result
             }
 
-            const { user } = session.event
             const result = await (
                 session.bot as QQBot<Context>
-            ).internal.sendPrivateMessage(user.id, {
+            ).internal.sendPrivateMessage(session.event.user.id, {
                 msg_type: 2,
                 msg_seq: 1,
                 msg_id: session.messageId,
@@ -36,7 +33,7 @@ const sendRules: Record<string, SendRule> = {
                 }
             })
 
-            return [String(result.id)]
+            return [result.id]
         }
     },
     file: {
@@ -49,14 +46,14 @@ const sendRules: Record<string, SendRule> = {
             end: idx + 1
         }),
         send: async (session, part) => {
-            if (session.platform !== 'onebot') {
-                if (session.platform === 'qq') {
-                    logger.warn(
-                        `file send skipped: qq platform is disabled platform=${session.platform}`
-                    )
-                    return []
-                }
+            if (session.platform === 'qq') {
+                logger.warn(
+                    `file send skipped: qq platform is disabled platform=${session.platform}`
+                )
+                return []
+            }
 
+            if (session.platform !== 'onebot') {
                 for (const el of part.elements) {
                     if (el.type !== 'file') {
                         continue
@@ -64,15 +61,12 @@ const sendRules: Record<string, SendRule> = {
 
                     el.attrs['src'] = el.attrs['chatluna_file_url']
                 }
-                const result = await session.send(part.elements)
-                return Array.isArray(result)
-                    ? result.map((id) => String(id))
-                    : [String(result)]
+                return await session.send(part.elements)
             }
 
             const el = part.elements[part.elements.length - 1]
-            const file = String(el.attrs['chatluna_file_url'] ?? '').trim()
-            const name = String(el.attrs['name'] ?? '').trim()
+            const file = String(el.attrs['chatluna_file_url'] ?? '')
+            const name = String(el.attrs['name'] ?? '')
             if (file.length < 1 || name.length < 1) {
                 logger.warn(
                     `file send skipped: missing ${file.length < 1 ? 'file' : 'name'}`
@@ -81,52 +75,41 @@ const sendRules: Record<string, SendRule> = {
             }
 
             const bot = session.bot as OneBotBot<Context>
-            if (session.isDirect) {
-                logger.info(
-                    `file send start: private user=${session.userId} name=${name}`
-                )
-                const data =
-                    (await bot.internal._request('upload_private_file', {
-                        user_id: Number(session.userId),
-                        file,
-                        name
-                    })) as OneBotUploadResponse
-                if (data.status !== 'ok') {
-                    const msg = data.wording || data.message || 'unknown error'
-                    throw new Error(`upload_private_file failed: ${msg}`)
-                }
 
-                const fileId = String(
-                    data.data?.file_id || data.file_id || ''
-                ).trim()
-                if (fileId.length < 1) {
-                    throw new Error('upload_private_file did not return file_id')
-                }
-                logger.info(
-                    `file send success: private user=${session.userId} name=${name} fileId=${fileId}`
-                )
-                return []
-            }
+            const action = session.isDirect
+                ? 'upload_private_file'
+                : 'upload_group_file'
+            const target = session.isDirect
+                ? `private user=${session.userId}`
+                : `group group=${session.guildId}`
 
-            logger.info(`file send start: group group=${session.guildId} name=${name}`)
-
-            const data =
-                (await bot.internal._request('upload_group_file', {
-                    group_id: Number(session.guildId),
-                    file,
-                    name
-                })) as OneBotUploadResponse
+            const data = (await bot.internal._request(
+                action,
+                session.isDirect
+                    ? {
+                          user_id: Number(session.userId),
+                          file,
+                          name
+                      }
+                    : {
+                          group_id: Number(session.guildId),
+                          file,
+                          name
+                      }
+            )) as OneBotUploadResponse
             if (data.status !== 'ok') {
                 const msg = data.wording || data.message || 'unknown error'
-                throw new Error(`upload_group_file failed: ${msg}`)
+                throw new Error(`${action} failed: ${msg}`)
             }
 
-            const fileId = String(data.data?.file_id || data.file_id || '').trim()
+            const fileId = String(
+                data.data?.file_id ?? data.file_id ?? ''
+            ).trim()
             if (fileId.length < 1) {
-                throw new Error('upload_group_file did not return file_id')
+                throw new Error(`${action} did not return file_id`)
             }
             logger.info(
-                `file send success: group group=${session.guildId} name=${name} fileId=${fileId}`
+                `file send success: ${target} name=${name} fileId=${fileId}`
             )
             return []
         }
