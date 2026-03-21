@@ -68,11 +68,9 @@ const sendRules: Record<string, SendRule> = {
                     const capture = /^data:([\w/.+-]+);base64,(.*)$/.exec(file)
                     if (capture?.[2]) {
                         data.file_data = capture[2]
-                    } else if (await bot.ctx.http.isLocal(file)) {
+                    } else {
                         const local = await bot.ctx.http.file(file)
                         data.file_data = Buffer.from(local.data).toString('base64')
-                    } else {
-                        data.url = file
                     }
 
                     if (session.isDirect) {
