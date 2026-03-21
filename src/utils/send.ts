@@ -1,4 +1,5 @@
 import type { QQBot } from '@koishijs/plugin-adapter-qq'
+import OneBotBot from 'koishi-plugin-adapter-onebot'
 
 import { Context, h, Session } from 'koishi'
 import { logger } from './logger'
@@ -17,30 +18,6 @@ interface SendSplit {
 interface SendRule {
     split: (elements: h[], idx: number, start: number) => SendSplit
     send?: (session: Session, part: SendPart) => Promise<string[]>
-}
-
-async function callOnebotApi(
-    internal: any,
-    action: string,
-    params: Record<string, any>
-) {
-    if (typeof internal._get === 'function') {
-        return await internal._get(action, params)
-    }
-
-    if (typeof internal.request === 'function') {
-        return await internal.request(action, params)
-    }
-
-    if (typeof internal.callAction === 'function') {
-        return await internal.callAction(action, params)
-    }
-
-    if (typeof internal.sendAction === 'function') {
-        return await internal.sendAction(action, params)
-    }
-
-    throw new Error(`OneBot internal API does not support action: ${action}`)
 }
 
 const sendRules: Record<string, SendRule> = {
@@ -98,12 +75,12 @@ const sendRules: Record<string, SendRule> = {
                 return []
             }
 
-            const internal = (session.bot as any).internal
+            const bot = session.bot as OneBotBot<Context>
             if (session.isDirect) {
                 logger.info(
                     `file send start: private user=${session.userId} name=${name}`
                 )
-                const data = await callOnebotApi(internal, 'upload_private_file', {
+                const data: any = await bot.internal._request('upload_private_file', {
                     user_id: Number(session.userId),
                     file,
                     name
@@ -129,7 +106,7 @@ const sendRules: Record<string, SendRule> = {
 
             logger.info(`file send start: group group=${session.guildId} name=${name}`)
 
-            const data = await callOnebotApi(internal, 'upload_group_file', {
+            const data: any = await bot.internal._request('upload_group_file', {
                 group_id: Number(session.guildId),
                 file,
                 name
