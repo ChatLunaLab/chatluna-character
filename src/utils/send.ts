@@ -40,9 +40,12 @@ const sendRules: Record<string, SendRule> = {
         }
     },
     file: {
-        split: (_elements, idx, start) => ({
+        split: (elements, idx, start) => ({
             type: 'file',
-            start: idx > start ? idx - 1 : idx,
+            start:
+                idx > start && elements[idx - 1]?.type === 'quote'
+                    ? idx - 1
+                    : idx,
             end: idx + 1
         }),
         send: async (session, part) => {
