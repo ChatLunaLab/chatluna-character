@@ -263,28 +263,32 @@ export function mapElementToString(
             filteredBuffer.push(
                 `<face name='${element.attrs.name}'>${element.attrs.id}</face>`
             )
-        } else if (
-            element.type === 'file' ||
-            element.type === 'video' ||
-            element.type === 'audio'
-        ) {
+        } else if (element.type === 'file') {
             const url = element.attrs['chatluna_file_url']
             if (!url) {
                 continue
             }
-            let fallbackName = 'file'
-            if (element.type === 'video') {
-                fallbackName = 'video'
-            } else if (element.type === 'audio') {
-                fallbackName = 'audio'
+            const name =
+                element.attrs['file'] ??
+                element.attrs['name'] ??
+                element.attrs['filename'] ??
+                'file'
+
+            filteredBuffer.push(`<file name="${name}">${url}</file>`)
+        } else if (element.type === 'video' || element.type === 'audio') {
+            const url = element.attrs['chatluna_file_url']
+            if (!url) {
+                continue
             }
+
+            const fallbackName = element.type === 'audio' ? 'audio' : 'video'
             const name =
                 element.attrs['file'] ??
                 element.attrs['name'] ??
                 element.attrs['filename'] ??
                 fallbackName
 
-            const marker = element.type === 'audio' ? 'voice' : element.type
+            const marker = element.type === 'audio' ? 'voice' : 'video'
             filteredBuffer.push(`[${marker}:${name}:${url}]`)
         } else if (isForwardMessageElement(element)) {
             filteredBuffer.push('[聊天记录]')

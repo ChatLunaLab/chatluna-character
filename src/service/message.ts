@@ -563,22 +563,6 @@ export class MessageCollector extends Service {
                               quotedElements,
                               config.model
                           )
-
-                          for (const element of quotedElements) {
-                              if (
-                                  element.type === 'file' ||
-                                  element.type === 'video' ||
-                                  element.type === 'audio'
-                              ) {
-                                  element.attrs.chatluna_file_url ??=
-                                      element.attrs.src ?? element.attrs.url
-                              }
-
-                              if (element.type === 'img') {
-                                  element.attrs.imageUrl ??=
-                                      element.attrs.src ?? element.attrs.url
-                              }
-                          }
                       }
 
                       return mapElementToString(

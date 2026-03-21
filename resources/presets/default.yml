@@ -44,6 +44,9 @@
 #   - 配置说明：
 #     - 若使用 Gemini，可以启用 enableImageReadTool、enableFileReadTool
 #     - 若使用不支持图像输入的模型（如 DeepSeek），可以启用 enableContextImageDescription、enableImageReadTool，并在图像描述服务设置中配置一个支持图像输入的模型以生成图像描述
+# - chatluna-agent（可选，用于进行文件处理、使用子Agent节约时间和token开销等用途）
+#   - 插件用途：提供丰富的Agent相关能力（Skill、子Agent、沙盒……）
+#   - 配置说明：此插件暂未达到稳定可用状态，不推荐使用
 # - emojiluna
 #   - 插件用途：提供表情包发送功能，建议自行准备一张“拒绝”类型的表情包
 #   - 配置说明：
@@ -59,7 +62,7 @@
 # - 如果使用私聊，可复制一份本预设并删改部分信息
 #   - 如果随机发送消息的间隔设定为 0，将会启用发言等待功能，建议删去预设中的 next_reply 相关内容避免冲突
 # - 确保各种涉及工具的内容已经配置妥当、Bot 拥有相关权限
-# - 若没有安装对应的插件或是无管理员权限、不是官方 Bot 而无法发送 Markdown 消息等，请自行根据情况删改预设中的描述！尤其是表情包、Markdown 消息相关！
+# - 若没有安装对应的插件或是无管理员权限、不是官方 Bot 而无法发送 Markdown 消息等，请自行根据情况删改预设中的描述！如：表情包、Markdown 消息、文件消息等！
 # - <think> 部分的示例内容可以在 Bot 运行一段时间后挑一些看起来比较好的思考内容放进去
 # - 如果你在使用官方 Bot 进行私聊（目前伪装插件对于官方 Bot 仅支持私聊），请开启Koishi插件 inspect，并向 Bot 发送 inspect，将其中“用户ID”的值填写至 chatluna-character 的“应用到的私聊”配置中
 # 
@@ -122,8 +125,8 @@ input: |
     # 提示
     - 并非每一条消息都需要回复
       - 有时候引用你的消息的人只是在跟别人说话
-      - ……
-    - 当一条消息已经过去十分钟以上时，最好不回复，因为已经错过最佳时机
+      - 当你因为各种原因延迟回复了上一轮中的消息（具体见消息发送时间和当前时间），又在本轮看到了别人在当时留下的催促，请忽视
+      - 当一条消息已经过去十分钟以上时，最好不回复，因为已经错过最佳时机
     - 有时候图片没能附加在你的上下文中，如undefined，请忽视它们，如果有人问你，就说你看不到那些图
     - 请仔细确认发言人ID及其在系统提示中对应的昵称，不要看错人了。若要使用与消息ID有关的功能，请仔细检查、确保你选择了正确的消息ID！
     - 你应当主动判断本次是否需要使用next_reply或是wake_up_reply
@@ -368,6 +371,10 @@ system: |
     - 图片消息：
       <output>
       <message><sticker>https://example.com/image.png</sticker></message>
+      </output>
+    - 文件消息：
+      <output>
+      <message><file name="文件名.ext">https://example.com/file.ext</file></message>
       </output>
     - 引用消息：
       <output>

@@ -1,6 +1,7 @@
 import type { QQBot } from '@koishijs/plugin-adapter-qq'
 
 import { Context, h, Session } from 'koishi'
+import { logger } from './logger'
 
 export interface SendPart {
     type: string
@@ -16,6 +17,30 @@ interface SendSplit {
 interface SendRule {
     split: (elements: h[], idx: number, start: number) => SendSplit
     send?: (session: Session, part: SendPart) => Promise<string[]>
+}
+
+async function callOnebotApi(
+    internal: any,
+    action: string,
+    params: Record<string, any>
+) {
+    if (typeof internal._get === 'function') {
+        return await internal._get(action, params)
+    }
+
+    if (typeof internal.request === 'function') {
+        return await internal.request(action, params)
+    }
+
+    if (typeof internal.callAction === 'function') {
+        return await internal.callAction(action, params)
+    }
+
+    if (typeof internal.sendAction === 'function') {
+        return await internal.sendAction(action, params)
+    }
+
+    throw new Error(`OneBot internal API does not support action: ${action}`)
 }
 
 const sendRules: Record<string, SendRule> = {
@@ -46,6 +71,81 @@ const sendRules: Record<string, SendRule> = {
             })
 
             return [String(result.id)]
+        }
+    },
+    file: {
+        split: (_elements, idx) => ({
+            type: 'file',
+            start: idx,
+            end: idx + 1
+        }),
+        send: async (session, part) => {
+            if (session.platform !== 'onebot') {
+                const result = await session.send(part.elements)
+                return Array.isArray(result)
+                    ? result.map((id) => String(id))
+                    : [String(result)]
+            }
+
+            const el = part.elements[0]
+            const file = String(el.attrs['chatluna_file_url'] ?? '').trim()
+            const name = String(el.attrs['name'] ?? '').trim()
+            if (file.length < 1 || name.length < 1) {
+                logger.warn(
+                    'file send skipped: file or name is empty attrs=' +
+                        JSON.stringify(el.attrs)
+                )
+                return []
+            }
+
+            const internal = (session.bot as any).internal
+            if (session.isDirect) {
+                logger.info(
+                    `file send start: private user=${session.userId} name=${name}`
+                )
+                const data = await callOnebotApi(internal, 'upload_private_file', {
+                    user_id: Number(session.userId),
+                    file,
+                    name
+                })
+
+                if (data?.status && data.status !== 'ok') {
+                    throw new Error(
+                        `upload_private_file failed: ${data?.wording ?? data?.message ?? data?.retcode ?? 'unknown error'}`
+                    )
+                }
+
+                const fileId =
+                    String(data?.file_id ?? data?.data?.file_id ?? '').trim() ||
+                    file
+                logger.info(
+                    `file send success: private user=${session.userId} name=${name} fileId=${fileId}`
+                )
+                return [fileId]
+            }
+
+            logger.info(
+                `file send start: group group=${session.guildId} name=${name} file=${file}`
+            )
+
+            const data = await callOnebotApi(internal, 'upload_group_file', {
+                group_id: Number(session.guildId),
+                file,
+                name
+            })
+
+            if (data?.status && data.status !== 'ok') {
+                throw new Error(
+                    `upload_group_file failed: ${data?.wording ?? data?.message ?? data?.retcode ?? 'unknown error'}`
+                )
+            }
+
+            const fileId =
+                String(data?.file_id ?? data?.data?.file_id ?? '').trim() || file
+            logger.info(
+                `file send success: group group=${session.guildId} name=${name} fileId=${fileId}`
+            )
+            return [fileId]
         }
     }
 }

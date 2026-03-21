@@ -116,5 +116,32 @@ export function createResponseElementRenders(
         }
     }
 
+    renders.file = {
+        parse: createMatch,
+        render: (match) => [h('file', match.extra ?? {}, [h.text(match.content)])],
+        process: (el) => {
+            const url = getElementText(el.children).trim()
+            if (url.length < 1) {
+                logger.warn(
+                    'file 标签缺少 URL，已跳过。attrs=' + JSON.stringify(el.attrs)
+                )
+                return []
+            }
+
+            const name = String(el.attrs.name ?? '').trim()
+            if (name.length < 1) {
+                logger.warn(
+                    'file 标签缺少 name 属性，已跳过。attrs=' +
+                        JSON.stringify(el.attrs)
+                )
+                return []
+            }
+
+            const file = h('file', { name })
+            file.attrs['chatluna_file_url'] = url
+            return [file]
+        }
+    }
+
     return renders
 }

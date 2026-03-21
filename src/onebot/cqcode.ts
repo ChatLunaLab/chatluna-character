@@ -78,28 +78,31 @@ export function parseCQCode(source: string) {
                 elements.push(h('quote', { id: data.id }))
                 break
             case 'record':
-                elements.push(
-                    h('audio', {
-                        name: data.file,
-                        chatluna_file_url: data.url ?? data.file
+                {
+                    const audio = h('audio', {
+                        name: data.file
                     })
-                )
+                    audio.attrs['chatluna_file_url'] = data.url ?? data.file
+                    elements.push(audio)
+                }
                 break
             case 'video':
-                elements.push(
-                    h('video', {
-                        name: data.file,
-                        chatluna_file_url: data.url ?? data.file
+                {
+                    const video = h('video', {
+                        name: data.file
                     })
-                )
+                    video.attrs['chatluna_file_url'] = data.url ?? data.file
+                    elements.push(video)
+                }
                 break
             case 'file':
-                elements.push(
-                    h('file', {
-                        name: data.name ?? data.file,
-                        chatluna_file_url: data.url ?? data.file
+                {
+                    const file = h('file', {
+                        name: data.name ?? data.file
                     })
-                )
+                    file.attrs['chatluna_file_url'] = data.url ?? data.file
+                    elements.push(file)
+                }
                 break
             default:
                 elements.push(h(type, data))
