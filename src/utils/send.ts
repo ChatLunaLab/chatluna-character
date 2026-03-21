@@ -9,44 +9,6 @@ export interface SendPart {
     elements: h[]
 }
 
-interface SendSplit {
-    type: string
-    start: number
-    end: number
-}
-
-interface SendRule {
-    split: (elements: h[], idx: number, start: number) => SendSplit
-    send?: (session: Session, part: SendPart) => Promise<string[]>
-}
-
-interface OneBotUploadResponse {
-    status: 'ok' | 'failed'
-    retcode: number
-    data?: {
-        file_id?: string
-    }
-    message: string
-    wording: string
-    stream?: string
-    file_id?: string
-}
-
-function getUploadFileId(data: OneBotUploadResponse, action: string) {
-    if (data.status !== 'ok') {
-        const msg = data.wording || data.message || 'unknown error'
-        throw new Error(`${action} failed: ${msg}`)
-    }
-
-    const raw = data.data?.file_id || data.file_id || ''
-    const id = String(raw).trim()
-    if (id.length < 1) {
-        throw new Error(`${action} did not return file_id`)
-    }
-
-    return id
-}
-
 const sendRules: Record<string, SendRule> = {
     'markdown-qq': {
         split: (_elements, idx, start) => ({
@@ -112,7 +74,17 @@ const sendRules: Record<string, SendRule> = {
                         file,
                         name
                     })) as OneBotUploadResponse
-                const fileId = getUploadFileId(data, 'upload_private_file')
+                if (data.status !== 'ok') {
+                    const msg = data.wording || data.message || 'unknown error'
+                    throw new Error(`upload_private_file failed: ${msg}`)
+                }
+
+                const fileId = String(
+                    data.data?.file_id || data.file_id || ''
+                ).trim()
+                if (fileId.length < 1) {
+                    throw new Error('upload_private_file did not return file_id')
+                }
                 logger.info(
                     `file send success: private user=${session.userId} name=${name} fileId=${fileId}`
                 )
@@ -127,7 +99,15 @@ const sendRules: Record<string, SendRule> = {
                     file,
                     name
                 })) as OneBotUploadResponse
-            const fileId = getUploadFileId(data, 'upload_group_file')
+            if (data.status !== 'ok') {
+                const msg = data.wording || data.message || 'unknown error'
+                throw new Error(`upload_group_file failed: ${msg}`)
+            }
+
+            const fileId = String(data.data?.file_id || data.file_id || '').trim()
+            if (fileId.length < 1) {
+                throw new Error('upload_group_file did not return file_id')
+            }
             logger.info(
                 `file send success: group group=${session.guildId} name=${name} fileId=${fileId}`
             )
@@ -192,4 +172,27 @@ export async function sendElements(session: Session, elements: h[]) {
     }
 
     return ids
+}
+
+interface SendSplit {
+    type: string
+    start: number
+    end: number
+}
+
+interface SendRule {
+    split: (elements: h[], idx: number, start: number) => SendSplit
+    send?: (session: Session, part: SendPart) => Promise<string[]>
+}
+
+interface OneBotUploadResponse {
+    status: 'ok' | 'failed'
+    retcode: number
+    data?: {
+        file_id?: string
+    }
+    message: string
+    wording: string
+    stream?: string
+    file_id?: string
 }
