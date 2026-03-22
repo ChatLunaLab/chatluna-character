@@ -9,8 +9,7 @@ import { computed, ComputedRef } from 'koishi-plugin-chatluna'
 import {
     AgentStep,
     createAgentExecutor,
-    createToolsRef,
-    ToolMask
+    createToolsRef
 } from 'koishi-plugin-chatluna/llm-core/agent'
 import {
     ChatLunaChatPrompt,
@@ -226,36 +225,9 @@ export async function createChatLunaChain(
                     room: null
                 }))
 
-            let nextMask = mask
-            const sendFileTool = ctx.chatluna.platform.getTool('send_file')
-            if (
-                sendFileTool?.meta?.source === 'extension' &&
-                sendFileTool.meta?.group === 'plugin-common'
-            ) {
-                if (!nextMask || nextMask.mode === 'all') {
-                    nextMask = {
-                        mode: 'deny',
-                        allow: [],
-                        deny: ['send_file']
-                    }
-                } else if (nextMask.mode === 'allow') {
-                    nextMask = {
-                        mode: 'allow',
-                        allow: nextMask.allow.filter((name) => name !== 'send_file'),
-                        deny: []
-                    }
-                } else if (!nextMask.deny.includes('send_file')) {
-                    nextMask = {
-                        mode: 'deny',
-                        allow: [],
-                        deny: [...nextMask.deny, 'send_file']
-                    }
-                }
-            }
+            toolsRef.update(session, copyOfMessages, mask)
 
-            toolsRef.update(session, copyOfMessages, nextMask)
-
-            return nextMask as ToolMask | undefined
+            return mask
         }
 
         async function* stream(
