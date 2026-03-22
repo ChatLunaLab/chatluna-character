@@ -179,7 +179,16 @@ export async function createChatLunaChain(
     const embeddingsRef = await createEmbeddingsModel(ctx)
     const toolListRef = ctx.chatluna.platform.getTools()
     const toolsListRef = computed(() =>
-        toolListRef.value.map((tool) => ctx.chatluna.platform.getTool(tool))
+        toolListRef.value
+            .map((tool) => ctx.chatluna.platform.getTool(tool))
+            .filter(
+                (tool) =>
+                    !(
+                        tool.name === 'send_file' &&
+                        tool.meta?.source === 'extension' &&
+                        tool.meta?.group === 'plugin-common'
+                    )
+            )
     )
 
     const toolsRef = createToolsRef({
