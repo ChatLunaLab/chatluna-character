@@ -9,7 +9,8 @@ import { computed, ComputedRef } from 'koishi-plugin-chatluna'
 import {
     AgentStep,
     createAgentExecutor,
-    createToolsRef
+    createToolsRef,
+    ToolMask
 } from 'koishi-plugin-chatluna/llm-core/agent'
 import {
     ChatLunaChatPrompt,
@@ -179,16 +180,7 @@ export async function createChatLunaChain(
     const embeddingsRef = await createEmbeddingsModel(ctx)
     const toolListRef = ctx.chatluna.platform.getTools()
     const toolsListRef = computed(() =>
-        toolListRef.value
-            .map((tool) => ctx.chatluna.platform.getTool(tool))
-            .filter(
-                (tool) =>
-                    !(
-                        tool.name === 'send_file' &&
-                        tool.meta?.source === 'extension' &&
-                        tool.meta?.group === 'plugin-common'
-                    )
-            )
+        toolListRef.value.map((tool) => ctx.chatluna.platform.getTool(tool))
     )
 
     const toolsRef = createToolsRef({
@@ -234,9 +226,36 @@ export async function createChatLunaChain(
                     room: null
                 }))
 
-            toolsRef.update(session, copyOfMessages, mask)
+            let nextMask = mask
+            const sendFileTool = ctx.chatluna.platform.getTool('send_file')
+            if (
+                sendFileTool?.meta?.source === 'extension' &&
+                sendFileTool.meta?.group === 'plugin-common'
+            ) {
+                if (!nextMask || nextMask.mode === 'all') {
+                    nextMask = {
+                        mode: 'deny',
+                        allow: [],
+                        deny: ['send_file']
+                    }
+                } else if (nextMask.mode === 'allow') {
+                    nextMask = {
+                        mode: 'allow',
+                        allow: nextMask.allow.filter((name) => name !== 'send_file'),
+                        deny: []
+                    }
+                } else if (!nextMask.deny.includes('send_file')) {
+                    nextMask = {
+                        mode: 'deny',
+                        allow: [],
+                        deny: [...nextMask.deny, 'send_file']
+                    }
+                }
+            }
 
-            return mask
+            toolsRef.update(session, copyOfMessages, nextMask)
+
+            return nextMask as ToolMask | undefined
         }
 
         async function* stream(
