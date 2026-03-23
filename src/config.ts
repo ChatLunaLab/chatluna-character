@@ -11,6 +11,7 @@ export interface Config extends ChatLunaPlugin.Config {
     model: string
     maxMessages?: number
 
+    enableFixedIntervalTrigger: boolean
     messageInterval: number
     messageWaitTime?: number
     idleTrigger: {
@@ -23,6 +24,7 @@ export interface Config extends ChatLunaPlugin.Config {
     }
     messageActivityScoreLowerLimit: number
     messageActivityScoreUpperLimit: number
+    enableActivityScoreTrigger: boolean
 
     maxTokens: number
     privateWhitelistMode: boolean
@@ -304,20 +306,25 @@ const globalPrivateConfigObject = Schema.intersect([
             .description('使用的伪装预设')
             .default('CHARACTER'),
         model: Schema.dynamic('model').default('').description('使用的模型'),
+        enableFixedIntervalTrigger: Schema.boolean()
+            .default(true)
+            .description(
+                '是否启用固定间隔触发功能（开启后将在收到指定条数的消息后自动触发一次）'
+            ),
         messageInterval: Schema.number()
             .default(0)
             .min(0)
             .role('slider')
             .max(10000)
             .description(
-                '随机发送消息的间隔（条）：私聊需要更低，若设为 0 间隔，则每条消息都会触发请求'
+                '固定间隔触发的消息间隔（条）：累计到该条数后自动触发一次；设为 0 时每一条消息都会触发请求'
             ),
         messageWaitTime: Schema.number()
             .default(10)
             .min(0)
             .max(300)
             .description(
-                '发言等待时长（秒）：在“随机发送消息的间隔”为 0 时生效，当 Bot 收到一消息后，连续 N 秒没有再收到新消息，才会触发请求，改善偶尔向 Bot 连续发送多条消息时的体验'
+                '发言等待时长（秒）：仅在固定间隔触发开启且消息间隔为 0 时生效，当收到一条消息后，连续 N 秒没有新消息才触发一次，用于应对用户需要一次性发送多条消息的场景'
             )
     })
         .description('基础')
@@ -343,20 +350,25 @@ const privateConfigObject = Schema.intersect([
         model: Schema.dynamic('model')
             .default('无')
             .description('使用的模型（选择“无”后将使用全局私聊配置）'),
+        enableFixedIntervalTrigger: Schema.boolean()
+            .default(true)
+            .description(
+                '是否启用固定间隔触发功能（开启后将在收到指定条数的消息后自动触发一次）'
+            ),
         messageInterval: Schema.number()
             .default(0)
             .min(0)
             .role('slider')
             .max(10000)
             .description(
-                '随机发送消息的间隔（条）：私聊需要更低，若设为 0 间隔，则每条消息都会触发请求'
+                '固定间隔触发的消息间隔（条）：累计到该条数后自动触发一次；设为 0 时每一条消息都会触发请求'
             ),
         messageWaitTime: Schema.number()
             .default(10)
             .min(0)
             .max(300)
             .description(
-                '发言等待时长（秒）：在“随机发送消息的间隔”为 0 时生效，当 Bot 收到一消息后，连续 N 秒没有再收到新消息，才会触发请求，改善偶尔向 Bot 连续发送多条消息时的体验'
+                '发言等待时长（秒）：仅在固定间隔触发开启且消息间隔为 0 时生效，当收到一条消息后，连续 N 秒没有新消息才触发一次，用于应对用户需要一次性发送多条消息的场景'
             )
     })
         .description('基础')
@@ -379,13 +391,18 @@ const globalGroupConfigObject = Schema.intersect([
             .description('使用的伪装预设')
             .default('CHARACTER'),
         model: Schema.dynamic('model').default('').description('使用的模型'),
+        enableFixedIntervalTrigger: Schema.boolean()
+            .default(true)
+            .description(
+                '是否启用固定间隔触发功能（开启后将在收到指定条数的消息后自动触发一次）'
+            ),
         messageInterval: Schema.number()
             .default(20)
             .min(0)
             .role('slider')
             .max(10000)
             .description(
-                '随机发送消息的间隔（条）：群越活跃，这个值就越需要调高，否则将一直被高强度触发'
+                '固定间隔触发的消息间隔（条）：累计到该条数后自动触发一次；设为 0 时每一条消息都会触发请求'
             )
     })
         .description('基础')
@@ -394,6 +411,11 @@ const globalGroupConfigObject = Schema.intersect([
     commonModelConfig,
     groupChatBehaviorConfig,
     Schema.object({
+        enableActivityScoreTrigger: Schema.boolean()
+            .default(true)
+            .description(
+                '是否启用活跃度触发（开启后会统计近期消息节奏，并在分数达到阈值时自动触发）'
+            ),
         messageActivityScoreLowerLimit: Schema.number()
             .default(0.85)
             .min(0)
@@ -401,7 +423,7 @@ const globalGroupConfigObject = Schema.intersect([
             .role('slider')
             .step(0.00001)
             .description(
-                '消息活跃度分数的下限阈值。初始状态或长时间无人回复后，会使用此阈值判断是否响应。'
+                '活跃度触发阈值下限：初始状态或长时间未收到消息后，阈值会回到该值；活跃度分数达到该阈值时可触发一次回复。'
             ),
         messageActivityScoreUpperLimit: Schema.number()
             .default(0.85)
@@ -410,10 +432,7 @@ const globalGroupConfigObject = Schema.intersect([
             .role('slider')
             .step(0.00001)
             .description(
-                '消息活跃度分数的上限阈值。每次响应后，判断阈值会向此值靠拢。' +
-                    '若下限 < 上限（如 0.1 → 0.9），则会越聊越少；' +
-                    '若下限 > 上限（如 0.9 → 0.2），则会越聊越多。' +
-                    '十分钟内无人回复时，会自动回退到下限。'
+                '活跃度触发阈值上限：每次触发后，阈值会向该值靠拢。上限＞下限时，上限越高，连续触发越难（越聊越少）；上限＜下限时，上限越低，连续触发越容易（越聊越多）；上下限相等时，阈值保持不变。'
             )
     })
         .description('活跃度')
@@ -436,13 +455,18 @@ const guildConfigObject = Schema.intersect([
         model: Schema.dynamic('model')
             .default('无')
             .description('使用的模型（选择“无”后将使用全局群聊配置）'),
+        enableFixedIntervalTrigger: Schema.boolean()
+            .default(true)
+            .description(
+                '是否启用固定间隔触发功能（开启后将在收到指定条数的消息后自动触发一次）'
+            ),
         messageInterval: Schema.number()
             .default(20)
             .min(0)
             .role('slider')
             .max(10000)
             .description(
-                '随机发送消息的间隔（条）：群越活跃，这个值就越需要调高，否则将一直被高强度触发'
+                '固定间隔触发的消息间隔（条）：累计到该条数后自动触发一次；设为 0 时每一条消息都会触发请求'
             )
     })
         .description('基础')
@@ -451,6 +475,11 @@ const guildConfigObject = Schema.intersect([
     commonModelConfig,
     groupChatBehaviorConfig,
     Schema.object({
+        enableActivityScoreTrigger: Schema.boolean()
+            .default(true)
+            .description(
+                '是否启用活跃度触发（开启后会统计近期消息节奏，并在分数达到阈值时自动触发）'
+            ),
         messageActivityScoreLowerLimit: Schema.number()
             .default(0.85)
             .min(0)
@@ -458,7 +487,7 @@ const guildConfigObject = Schema.intersect([
             .role('slider')
             .step(0.00001)
             .description(
-                '消息活跃度分数的下限阈值。初始状态或长时间无人回复后，会使用此阈值判断是否响应。'
+                '活跃度触发阈值下限：初始状态或长时间未收到消息后，阈值会回到该值；活跃度分数达到该阈值时可触发一次回复。'
             ),
         messageActivityScoreUpperLimit: Schema.number()
             .default(0.85)
@@ -467,10 +496,7 @@ const guildConfigObject = Schema.intersect([
             .role('slider')
             .step(0.00001)
             .description(
-                '消息活跃度分数的上限阈值。每次响应后，判断阈值会向此值靠拢。' +
-                    '若下限 < 上限（如 0.1 → 0.9），则会越聊越少；' +
-                    '若下限 > 上限（如 0.9 → 0.2），则会越聊越多。' +
-                    '十分钟内无人回复时，会自动回退到下限。'
+                '活跃度触发阈值上限：每次触发后，阈值会向该值靠拢。上限＞下限时，上限越高，连续触发越难（越聊越少）；上限＜下限时，上限越低，连续触发越容易（越聊越多）；上下限相等时，阈值保持不变。'
             )
     })
         .description('活跃度')

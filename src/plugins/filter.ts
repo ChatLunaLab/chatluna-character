@@ -27,7 +27,7 @@ function markTriggered(
     )
     info.lastResponseTime = now
 
-    if (!isDirect) {
+    if (!isDirect && config.enableActivityScoreTrigger !== false) {
         const lowerLimit = config.messageActivityScoreLowerLimit
         const upperLimit = config.messageActivityScoreUpperLimit
         const step = (upperLimit - lowerLimit) * 0.1
@@ -232,7 +232,10 @@ function updateIncomingMessageStats(
             info.messageTimestamps.shift()
         }
 
-        if (now - info.lastUserMessageTime >= THRESHOLD_RESET_TIME) {
+        if (
+            copyOfConfig.enableActivityScoreTrigger !== false &&
+            now - info.lastUserMessageTime >= THRESHOLD_RESET_TIME
+        ) {
             info.currentActivityThreshold =
                 copyOfConfig.messageActivityScoreLowerLimit
         }
@@ -298,13 +301,30 @@ function resolveImmediateTriggerReason(
     info: GroupInfo,
     copyOfConfig: Config,
     isDirectTrigger: boolean,
-    isAppel: boolean
+    isAppel: boolean,
+    isDirect: boolean
 ) {
-    if (copyOfConfig.messageInterval === 0) {
+    if (copyOfConfig.enableFixedIntervalTrigger === false) {
         if (isDirectTrigger) {
             return isAppel ? 'Mention or quote trigger' : 'Nickname trigger'
         }
+
         return undefined
+    }
+
+    if (copyOfConfig.messageInterval === 0) {
+        if (isDirect) {
+            if (isDirectTrigger) {
+                return isAppel ? 'Mention or quote trigger' : 'Nickname trigger'
+            }
+            return undefined
+        }
+
+        if (isDirectTrigger) {
+            return isAppel ? 'Mention or quote trigger' : 'Nickname trigger'
+        }
+
+        return 'Message interval reached (0 mode)'
     }
 
     if (info.messageCount >= copyOfConfig.messageInterval) {
@@ -324,6 +344,10 @@ function findZeroIntervalTriggerReason(
     now: number,
     isDirect: boolean
 ) {
+    if (copyOfConfig.enableFixedIntervalTrigger === false) {
+        return undefined
+    }
+
     if (!isDirect) {
         return undefined
     }
@@ -355,7 +379,8 @@ function resolveTriggerReason(
         info,
         copyOfConfig,
         isDirectTrigger,
-        isAppel
+        isAppel,
+        isDirect
     )
     if (immediateTriggerReason) {
         return immediateTriggerReason
@@ -365,7 +390,10 @@ function resolveTriggerReason(
         return undefined
     }
 
-    if (info.lastActivityScore >= info.currentActivityThreshold) {
+    if (
+        copyOfConfig.enableActivityScoreTrigger !== false &&
+        info.lastActivityScore >= info.currentActivityThreshold
+    ) {
         return `Activity score trigger (${info.lastActivityScore.toFixed(3)} >= ${info.currentActivityThreshold.toFixed(3)})`
     }
 
@@ -374,7 +402,9 @@ function resolveTriggerReason(
 
 function hasPendingSchedulerWork(info: GroupInfo, copyOfConfig: Config) {
     return (
-        (copyOfConfig.messageInterval === 0 && info.messageCount > 0) ||
+        (copyOfConfig.enableFixedIntervalTrigger !== false &&
+            copyOfConfig.messageInterval === 0 &&
+            info.messageCount > 0) ||
         copyOfConfig.idleTrigger.enableLongWaitTrigger ||
         (info.pendingNextReplies?.length ?? 0) > 0 ||
         (info.pendingWakeUpReplies?.length ?? 0) > 0
@@ -770,12 +800,14 @@ export async function apply(ctx: Context, config: Config) {
                     plainTextContent.includes(value)
                 ))
 
+        const shouldShowActivityScore =
+            !isPrivate && copyOfConfig.enableActivityScoreTrigger !== false
         logger.debug(
-            isPrivate
-                ? `messageCount: ${info.messageCount}. content: ${JSON.stringify(
+            shouldShowActivityScore
+                ? `messageCount: ${info.messageCount}, activityScore: ${info.lastActivityScore.toFixed(3)}. content: ${JSON.stringify(
                       Object.assign({}, message, { images: undefined })
                   )}`
-                : `messageCount: ${info.messageCount}, activityScore: ${info.lastActivityScore.toFixed(3)}. content: ${JSON.stringify(
+                : `messageCount: ${info.messageCount}. content: ${JSON.stringify(
                       Object.assign({}, message, { images: undefined })
                   )}`
         )
@@ -784,7 +816,8 @@ export async function apply(ctx: Context, config: Config) {
             info,
             copyOfConfig,
             isDirectTrigger,
-            isAppel
+            isAppel,
+            session.isDirect
         )
 
         if (immediateTriggerReason) {
@@ -799,7 +832,7 @@ export async function apply(ctx: Context, config: Config) {
             return
         }
 
-        if (!session.isDirect) {
+        if (!session.isDirect && copyOfConfig.enableActivityScoreTrigger !== false) {
             const activity = calculateActivityScore(
                 info.messageTimestamps,
                 info.lastResponseTime,

@@ -967,6 +967,8 @@ export async function apply(ctx: Context, config: Config) {
             const wakeUpReplies: ReturnType<typeof extractWakeUpReplies> = []
             let latestStatus = temp.status
             let sentAny = false
+            let onlyEmptyReply = false
+            let hasNonEmptyReply = false
 
             for await (const chunk of streamModelResponse(
                 ctx,
@@ -979,6 +981,15 @@ export async function apply(ctx: Context, config: Config) {
                 signal
             )) {
                 latestStatus = chunk.parsedResponse.status ?? latestStatus
+
+                const isEmptyReply =
+                    chunk.parsedResponse.elements.length < 1 &&
+                    chunk.parsedResponse.rawMessage.trim().length < 1
+                if (isEmptyReply) {
+                    onlyEmptyReply = true
+                } else {
+                    hasNonEmptyReply = true
+                }
 
                 const sendResult = await handleParsedResponseChunk(
                     session,
@@ -1010,6 +1021,9 @@ export async function apply(ctx: Context, config: Config) {
             }
 
             if (!sentAny) {
+                if (onlyEmptyReply && !hasNonEmptyReply) {
+                    return
+                }
                 service.mute(session, copyOfConfig.muteTime * 1000)
                 return
             }

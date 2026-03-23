@@ -38,6 +38,7 @@ export interface GuildConfig {
     preset: string
     remark: string
     enableMessageId: boolean
+    enableFixedIntervalTrigger: boolean
     messageInterval: number
     idleTrigger: {
         enableLongWaitTrigger: boolean
@@ -49,6 +50,7 @@ export interface GuildConfig {
     }
     messageActivityScoreLowerLimit: number
     messageActivityScoreUpperLimit: number
+    enableActivityScoreTrigger: boolean
     maxTokens: number
     isNickname: boolean
     isNickNameWithContent: boolean
@@ -73,7 +75,10 @@ export interface GuildConfig {
 
 export type PrivateConfig = Omit<
     GuildConfig,
-    'messageActivityScoreLowerLimit' | 'messageActivityScoreUpperLimit' | 'isAt'
+    | 'messageActivityScoreLowerLimit'
+    | 'messageActivityScoreUpperLimit'
+    | 'enableActivityScoreTrigger'
+    | 'isAt'
 > & {
     messageWaitTime: number
 }
