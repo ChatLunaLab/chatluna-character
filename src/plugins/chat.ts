@@ -994,7 +994,9 @@ export async function apply(ctx: Context, config: Config) {
                 nextReplyReasons.push(
                     ...extractNextReplyReasons(chunk.responseContent)
                 )
-                wakeUpReplies.push(...extractWakeUpReplies(chunk.responseContent))
+                wakeUpReplies.push(
+                    ...extractWakeUpReplies(chunk.responseContent)
+                )
 
                 const sendResult = await handleParsedResponseChunk(
                     session,
