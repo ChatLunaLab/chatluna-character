@@ -222,7 +222,8 @@ export async function createChatLunaChain(
                 toolMask ??
                 (await ctx.chatluna.resolveToolMask({
                     session,
-                    room: null
+                    room: null,
+                    source: 'character'
                 }))
 
             toolsRef.update(session, copyOfMessages, mask)
