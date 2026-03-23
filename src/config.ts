@@ -317,7 +317,7 @@ const globalPrivateConfigObject = Schema.intersect([
             .role('slider')
             .max(10000)
             .description(
-                '固定间隔触发的消息间隔（条）：累计到该条数后自动触发一次；设为 0 时每一条消息都会触发请求'
+                '固定间隔触发的消息间隔（条）：累计到该条数后自动触发一次；私聊设为 0 时将改为使用“发言等待时长（秒）”进行聚合触发'
             ),
         messageWaitTime: Schema.number()
             .default(10)
@@ -361,7 +361,7 @@ const privateConfigObject = Schema.intersect([
             .role('slider')
             .max(10000)
             .description(
-                '固定间隔触发的消息间隔（条）：累计到该条数后自动触发一次；设为 0 时每一条消息都会触发请求'
+                '固定间隔触发的消息间隔（条）：累计到该条数后自动触发一次；私聊设为 0 时将改为使用“发言等待时长（秒）”进行聚合触发'
             ),
         messageWaitTime: Schema.number()
             .default(10)

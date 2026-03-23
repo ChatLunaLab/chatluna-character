@@ -832,7 +832,10 @@ export async function apply(ctx: Context, config: Config) {
             return
         }
 
-        if (!session.isDirect && copyOfConfig.enableActivityScoreTrigger !== false) {
+        if (
+            !session.isDirect &&
+            copyOfConfig.enableActivityScoreTrigger !== false
+        ) {
             const activity = calculateActivityScore(
                 info.messageTimestamps,
                 info.lastResponseTime,

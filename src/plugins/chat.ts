@@ -967,8 +967,8 @@ export async function apply(ctx: Context, config: Config) {
             const wakeUpReplies: ReturnType<typeof extractWakeUpReplies> = []
             let latestStatus = temp.status
             let sentAny = false
-            let onlyEmptyReply = false
-            let hasNonEmptyReply = false
+            let hasEmptyReplies = false
+            let hasNonEmptyReplies = false
 
             for await (const chunk of streamModelResponse(
                 ctx,
@@ -986,10 +986,15 @@ export async function apply(ctx: Context, config: Config) {
                     chunk.parsedResponse.elements.length < 1 &&
                     chunk.parsedResponse.rawMessage.trim().length < 1
                 if (isEmptyReply) {
-                    onlyEmptyReply = true
+                    hasEmptyReplies = true
                 } else {
-                    hasNonEmptyReply = true
+                    hasNonEmptyReplies = true
                 }
+
+                nextReplyReasons.push(
+                    ...extractNextReplyReasons(chunk.responseContent)
+                )
+                wakeUpReplies.push(...extractWakeUpReplies(chunk.responseContent))
 
                 const sendResult = await handleParsedResponseChunk(
                     session,
@@ -1008,12 +1013,6 @@ export async function apply(ctx: Context, config: Config) {
                     session,
                     sendResult.sentMessages
                 )
-                nextReplyReasons.push(
-                    ...extractNextReplyReasons(chunk.responseContent)
-                )
-                wakeUpReplies.push(
-                    ...extractWakeUpReplies(chunk.responseContent)
-                )
 
                 if (sendResult.breakSay) {
                     break
@@ -1021,7 +1020,15 @@ export async function apply(ctx: Context, config: Config) {
             }
 
             if (!sentAny) {
-                if (onlyEmptyReply && !hasNonEmptyReply) {
+                if (hasEmptyReplies && !hasNonEmptyReplies) {
+                    await registerResponseTriggers(
+                        ctx,
+                        session,
+                        key,
+                        copyOfConfig,
+                        nextReplyReasons,
+                        wakeUpReplies
+                    )
                     return
                 }
                 service.mute(session, copyOfConfig.muteTime * 1000)
