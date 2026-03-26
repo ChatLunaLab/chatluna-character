@@ -236,6 +236,13 @@ export async function createChatLunaChain(
             options?: ChatLunaRunnableConfig
         ): AsyncGenerator<ChatLunaChainStreamChunk> {
             const toolMask = await updateToolsIfNeeded(input, options)
+            const nextInput = {
+                ...input,
+                configurable: {
+                    ...(input.configurable ?? {}),
+                    ...(toolMask != null ? { toolMask } : {})
+                }
+            }
 
             const chunkQueue = createAsyncChunkQueue<ChatLunaChainStreamChunk>()
             let buf = ''
@@ -312,7 +319,7 @@ export async function createChatLunaChain(
             const producer = (async () => {
                 try {
                     const response = (await executorRef.value.invoke(
-                        input,
+                        nextInput,
                         streamOptions
                     )) as AgentExecutorStreamChunk
 
@@ -346,6 +353,13 @@ export async function createChatLunaChain(
         return {
             async invoke(input, options) {
                 const toolMask = await updateToolsIfNeeded(input, options)
+                const nextInput = {
+                    ...input,
+                    configurable: {
+                        ...(input.configurable ?? {}),
+                        ...(toolMask != null ? { toolMask } : {})
+                    }
+                }
 
                 const nextOptions: ChatLunaRunnableConfig = {
                     ...(options ?? {}),
@@ -356,7 +370,7 @@ export async function createChatLunaChain(
                 }
 
                 const response = (await executorRef.value.invoke(
-                    input,
+                    nextInput,
                     nextOptions
                 )) as AgentExecutorStreamChunk
 
