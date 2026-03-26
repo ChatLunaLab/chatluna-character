@@ -239,7 +239,8 @@ export async function createChatLunaChain(
             const nextInput = {
                 ...input,
                 configurable: {
-                    ...(input.configurable ?? {})
+                    ...(input.configurable ?? {}),
+                    ...(toolMask != null ? { toolMask } : {})
                 }
             }
 
@@ -355,7 +356,8 @@ export async function createChatLunaChain(
                 const nextInput = {
                     ...input,
                     configurable: {
-                        ...(input.configurable ?? {})
+                        ...(input.configurable ?? {}),
+                        ...(toolMask != null ? { toolMask } : {})
                     }
                 }
 
