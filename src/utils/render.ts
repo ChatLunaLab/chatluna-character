@@ -124,8 +124,10 @@ export function createResponseElementRenders(
         process: (el) => {
             const url = getElementText(el.children).trim()
             const name = String(el.attrs.name || 'file')
+            const file = h('file', { name, src: url })
+            file.attrs['chatluna_file_url'] = url
 
-            return [h('file', { name, src: url, chatluna_file_url: url })]
+            return [file]
         }
     }
 
