@@ -11,7 +11,7 @@
 #     - 在“协议选择”中启用“NapCat OneBot”或“LLBot OneBot”中你使用的协议
 #     - 在“图片描述服务”中选择一个多模态模型
 #     - 在 chatluna 插件的“对话行为选项”中启用：attachForwardMsgIdToContext
-#     - 在 chatluna-character 插件的“对话设置”中启用：enableMessageId
+#     - 在 chatluna-character 插件对应会话配置的“上下文”中启用：enableMessageId
 # - chatluna-plugin-common
 #   - 插件用途：提供一些通用的工具，包括本预设中用到的群管工具
 #   - 配置说明：
@@ -60,7 +60,7 @@
 # 重要提醒：
 # - 请在使用前自行修改其中的“CHARACTER”、“MASTER”、“USER”、“记！得！改！这！里！的！ID！”、“example.com”、“大部分群友的id及详细信息”等内容为你自己的
 # - 如果使用私聊，可复制一份本预设并删改部分信息
-#   - 如果随机发送消息的间隔设定为 0，将会启用发言等待功能，建议删去预设中的 next_reply 相关内容避免冲突
+#   - 如果固定间隔触发中的消息间隔设定为 0，将会启用发言等待功能，建议删去预设中的 next_reply 相关内容避免冲突
 # - 确保各种涉及工具的内容已经配置妥当、Bot 拥有相关权限
 # - 若没有安装对应的插件或是无管理员权限、不是官方 Bot 而无法发送 Markdown 消息等，请自行根据情况删改预设中的描述！如：表情包、Markdown 消息、文件消息等！
 # - <think> 部分的示例内容可以在 Bot 运行一段时间后挑一些看起来比较好的思考内容放进去
