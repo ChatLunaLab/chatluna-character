@@ -40,6 +40,7 @@ export interface GuildConfig {
     enableMessageId: boolean
     enableFixedIntervalTrigger: boolean
     messageInterval: number
+    messageWaitTime: number
     idleTrigger: {
         enableLongWaitTrigger: boolean
         idleTriggerIntervalMinutes: number
@@ -131,6 +132,7 @@ export interface PresetTemplate {
 
 export interface GroupInfo {
     messageCount: number
+    messageWait?: boolean
     messageTimestamps: number[]
     messageTimestampsByUserId?: Record<string, number>
     lastActivityScore: number

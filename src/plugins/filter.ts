@@ -21,13 +21,21 @@ function markTriggered(
     isDirect = false
 ) {
     info.messageCount = 0
+    info.messageWait = false
     info.lastActivityScore = Math.max(
         0,
         info.lastActivityScore - COOLDOWN_PENALTY
     )
     info.lastResponseTime = now
 
-    if (!isDirect && config.enableActivityScoreTrigger !== false) {
+    if (
+        !isDirect &&
+        config.enableActivityScoreTrigger !== false &&
+        !(
+            config.enableFixedIntervalTrigger !== false &&
+            config.messageInterval === 0
+        )
+    ) {
         const lowerLimit = config.messageActivityScoreLowerLimit
         const upperLimit = config.messageActivityScoreUpperLimit
         const step = (upperLimit - lowerLimit) * 0.1
@@ -226,7 +234,13 @@ function updateIncomingMessageStats(
     now: number,
     isDirect: boolean
 ) {
-    if (!isDirect) {
+    if (
+        !isDirect &&
+        !(
+            copyOfConfig.enableFixedIntervalTrigger !== false &&
+            copyOfConfig.messageInterval === 0
+        )
+    ) {
         info.messageTimestamps.push(now)
         if (info.messageTimestamps.length > WINDOW_SIZE) {
             info.messageTimestamps.shift()
@@ -301,8 +315,8 @@ function resolveImmediateTriggerReason(
     info: GroupInfo,
     copyOfConfig: Config,
     isDirectTrigger: boolean,
-    isAppel: boolean,
-    isDirect: boolean
+    isOnlyDirectTrigger: boolean,
+    isAppel: boolean
 ) {
     if (copyOfConfig.enableFixedIntervalTrigger === false) {
         if (isDirectTrigger) {
@@ -313,18 +327,7 @@ function resolveImmediateTriggerReason(
     }
 
     if (copyOfConfig.messageInterval === 0) {
-        if (isDirect) {
-            if (isDirectTrigger) {
-                return isAppel ? 'Mention or quote trigger' : 'Nickname trigger'
-            }
-            return undefined
-        }
-
-        if (isDirectTrigger) {
-            return isAppel ? 'Mention or quote trigger' : 'Nickname trigger'
-        }
-
-        return 'Message interval reached (0 mode)'
+        return undefined
     }
 
     if (info.messageCount >= copyOfConfig.messageInterval) {
@@ -332,27 +335,25 @@ function resolveImmediateTriggerReason(
     }
 
     if (isDirectTrigger) {
+        if (isOnlyDirectTrigger || info.messageWait) {
+            return undefined
+        }
         return isAppel ? 'Mention or quote trigger' : 'Nickname trigger'
     }
 
     return undefined
 }
 
-function findZeroIntervalTriggerReason(
+function findMessageWaitTriggerReason(
     info: GroupInfo,
     copyOfConfig: Config,
-    now: number,
-    isDirect: boolean
+    now: number
 ) {
     if (copyOfConfig.enableFixedIntervalTrigger === false) {
         return undefined
     }
 
-    if (!isDirect) {
-        return undefined
-    }
-
-    if (copyOfConfig.messageInterval !== 0) {
+    if (!info.messageWait) {
         return undefined
     }
 
@@ -372,6 +373,7 @@ function resolveTriggerReason(
     info: GroupInfo,
     copyOfConfig: Config,
     isDirectTrigger: boolean,
+    isOnlyDirectTrigger: boolean,
     isAppel: boolean,
     isDirect: boolean
 ) {
@@ -379,8 +381,8 @@ function resolveTriggerReason(
         info,
         copyOfConfig,
         isDirectTrigger,
-        isAppel,
-        isDirect
+        isOnlyDirectTrigger,
+        isAppel
     )
     if (immediateTriggerReason) {
         return immediateTriggerReason
@@ -391,6 +393,10 @@ function resolveTriggerReason(
     }
 
     if (
+        !(
+            copyOfConfig.enableFixedIntervalTrigger !== false &&
+            copyOfConfig.messageInterval === 0
+        ) &&
         copyOfConfig.enableActivityScoreTrigger !== false &&
         info.lastActivityScore >= info.currentActivityThreshold
     ) {
@@ -403,7 +409,7 @@ function resolveTriggerReason(
 function hasPendingSchedulerWork(info: GroupInfo, copyOfConfig: Config) {
     return (
         (copyOfConfig.enableFixedIntervalTrigger !== false &&
-            copyOfConfig.messageInterval === 0 &&
+            info.messageWait &&
             info.messageCount > 0) ||
         copyOfConfig.idleTrigger.enableLongWaitTrigger ||
         (info.pendingNextReplies?.length ?? 0) > 0 ||
@@ -513,12 +519,7 @@ async function processSchedulerTickForGuild(
             ? `Triggered by wake_up_reply: ${triggeredWakeUpReply.naturalReason}`
             : undefined) ??
         findNextReplyTriggerReason(info) ??
-        findZeroIntervalTriggerReason(
-            info,
-            copyOfConfig,
-            now,
-            session.isDirect
-        ) ??
+        findMessageWaitTriggerReason(info, copyOfConfig, now) ??
         findIdleTriggerReason(info, copyOfConfig, now)
 
     if (!triggerReason) {
@@ -800,8 +801,24 @@ export async function apply(ctx: Context, config: Config) {
                     plainTextContent.includes(value)
                 ))
 
+        const isOnlyDirectTrigger =
+            isDirectTrigger && session.stripped.content.trim().length < 1
+
+        if (copyOfConfig.enableFixedIntervalTrigger === false) {
+            info.messageWait = false
+        } else if (copyOfConfig.messageInterval === 0) {
+            info.messageWait = true
+        } else {
+            info.messageWait = info.messageWait || isOnlyDirectTrigger
+        }
+
         const shouldShowActivityScore =
-            !isPrivate && copyOfConfig.enableActivityScoreTrigger !== false
+            !isPrivate &&
+            copyOfConfig.enableActivityScoreTrigger !== false &&
+            !(
+                copyOfConfig.enableFixedIntervalTrigger !== false &&
+                copyOfConfig.messageInterval === 0
+            )
         logger.debug(
             shouldShowActivityScore
                 ? `messageCount: ${info.messageCount}, activityScore: ${info.lastActivityScore.toFixed(3)}. content: ${JSON.stringify(
@@ -816,8 +833,8 @@ export async function apply(ctx: Context, config: Config) {
             info,
             copyOfConfig,
             isDirectTrigger,
-            isAppel,
-            session.isDirect
+            isOnlyDirectTrigger,
+            isAppel
         )
 
         if (immediateTriggerReason) {
@@ -834,7 +851,11 @@ export async function apply(ctx: Context, config: Config) {
 
         if (
             !session.isDirect &&
-            copyOfConfig.enableActivityScoreTrigger !== false
+            copyOfConfig.enableActivityScoreTrigger !== false &&
+            !(
+                copyOfConfig.enableFixedIntervalTrigger !== false &&
+                copyOfConfig.messageInterval === 0
+            )
         ) {
             const activity = calculateActivityScore(
                 info.messageTimestamps,
@@ -851,6 +872,7 @@ export async function apply(ctx: Context, config: Config) {
             info,
             copyOfConfig,
             isDirectTrigger,
+            isOnlyDirectTrigger,
             isAppel,
             session.isDirect
         )

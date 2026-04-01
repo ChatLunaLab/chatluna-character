@@ -324,6 +324,7 @@ function createStoredSession(bot: Bot, temp: WakeUpReplyRecord) {
 export function createDefaultGroupInfo(config: Config, now: number): GroupInfo {
     return {
         messageCount: 0,
+        messageWait: false,
         messageTimestamps: [],
         messageTimestampsByUserId: {},
         lastActivityScore: 0,
