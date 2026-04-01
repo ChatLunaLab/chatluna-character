@@ -330,6 +330,10 @@ function resolveImmediateTriggerReason(
         return undefined
     }
 
+    if (info.messageWait) {
+        return undefined
+    }
+
     if (info.messageCount >= copyOfConfig.messageInterval) {
         return `Message interval reached (${info.messageCount}/${copyOfConfig.messageInterval})`
     }
@@ -389,6 +393,10 @@ function resolveTriggerReason(
     }
 
     if (isDirect) {
+        return undefined
+    }
+
+    if (info.messageWait) {
         return undefined
     }
 
@@ -801,8 +809,12 @@ export async function apply(ctx: Context, config: Config) {
                     plainTextContent.includes(value)
                 ))
 
+        const plainText = plainTextContent.trim()
+
         const isOnlyDirectTrigger =
-            isDirectTrigger && session.stripped.content.trim().length < 1
+            (isAppel && session.stripped.content.trim().length < 1) ||
+            (copyOfConfig.isNickname &&
+                currentPreset.nick_name.some((value) => plainText === value))
 
         if (copyOfConfig.enableFixedIntervalTrigger === false) {
             info.messageWait = false
