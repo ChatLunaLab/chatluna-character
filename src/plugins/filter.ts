@@ -813,7 +813,7 @@ export async function apply(ctx: Context, config: Config) {
 
         const isOnlyDirectTrigger =
             (isAppel && session.stripped.content.trim().length < 1) ||
-            (copyOfConfig.isNickname &&
+            ((copyOfConfig.isNickname || copyOfConfig.isNickNameWithContent) &&
                 currentPreset.nick_name.some((value) => plainText === value))
 
         if (copyOfConfig.enableFixedIntervalTrigger === false) {
