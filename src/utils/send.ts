@@ -4,6 +4,10 @@ import OneBotBot from 'koishi-plugin-adapter-onebot'
 import { Context, h, Session } from 'koishi'
 import { logger } from './logger'
 
+function isOneBotImageElement(el: h) {
+    return el.type === 'img'
+}
+
 export interface SendPart {
     type: string
     elements: h[]
@@ -113,6 +117,70 @@ const sendRules: Record<string, SendRule> = {
             )
             return []
         }
+    },
+    video: {
+        split: (elements, idx, start) => ({
+            type: 'video',
+            start:
+                idx > start && elements[idx - 1]?.type === 'quote'
+                    ? idx - 1
+                    : idx,
+            end: idx + 1
+        }),
+        send: async (session, part) => {
+            const el = part.elements[part.elements.length - 1]
+            const file = String(el.attrs['chatluna_file_url'] ?? '')
+            if (file.length < 1) {
+                logger.warn('video send skipped: missing file')
+                return []
+            }
+
+            if (session.platform !== 'onebot') {
+                el.attrs['src'] = file
+                const result = await session.send(part.elements)
+                return Array.isArray(result)
+                    ? result.map((id) => String(id))
+                    : [String(result)]
+            }
+
+            const bot = session.bot as OneBotBot<Context>
+            const action = session.isDirect ? 'send_private_msg' : 'send_group_msg'
+            const data = (await bot.internal._request(
+                action,
+                session.isDirect
+                    ? {
+                          user_id: Number(session.userId),
+                          message: [
+                              {
+                                  type: 'video',
+                                  data: { file }
+                              }
+                          ]
+                      }
+                    : {
+                          group_id: Number(session.guildId),
+                          message: [
+                              {
+                                  type: 'video',
+                                  data: { file }
+                              }
+                          ]
+                      }
+            )) as OneBotSendMessageResponse
+            if (data.status !== 'ok') {
+                const msg = data.wording || data.message || 'unknown error'
+                throw new Error(`${action} failed: ${msg}`)
+            }
+
+            const messageId = String(
+                data.data?.message_id ?? data.message_id ?? ''
+            ).trim()
+            if (messageId.length < 1) {
+                throw new Error(`${action} did not return message_id`)
+            }
+
+            return [messageId]
+        }
     }
 }
 
@@ -156,6 +224,108 @@ export async function sendElements(session: Session, elements: h[]) {
     const ids: string[] = []
 
     for (const part of splitSendElements(elements)) {
+        if (
+            session.platform === 'onebot' &&
+            part.type === 'default' &&
+            part.elements.some(isOneBotImageElement)
+        ) {
+            const message: OneBotMessageSegment[] = []
+
+            for (const el of part.elements) {
+                if (el.type === 'quote') {
+                    message.push({
+                        type: 'reply',
+                        data: {
+                            id: String(el.attrs.id ?? '')
+                        }
+                    })
+                    continue
+                }
+
+                if (el.type === 'text') {
+                    message.push({
+                        type: 'text',
+                        data: {
+                            text: String(el.attrs.content ?? '')
+                        }
+                    })
+                    continue
+                }
+
+                if (el.type === 'at') {
+                    message.push({
+                        type: 'at',
+                        data: {
+                            qq: String(el.attrs.id ?? '')
+                        }
+                    })
+                    continue
+                }
+
+                if (el.type === 'face') {
+                    message.push({
+                        type: 'face',
+                        data: {
+                            id: String(el.attrs.id ?? '')
+                        }
+                    })
+                    continue
+                }
+
+                if (el.type === 'img') {
+                    const file = String(
+                        el.attrs.src ??
+                            el.attrs.url ??
+                            el.attrs.imageUrl ??
+                            ''
+                    )
+                    if (file.length < 1) {
+                        continue
+                    }
+
+                    message.push({
+                        type: 'image',
+                        data: {
+                            file,
+                            url: file,
+                            sub_type: el.attrs.sticker ? 1 : 0
+                        }
+                    })
+                }
+            }
+
+            if (message.length < 1) {
+                continue
+            }
+
+            const bot = session.bot as OneBotBot<Context>
+            const action = session.isDirect ? 'send_private_msg' : 'send_group_msg'
+            const data = (await bot.internal._request(
+                action,
+                session.isDirect
+                    ? {
+                          user_id: Number(session.userId),
+                          message
+                      }
+                    : {
+                          group_id: Number(session.guildId),
+                          message
+                      }
+            )) as OneBotSendMessageResponse
+            if (data.status !== 'ok') {
+                const msg = data.wording || data.message || 'unknown error'
+                throw new Error(`${action} failed: ${msg}`)
+            }
+
+            const messageId = String(
+                data.data?.message_id ?? data.message_id ?? ''
+            ).trim()
+            if (messageId.length > 0) {
+                ids.push(messageId)
+            }
+            continue
+        }
+
         const rule = sendRules[part.type]
         if (rule?.send) {
             ids.push(...(await rule.send(session, part)))
@@ -195,4 +365,20 @@ interface OneBotUploadResponse {
     wording: string
     stream?: string
     file_id?: string
+}
+
+interface OneBotSendMessageResponse {
+    status: 'ok' | 'failed'
+    retcode: number
+    data?: {
+        message_id?: number
+    }
+    message: string
+    wording: string
+    message_id?: number
+}
+
+interface OneBotMessageSegment {
+    type: string
+    data: Record<string, string | number>
 }

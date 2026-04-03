@@ -4,6 +4,7 @@ import { ObjectLock } from 'koishi-plugin-chatluna/utils/lock'
 import { Config } from '..'
 import { Preset } from '../preset'
 import {
+    CharacterReplyToolField,
     GroupLock,
     GroupTemp,
     IMAGE_SIZE_CACHE_LIMIT,
@@ -25,6 +26,10 @@ import { VariableStore } from './variable_store'
 
 const MAX_TIMEOUT_MS = 2147483647
 
+function getMessageKey(message: Message) {
+    return `${message.id}\n${message.messageId ?? ''}\n${message.timestamp ?? 0}\n${message.content}`
+}
+
 export class MessageCollector extends Service {
     private _messages: Record<string, Message[]> = {}
 
@@ -39,10 +44,13 @@ export class MessageCollector extends Service {
     private _responseWaiters: Record<
         string,
         {
+            messageKey: string
             resolve: () => void
             reject: (reason?: string) => void
         }[]
     > = {}
+
+    private _consumedPendingMessages: Record<string, Set<string>> = {}
 
     private _imageSizeCache: Record<string, number> = {}
 
@@ -50,6 +58,16 @@ export class MessageCollector extends Service {
 
     private _pendingCooldownTriggers: Record<string, PendingCooldownTrigger> =
         {}
+
+    private _replyToolFields: CharacterReplyToolField[] = []
+
+    private _activePendingMessages: Record<
+        string,
+        {
+            willConsume: boolean
+            append: (message: Message, triggerReason?: string) => void
+        }
+    > = {}
 
     private _cooldownTriggerTimers: Record<
         string,
@@ -97,6 +115,47 @@ export class MessageCollector extends Service {
 
     addFilter(filter: MessageCollectorFilter) {
         this._filters.push(filter)
+    }
+
+    registerReplyToolField(field: CharacterReplyToolField) {
+        this._replyToolFields.push(field)
+
+        return () => {
+            const index = this._replyToolFields.indexOf(field)
+            if (index > -1) {
+                this._replyToolFields.splice(index, 1)
+            }
+        }
+    }
+
+    getReplyToolFields() {
+        return this._replyToolFields
+    }
+
+    startPendingMessages(
+        session: Session,
+        append: (message: Message, triggerReason?: string) => void
+    ) {
+        const key = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
+        this._activePendingMessages[key] = {
+            willConsume: false,
+            append
+        }
+    }
+
+    setPendingMessagesWillConsume(session: Session, willConsume: boolean) {
+        const key = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
+        const state = this._activePendingMessages[key]
+        if (!state) {
+            return
+        }
+
+        state.willConsume = willConsume
+    }
+
+    stopPendingMessages(session: Session) {
+        const key = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
+        delete this._activePendingMessages[key]
     }
 
     mute(session: Session, time: number) {
@@ -183,6 +242,7 @@ export class MessageCollector extends Service {
                 this._responseWaiters[groupId] = []
             }
             this._responseWaiters[groupId].push({
+                messageKey: getMessageKey(message),
                 resolve: () => resolve(true),
                 reject: () => resolve(false)
             })
@@ -210,9 +270,31 @@ export class MessageCollector extends Service {
             lock.responseLock = false
 
             const waiters = this._responseWaiters[groupId]
+            const consumed = this._consumedPendingMessages[groupId]
             if (waiters && waiters.length > 0) {
-                // Cancel all old waiters, only wake up the latest one
-                const latestWaiter = waiters.pop()
+                let latestWaiter:
+                    | {
+                          messageKey: string
+                          resolve: () => void
+                          reject: (reason?: string) => void
+                      }
+                    | undefined
+
+                while (waiters.length > 0) {
+                    const waiter = waiters.pop()
+                    if (!waiter) {
+                        break
+                    }
+
+                    if (consumed?.has(waiter.messageKey)) {
+                        waiter.reject()
+                        continue
+                    }
+
+                    latestWaiter = waiter
+                    break
+                }
+
                 for (const waiter of waiters) {
                     waiter.reject()
                 }
@@ -223,9 +305,23 @@ export class MessageCollector extends Service {
                     latestWaiter.resolve()
                 }
             }
+
+            delete this._consumedPendingMessages[groupId]
         } finally {
             unlock()
         }
+    }
+
+    markConsumedPendingMessages(session: Session, messages: Message[]) {
+        const groupId = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
+        const consumed =
+            this._consumedPendingMessages[groupId] ?? new Set<string>()
+
+        for (const message of messages) {
+            consumed.add(getMessageKey(message))
+        }
+
+        this._consumedPendingMessages[groupId] = consumed
     }
 
     async cancelPendingWaiters(groupId: string) {
@@ -597,6 +693,12 @@ export class MessageCollector extends Service {
             filterExpiredMessages: true,
             processImages: config
         })
+
+        const active = this._activePendingMessages[groupId]
+        if (active) {
+            active.append(message, triggerReason)
+            return true
+        }
 
         if (triggerReason && !this.isMute(session)) {
             const unlock = await this._lockByGroupId(groupId)

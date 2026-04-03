@@ -2,7 +2,8 @@ import { AIMessageChunk, BaseMessage } from '@langchain/core/messages'
 import { RunnableConfig } from '@langchain/core/runnables'
 import { ChatLunaService } from 'koishi-plugin-chatluna/services/chat'
 import { ChatLunaChatPromptFormat } from 'koishi-plugin-chatluna/llm-core/chain/prompt'
-import { Bot, Session } from 'koishi'
+import { Bot, Context, Session } from 'koishi'
+import type { Config } from '.'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type ChatLunaRunnableConfig = RunnableConfig<Record<string, any>>
@@ -19,6 +20,28 @@ export interface Message {
         hash: string
         formatted: string
     }[]
+}
+
+export interface CharacterReplyToolField {
+    name: string
+    schema: Record<string, unknown>
+    isAvailable?: (
+        ctx: Context,
+        session: Session,
+        config: Config | GuildConfig | PrivateConfig
+    ) => boolean
+    invoke?: (
+        ctx: Context,
+        session: Session,
+        value: unknown,
+        config: Config | GuildConfig | PrivateConfig
+    ) => Promise<void> | void
+    render?: (
+        ctx: Context,
+        session: Session,
+        value: unknown,
+        config: Config | GuildConfig | PrivateConfig
+    ) => string | string[] | undefined
 }
 
 export interface GroupTemp {
@@ -156,7 +179,12 @@ export interface ActivityScore {
 export type NextReplyPredicate =
     | { type: 'time'; seconds: number }
     | { type: 'id'; userId: string }
-    | { type: 'time_id'; seconds: number; userId: string }
+    | {
+          type: 'time_id'
+          seconds: number
+          userId: string
+          maxWaitSeconds?: number
+      }
 
 export interface PendingNextReplyConditionGroup {
     predicates: NextReplyPredicate[]
@@ -191,12 +219,20 @@ export interface ChatLunaChain {
 export interface ChatLunaChainStreamChunk {
     message: AIMessageChunk
     phase: 'intermediate' | 'final'
+    toolCalls?: {
+        name: string
+        args: Record<string, unknown>
+    }[]
 }
 
 export interface StreamedModelResponseChunk<TParsed = unknown> {
     responseMessage: BaseMessage
     responseContent: string
     parsedResponse: TParsed
+    toolCalls?: {
+        name: string
+        args: Record<string, unknown>
+    }[]
 }
 
 export interface ChatLunaCharacterPromptTemplate {

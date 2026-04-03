@@ -22,6 +22,7 @@ export { setLogger } from './logger'
 export {
     formatCompletionMessages,
     formatMessage,
+    formatMessageString,
     getImages,
     getNotEmptyString,
     mapElementToString,

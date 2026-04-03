@@ -4,8 +4,9 @@ import {
     BaseMessage,
     HumanMessage
 } from '@langchain/core/messages'
-import { Context } from 'koishi'
-import { computed, ComputedRef } from 'koishi-plugin-chatluna'
+import { StructuredTool } from '@langchain/core/tools'
+import { Context, Session } from 'koishi'
+import { computed, ComputedRef, shallowRef } from 'koishi-plugin-chatluna'
 import {
     AgentStep,
     createAgentExecutor,
@@ -41,14 +42,17 @@ interface AsyncChunkQueue<T> {
 
 function createAgentResponseChunk(
     content: BaseMessage['content'] | undefined
-): AIMessageChunk | undefined {
-    if (content == null) return
+): AIMessageChunk {
+    if (content == null) {
+        return new AIMessageChunk({
+            content: ''
+        })
+    }
 
     const text = getMessageContent(content)
-    if (text.trim().length < 1) return
 
     return new AIMessageChunk({
-        content
+        content: text.trim().length < 1 ? '' : content
     })
 }
 
@@ -150,7 +154,8 @@ function createAsyncChunkQueue<T>(): AsyncChunkQueue<T> {
 
 export async function createChatLunaChain(
     ctx: Context,
-    llmRef: ComputedRef<ChatLunaChatModel>
+    llmRef: ComputedRef<ChatLunaChatModel>,
+    extraTools?: (session: Session) => StructuredTool[]
 ): Promise<ComputedRef<ChatLunaChain>> {
     const logger = ctx.chatluna_character.logger
     const currentPreset = computed(
@@ -186,10 +191,12 @@ export async function createChatLunaChain(
         tools: toolsListRef,
         embeddings: embeddingsRef.value
     })
+    const extraRef = shallowRef<StructuredTool[]>([])
+    const mergedTools = computed(() => toolsRef.tools.value.concat(extraRef.value))
 
     const executorRef = createAgentExecutor({
         llm: llmRef,
-        tools: toolsRef.tools,
+        tools: mergedTools,
         prompt: chatPrompt.value,
         agentMode: 'tool-calling',
         returnIntermediateSteps: false,
@@ -227,6 +234,7 @@ export async function createChatLunaChain(
                 }))
 
             toolsRef.update(session, copyOfMessages, mask)
+            extraRef.value = extraTools ? extraTools(session) : []
 
             return mask
         }
@@ -246,6 +254,7 @@ export async function createChatLunaChain(
 
             const chunkQueue = createAsyncChunkQueue<ChatLunaChainStreamChunk>()
             let buf = ''
+            const toolCalls: ChatLunaChainStreamChunk['toolCalls'] = []
 
             const emitEarlyIntermediate = (action: AgentStep['action']) => {
                 const chunk = createAgentResponseChunk(
@@ -254,13 +263,23 @@ export async function createChatLunaChain(
 
                 buf = ''
 
-                if (chunk == null) {
-                    return
-                }
-
                 chunkQueue.push({
                     message: chunk,
-                    phase: 'intermediate'
+                    phase: 'intermediate',
+                    toolCalls: [
+                        {
+                            name: action.tool,
+                            args:
+                                action.toolInput &&
+                                typeof action.toolInput === 'object' &&
+                                !Array.isArray(action.toolInput)
+                                    ? (action.toolInput as Record<
+                                          string,
+                                          unknown
+                                      >)
+                                    : {}
+                        }
+                    ]
                 })
             }
 
@@ -283,6 +302,18 @@ export async function createChatLunaChain(
                             buf += token
                         },
                         handleAgentAction(action: AgentStep['action']) {
+                            toolCalls.push({
+                                name: action.tool,
+                                args:
+                                    action.toolInput &&
+                                    typeof action.toolInput === 'object' &&
+                                    !Array.isArray(action.toolInput)
+                                        ? (action.toolInput as Record<
+                                              string,
+                                              unknown
+                                          >)
+                                        : {}
+                            })
                             const text = JSON.stringify(
                                 {
                                     tool: action.tool,
@@ -326,12 +357,10 @@ export async function createChatLunaChain(
                     buf = ''
 
                     const chunk = createAgentResponseChunk(response.output)
-                    if (chunk) {
-                        chunkQueue.push({
-                            message: chunk,
-                            phase: 'final'
-                        })
-                    }
+                    chunkQueue.push({
+                        message: chunk,
+                        phase: 'final'
+                    })
 
                     chunkQueue.end()
                 } catch (error) {

@@ -261,10 +261,15 @@ class TextMatchParser {
                 case 'face':
                     currentElements.push(h('face', { id: match.content }))
                     break
-                case 'sticker':
-                    currentElements.push(h('message', [h.image(match.content)]))
+                case 'video':
+                    currentElements.push(h('video', { src: match.content }))
                     break
-                case 'img':
+                case 'sticker':
+                    currentElements.push(
+                        h.image(match.content, { sticker: true })
+                    )
+                    break
+                case 'image':
                     currentElements.push(
                         h.image(match.content, { sticker: false })
                     )
@@ -344,10 +349,10 @@ class TextMatchParser {
                         )
                     )
                     break
-                case 'img':
+                case 'image':
                     result.push(
                         makeMatch(
-                            'img',
+                            'image',
                             el.children?.[0]?.attrs?.content ??
                                 el.attrs?.content
                         )
@@ -368,6 +373,16 @@ class TextMatchParser {
                             'markdown',
                             el.children?.[0]?.attrs?.content ??
                                 el.attrs?.content
+                        )
+                    )
+                    break
+                case 'video':
+                    result.push(
+                        makeMatch(
+                            'video',
+                            el.children?.[0]?.attrs?.content ??
+                                el.attrs?.content,
+                            el.attrs
                         )
                     )
                     break

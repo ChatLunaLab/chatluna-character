@@ -47,6 +47,7 @@ export interface Config extends ChatLunaPlugin.Config {
     markdownRender: boolean
 
     toolCalling: boolean
+    experimentalToolCallReply: boolean
     isForceMute: boolean
     sendStickerProbability: number
     image: boolean
@@ -550,7 +551,12 @@ export const Config = Schema.intersect([
         ).description('启用此插件时，不禁用 ChatLuna 主功能的私聊用户 ID 列表'),
         whiteListDisableChatLuna: Schema.array(Schema.string()).description(
             '启用此插件时，不禁用 ChatLuna 主功能的群聊 ID 列表'
-        )
+        ),
+        experimentalToolCallReply: Schema.boolean()
+            .default(false)
+            .description(
+                '是否启用实验性“工具调用回复”功能（需同时开启“工具调用”，让模型通过工具调用完成状态更新、回复消息等原本依赖 XML 块的操作）'
+            )
     })
         .description('基础配置')
         .collapse(),

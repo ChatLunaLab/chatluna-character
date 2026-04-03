@@ -38,7 +38,7 @@ export function formatTimestamp(timestamp: number | Date): string {
     })
 }
 
-function formatMessageString(message: Message, enableMessageId: boolean) {
+export function formatMessageString(message: Message, enableMessageId: boolean) {
     let xmlMessage = `<message name='${message.name}'`
 
     const id = message.id
@@ -142,12 +142,17 @@ export async function formatCompletionMessages(
     model: ChatLunaChatModel
 ) {
     const maxTokens = config.maxTokens - 600
-    const systemMessage = messages.shift()
+    const systemMessages: BaseMessage[] = []
     let currentTokens = 0
 
-    currentTokens += await model.getNumTokens(
-        getMessageContent(systemMessage.content)
-    )
+    while (messages[0]?.getType() === 'system') {
+        const message = messages.shift()
+        systemMessages.push(message)
+        currentTokens += await model.getNumTokens(
+            getMessageContent(message.content)
+        )
+    }
+
     currentTokens += await model.getNumTokens(
         getMessageContent(humanMessage.content)
     )
@@ -186,7 +191,7 @@ export async function formatCompletionMessages(
 
     logger.debug(`maxTokens: ${maxTokens}, currentTokens: ${currentTokens}`)
 
-    result.unshift(systemMessage)
+    result.unshift(...systemMessages)
 
     return result
 }
@@ -237,6 +242,12 @@ export function mapElementToString(
         } else if (element.type === 'img') {
             const imageHash = element.attrs.imageHash as string | undefined
             const imageUrl = element.attrs.imageUrl as string | undefined
+            const sticker =
+                element.attrs.sticker === true ||
+                element.attrs.subType === 1 ||
+                element.attrs['sub-type'] === 1 ||
+                element.attrs['sub_type'] === 1 ||
+                element.attrs.summary === '[动画表情]'
 
             const matchedImage = images?.find((image) => {
                 if (imageHash && image.hash === imageHash) {
@@ -249,7 +260,11 @@ export function mapElementToString(
             })
 
             if (imageUrl) {
-                filteredBuffer.push(`<sticker>${imageUrl}</sticker>`)
+                filteredBuffer.push(
+                    sticker
+                        ? `<sticker>${imageUrl}</sticker>`
+                        : `<image>${imageUrl}</image>`
+                )
             } else if (matchedImage) {
                 filteredBuffer.push(matchedImage.formatted)
                 usedImages.add(matchedImage.formatted)
@@ -297,15 +312,13 @@ export function mapElementToString(
                 continue
             }
 
-            const fallbackName = element.type === 'audio' ? 'audio' : 'video'
-            const name =
-                element.attrs['file'] ??
-                element.attrs['name'] ??
-                element.attrs['filename'] ??
-                fallbackName
-
             const marker = element.type === 'audio' ? 'voice' : 'video'
-            filteredBuffer.push(`[${marker}:${name}:${url}]`)
+            if (marker === 'voice') {
+                filteredBuffer.push(`<voice>${escapeXml(String(url))}</voice>`)
+                continue
+            }
+
+            filteredBuffer.push(`<video>${escapeXml(String(url))}</video>`)
         } else if (isForwardMessageElement(element)) {
             filteredBuffer.push('[聊天记录]')
         }
@@ -359,7 +372,7 @@ export async function getImages(
             hash = await hashString(url, 8)
         }
 
-        const formatted = hash ? `[image:${hash}]` : `<sticker>${url}</sticker>`
+        const formatted = hash ? `[image:${hash}]` : `<image>${url}</image>`
 
         results.push({ url, hash, formatted })
     }

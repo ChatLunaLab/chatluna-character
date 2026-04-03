@@ -131,5 +131,19 @@ export function createResponseElementRenders(
         }
     }
 
+    renders.video = {
+        parse: createMatch,
+        render: (match) => [
+            h('video', match.extra ?? {}, [h.text(match.content)])
+        ],
+        process: (el) => {
+            const url = getElementText(el.children).trim()
+            const video = h('video', { src: url })
+            video.attrs['chatluna_file_url'] = url
+
+            return [video]
+        }
+    }
+
     return renders
 }

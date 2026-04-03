@@ -9,12 +9,68 @@ import {
 export function extractNextReplyReasons(response: string): string[] {
     const reasons: string[] = []
     const regex = /<next_reply\b([^>]*)\/>/gi
+    const groups = new Map<string, string[]>()
+    let idx = 0
 
     for (const match of response.matchAll(regex)) {
         const attributes = match[1] ?? ''
         const reason = attributes.match(/\breason\s*=\s*['"]([^'"]+)['"]/i)?.[1]
         if (reason?.trim()) {
             reasons.push(reason.trim())
+            continue
+        }
+
+        const type = attributes.match(/\btype\s*=\s*['"]([^'"]+)['"]/i)?.[1]
+        if (!type?.trim()) {
+            continue
+        }
+
+        let token: string | undefined
+
+        if (type === 'message_from_user') {
+            const userId = attributes.match(/\buser_id\s*=\s*['"]([^'"]+)['"]/i)?.[1]
+            if (userId?.trim()) {
+                token = `id_${userId.trim()}`
+            }
+        }
+
+        if (type === 'no_message_from_user') {
+            const seconds = Number.parseInt(
+                attributes.match(/\bseconds\s*=\s*['"]([^'"]+)['"]/i)?.[1] ?? '',
+                10
+            )
+            const userId = attributes.match(/\buser_id\s*=\s*['"]([^'"]+)['"]/i)?.[1]
+            const maxWaitSeconds = Number.parseInt(
+                attributes.match(
+                    /\bmax_wait_seconds\s*=\s*['"]([^'"]+)['"]/i
+                )?.[1] ?? '',
+                10
+            )
+            if (Number.isFinite(seconds) && seconds > 0 && userId?.trim()) {
+                token =
+                    userId.trim() === 'all'
+                        ? `time_${seconds}s`
+                        : Number.isFinite(maxWaitSeconds) && maxWaitSeconds > 0
+                          ? `time_${seconds}s_id_${userId.trim()}_max_${maxWaitSeconds}s`
+                          : `time_${seconds}s_id_${userId.trim()}`
+            }
+        }
+
+        if (!token) {
+            continue
+        }
+
+        const group =
+            attributes.match(/\bgroup\s*=\s*['"]([^'"]+)['"]/i)?.[1]?.trim() ??
+            String(idx++)
+        const current = groups.get(group) ?? []
+        current.push(token)
+        groups.set(group, current)
+    }
+
+    for (const tokens of groups.values()) {
+        if (tokens.length > 0) {
+            reasons.push(tokens.join('&'))
         }
     }
 
@@ -49,6 +105,27 @@ export function extractWakeUpReplies(response: string): WakeUpReplyTag[] {
 export function parseNextReplyToken(token: string): NextReplyPredicate | null {
     const trimmed = token.trim()
     if (!trimmed) return null
+
+    const timeWithIdAndMaxWaitMatch = trimmed.match(
+        /^time_(\d+)s_id_([\w-]+)_max_(\d+)s$/i
+    )
+    if (timeWithIdAndMaxWaitMatch) {
+        const seconds = Number.parseInt(timeWithIdAndMaxWaitMatch[1], 10)
+        const userId = timeWithIdAndMaxWaitMatch[2]
+        const maxWaitSeconds = Number.parseInt(
+            timeWithIdAndMaxWaitMatch[3],
+            10
+        )
+        if (
+            Number.isFinite(seconds) &&
+            seconds > 0 &&
+            userId.length > 0 &&
+            Number.isFinite(maxWaitSeconds) &&
+            maxWaitSeconds > 0
+        ) {
+            return { type: 'time_id', seconds, userId, maxWaitSeconds }
+        }
+    }
 
     const timeWithIdMatch = trimmed.match(/^time_(\d+)s_id_([\w-]+)$/i)
     if (timeWithIdMatch) {
@@ -136,10 +213,16 @@ export function parseNextReplyReason(
             naturalReason: predicates
                 .map((predicate) => {
                     if (predicate.type === 'time_id') {
+                        const limit =
+                            predicate.maxWaitSeconds != null
+                                ? `, or trigger after ${predicate.maxWaitSeconds}s total wait`
+                                : ''
                         return (
-                            `time_${predicate.seconds}s_id_${predicate.userId}: ` +
-                            `no new messages from user ${predicate.userId} ` +
-                            `for ${predicate.seconds}s`
+                            `time_${predicate.seconds}s_id_${predicate.userId}` +
+                            `${predicate.maxWaitSeconds != null ? `_max_${predicate.maxWaitSeconds}s` : ''}: ` +
+                            `after user ${predicate.userId} sends the first new message, ` +
+                            `no more messages from them for ${predicate.seconds}s` +
+                            limit
                         )
                     }
                     if (predicate.type === 'time') {
@@ -170,8 +253,19 @@ export function evaluateNextReplyGroup(
         if (predicate.type === 'time_id') {
             const lastMessageTimeByUserId =
                 info.messageTimestampsByUserId?.[predicate.userId] ?? 0
-            const anchor = Math.max(sentAt, lastMessageTimeByUserId)
-            return now - anchor >= predicate.seconds * 1000
+
+            if (
+                predicate.maxWaitSeconds != null &&
+                now - sentAt >= predicate.maxWaitSeconds * 1000
+            ) {
+                return true
+            }
+
+            if (lastMessageTimeByUserId < sentAt) {
+                return false
+            }
+
+            return now - lastMessageTimeByUserId >= predicate.seconds * 1000
         }
 
         if (predicate.type === 'time') {
