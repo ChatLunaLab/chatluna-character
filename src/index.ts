@@ -6,7 +6,7 @@ import { MessageCollector } from './service/message'
 import { TriggerStore } from './service/trigger'
 import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
-import type { } from '@koishijs/plugin-console'
+import type {} from '@koishijs/plugin-console'
 
 export function apply(ctx: Context, config: Config) {
     const changed = migrateConfig(config)
