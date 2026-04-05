@@ -6,7 +6,7 @@ import { MessageCollector } from './service/message'
 import { TriggerStore } from './service/trigger'
 import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
-import type {} from '@koishijs/plugin-console'
+import type { } from '@koishijs/plugin-console'
 
 export function apply(ctx: Context, config: Config) {
     const changed = migrateConfig(config)
@@ -127,17 +127,11 @@ export const usage = `
 
 请先阅读[**此文档**](https://chatluna.chat/ecosystem/other/character.html)了解使用方式。
 
-### 26.03.09
+### 26.04.05
 
-伪装插件现已支持私聊！更新后开启相关配置即可体验，私聊预设与群聊预设通用，仅需调整少量关于 Bot 所在环境的描述。
+伪装插件新增实验性“工具调用回复”功能，详情请查看文档。
 
-注意：旧版本的预设格式（不支持消息自分割的版本）将会无效，请手动参考文档更新到最新版的预设格式。
-
-### 26.03.13
-
-对配置页面进行了重构，增强了可读性。
-
-可以迁移到新版的参数均已保留，但仍建议自行检查是否有遗漏。
+本次更新也对部分旧的 XML 格式进行了调整（如发送图片/表情包、设置触发器等），请参考最新文档对预设进行修改，避免消息发送异常。
 `
 
 export { Config } from './config'
