@@ -73,7 +73,6 @@ interface NextReplyToolGroup {
     conditions?: unknown
 }
 
-const replyToolFinal = '__character_reply_final__'
 const replyToolProgress = '__character_reply_progress__'
 
 class PendingMessageQueue extends MessageQueue {
@@ -541,7 +540,10 @@ function createReplyTools(
 
             return input.is_final === false
                 ? replyToolProgress
-                : replyToolFinal
+                : {
+                    lc_direct_tool_output: true,
+                    replyEmitted: true
+                }
         }, {
             name: 'character_reply',
             description:
