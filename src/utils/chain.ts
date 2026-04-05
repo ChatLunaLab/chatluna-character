@@ -336,6 +336,18 @@ export async function createChatLunaChain(
                                     result = output.replace(/\\n/g, '\n')
                                 }
                             }
+                            if (
+                                result === '__character_reply_progress__' ||
+                                result === '__character_reply_final__' ||
+                                (
+                                    typeof result === 'object' &&
+                                    result != null &&
+                                    'lc_direct_tool_output' in result &&
+                                    result.lc_direct_tool_output === true
+                                )
+                            ) {
+                                return
+                            }
                             const text =
                                 typeof result === 'string'
                                     ? result
