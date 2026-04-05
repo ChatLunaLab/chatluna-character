@@ -30,13 +30,13 @@ export interface CharacterReplyToolField {
         session: Session,
         config: Config | GuildConfig | PrivateConfig
     ) => boolean
-    invoke?: (
+    invoke: (
         ctx: Context,
         session: Session,
         value: unknown,
         config: Config | GuildConfig | PrivateConfig
     ) => Promise<void> | void
-    render?: (
+    render: (
         ctx: Context,
         session: Session,
         value: unknown,

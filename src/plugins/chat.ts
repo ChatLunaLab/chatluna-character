@@ -527,7 +527,7 @@ function createReplyTools(
             const input = args as Record<string, unknown>
 
             for (const field of ctx.chatluna_character.getReplyToolFields()) {
-                if (field.invoke == null || input[field.name] == null) {
+                if (input[field.name] == null) {
                     continue
                 }
 
@@ -817,7 +817,7 @@ function renderReplyToolXml(
         }
 
         for (const field of fields) {
-            if (field.render == null || call.args[field.name] == null) {
+            if (call.args[field.name] == null) {
                 continue
             }
 
