@@ -1281,7 +1281,11 @@ async function getConfigAndPresetForGuild(
         copyOfConfig = Object.assign(
             {},
             copyOfConfig,
-            currentGuildConfig
+            currentGuildConfig,
+            {
+                experimentalToolCallReply:
+                    currentGuildConfig.experimentalToolCallReply === true
+            }
         ) as RuntimeConfig
         currentPreset =
             presetPool[key] ??
