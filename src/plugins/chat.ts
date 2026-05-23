@@ -864,45 +864,49 @@ function buildXmlMessage(args: Record<string, unknown>) {
             ? ` quote="${escape(args.quote, true)}"`
             : ''
 
+    let content = ''
+
+    if (typeof args.at === 'string') {
+        content += `<at>${escape(args.at)}</at>`
+    }
+
+    if (typeof args.face === 'string' || typeof args.face === 'number') {
+        content += `<face>${escape(args.face)}</face>`
+    }
+
+    if (typeof args.text === 'string') {
+        content += escape(args.text)
+    }
+
     if (Array.isArray(args.parts)) {
-        const content = args.parts
+        content += args.parts
             .filter(
                 (item) =>
                     item && typeof item === 'object' && !Array.isArray(item)
             )
             .map((item) => buildPart(item as Record<string, unknown>))
             .join('')
-
-        return `<message${quote}>${content}</message>`
-    }
-
-    if (typeof args.at === 'string') {
-        return `<message${quote}><at>${escape(args.at)}</at></message>`
-    }
-
-    if (typeof args.face === 'string') {
-        return `<message${quote}><face>${escape(args.face)}</face></message>`
     }
 
     if (typeof args.sticker === 'string') {
         if (!isHttpUrl(args.sticker)) {
-            return `<message${quote}></message>`
+            return `<message${quote}>${content}</message>`
         }
-        return `<message${quote}><sticker>${escape(args.sticker)}</sticker></message>`
+        content += `<sticker>${escape(args.sticker)}</sticker>`
     }
 
     if (typeof args.image === 'string') {
         if (!isHttpUrl(args.image)) {
-            return `<message${quote}></message>`
+            return `<message${quote}>${content}</message>`
         }
-        return `<message${quote}><image>${escape(args.image)}</image></message>`
+        content += `<image>${escape(args.image)}</image>`
     }
 
     if (typeof args.audio === 'string') {
         if (!isHttpUrl(args.audio)) {
-            return `<message${quote}></message>`
+            return `<message${quote}>${content}</message>`
         }
-        return `<message${quote}><audio>${escape(args.audio)}</audio></message>`
+        content += `<audio>${escape(args.audio)}</audio>`
     }
 
     if (
@@ -912,9 +916,9 @@ function buildXmlMessage(args: Record<string, unknown>) {
     ) {
         const file = args.file as Record<string, unknown>
         if (!isHttpUrl(file.url)) {
-            return `<message${quote}></message>`
+            return `<message${quote}>${content}</message>`
         }
-        return `<message${quote}><file name="${escape(file.name ?? 'file', true)}">${escape(file.url)}</file></message>`
+        content += `<file name="${escape(file.name ?? 'file', true)}">${escape(file.url)}</file>`
     }
 
     if (
@@ -924,13 +928,13 @@ function buildXmlMessage(args: Record<string, unknown>) {
     ) {
         const video = args.video as Record<string, unknown>
         if (!isHttpUrl(video.url)) {
-            return `<message${quote}></message>`
+            return `<message${quote}>${content}</message>`
         }
-        return `<message${quote}><video>${escape(video.url)}</video></message>`
+        content += `<video>${escape(video.url)}</video>`
     }
 
     if (typeof args.markdown === 'string') {
-        return `<message${quote}><markdown>${escape(args.markdown)}</markdown></message>`
+        content += `<markdown>${escape(args.markdown)}</markdown>`
     }
 
     if (
@@ -939,10 +943,10 @@ function buildXmlMessage(args: Record<string, unknown>) {
         !Array.isArray(args.voice)
     ) {
         const voice = args.voice as Record<string, unknown>
-        return `<message${quote}><voice id="${escape(voice.id, true)}">${escape(voice.text)}</voice></message>`
+        content += `<voice id="${escape(voice.id, true)}">${escape(voice.text)}</voice>`
     }
 
-    return `<message${quote}>${escape(args.text)}</message>`
+    return `<message${quote}>${content}</message>`
 }
 
 function parseReplyTools(
