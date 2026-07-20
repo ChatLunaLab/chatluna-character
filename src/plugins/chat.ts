@@ -1539,7 +1539,7 @@ async function prepareMessages(
         preset: currentPreset.name,
         conversationId: session.isDirect ? session.userId : session.guildId
     }
-    const conversationType = session.isDirect
+    const sessionType = session.isDirect
         ? `你正在与用户 ${session.username}（${session.userId}）的私聊中`
         : `你正在群聊 ${(await session.bot.getGuild(session.guildId)).name}（${session.guildId}）中`
 
@@ -1585,7 +1585,7 @@ async function prepareMessages(
                 status: temp.status ?? currentPreset.status ?? '',
                 trigger_reason: triggerReasonText,
                 prompt: session.content,
-                conversationType,
+                sessionType,
                 built
             },
             session.app.chatluna.promptRenderer,
@@ -1606,7 +1606,7 @@ async function prepareMessages(
             status: temp.status ?? currentPreset.status ?? '',
             trigger_reason: triggerReasonText,
             prompt: session.content,
-            conversationType,
+            sessionType,
             built
         },
         session.app.chatluna.promptRenderer,
