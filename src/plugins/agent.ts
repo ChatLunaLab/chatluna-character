@@ -21,7 +21,7 @@ export function apply(ctx: Context) {
             live?.bot?.status === Universal.Status.ONLINE
                 ? live
                 : routing && bot?.status === Universal.Status.ONLINE
-                  ? buildVirtualSession(
+                  ? await buildVirtualSession(
                         bot,
                         { ...routing, username: 'task' },
                         { message: '', messageName: 'task' }
