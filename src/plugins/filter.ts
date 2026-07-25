@@ -593,13 +593,23 @@ export async function apply(ctx: Context, config: Config) {
     const preset = service.preset
     const logger = service.logger
 
-    const globalPrivatePreset = await preset.getPreset(
+    let globalPrivatePreset = await preset.getPreset(
         config.globalPrivateConfig.preset
     )
-    const globalGroupPreset = await preset.getPreset(
+    let globalGroupPreset = await preset.getPreset(
         config.globalGroupConfig.preset
     )
-    const presetPool: Record<string, PresetTemplate> = {}
+    let presetPool: Record<string, PresetTemplate> = {}
+
+    ctx.on('chatluna_character/preset_updated', () => {
+        globalPrivatePreset = preset.getPresetForCache(
+            config.globalPrivateConfig.preset
+        )
+        globalGroupPreset = preset.getPresetForCache(
+            config.globalGroupConfig.preset
+        )
+        presetPool = {}
+    })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ctx.on('guild-member' as any, (session: Session) => {
@@ -771,12 +781,12 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         const muteKeywords = currentPreset.mute_keyword ?? []
-        const forceMuteActive =
-            copyOfConfig.isForceMute && isAppel && muteKeywords.length > 0
+        const forceMuteEnabled =
+            copyOfConfig.isForceMute && muteKeywords.length > 0
         const needPlainText =
             copyOfConfig.isNickname ||
             copyOfConfig.isNickNameWithContent ||
-            forceMuteActive
+            forceMuteEnabled
 
         const plainTextContent = needPlainText
             ? (session.elements ?? [])
@@ -785,12 +795,17 @@ export async function apply(ctx: Context, config: Config) {
                   .join('')
             : ''
 
-        if (forceMuteActive) {
-            const needMute = muteKeywords.some((value) =>
+        if (forceMuteEnabled) {
+            const hasMuteKeyword = muteKeywords.some((value) =>
                 plainTextContent.includes(value)
             )
+            const hasNickName = currentPreset.nick_name.some((value) =>
+                plainTextContent.includes(value)
+            )
+            const canMute =
+                hasMuteKeyword && (session.isDirect || isAppel || hasNickName)
 
-            if (needMute) {
+            if (canMute) {
                 logger.debug(`mute content: ${message.content}`)
                 service.mute(session, copyOfConfig.muteTime * 1000)
             }

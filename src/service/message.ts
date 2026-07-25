@@ -204,6 +204,10 @@ export class MessageCollector extends Service {
         const key = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
         await this._addMessage(session, msg, { silent: true })
 
+        if (this.isMute(session)) {
+            return false
+        }
+
         const active = this._activePendingMessages[key]
         if (active) {
             active.append(msg, reason)
@@ -826,6 +830,10 @@ export class MessageCollector extends Service {
         message?: Message,
         signal?: AbortSignal
     ) {
+        if (this.isMute(session)) {
+            return false
+        }
+
         const groupId = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
         const focusMessage =
             message ??
