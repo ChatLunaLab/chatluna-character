@@ -1884,10 +1884,18 @@ Reply again using valid XML output with <message> tags.`
             return
         } catch (e) {
             if (signal?.aborted) return
+            const retry =
+                idx < 1 && String(e).includes('Failed to parse response')
             if (e instanceof ReplyToolError) {
-                logger.warn(REPLY_TOOL_ERROR_MESSAGE, e)
+                logger.warn(
+                    REPLY_TOOL_ERROR_MESSAGE +
+                        (retry
+                            ? '已将错误反馈给模型，尝试在当前轮次重新生成。'
+                            : ''),
+                    e
+                )
             }
-            if (idx < 1 && String(e).includes('Failed to parse response')) {
+            if (retry) {
                 err = e
                 logger.warn('model response failed, retry once', e)
                 continue
