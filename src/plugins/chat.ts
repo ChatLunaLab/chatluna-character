@@ -56,7 +56,9 @@ let logger: Logger
 
 type ParsedResponse = Awaited<ReturnType<typeof parseResponse>>
 type RuntimeConfig = Config & (GuildConfig | PrivateConfig)
-type StreamedParsedResponseChunk = StreamedModelResponseChunk<ParsedResponse>
+type StreamedParsedResponseChunk = StreamedModelResponseChunk<ParsedResponse> & {
+    nextReplyReasons: string[]
+}
 
 class ReplyToolError extends Error {}
 
@@ -1092,6 +1094,11 @@ async function parseResponseContent(
         )
     }
 
+    // Validate before parsing side effects and outside the intermediate fallback.
+    const nextReplyReasons = toolState
+        ? toolState.nextReplyReasons
+        : extractNextReplyReasons(responseContent)
+
     if (
         !toolState &&
         isIntermediate &&
@@ -1107,6 +1114,7 @@ async function parseResponseContent(
             responseMessage,
             responseContent: renderedContent,
             toolCalls: calls,
+            nextReplyReasons,
             parsedResponse: {
                 elements: [],
                 rawMessage: responseContent,
@@ -1167,6 +1175,7 @@ async function parseResponseContent(
         responseMessage,
         responseContent: renderedContent,
         toolCalls: calls,
+        nextReplyReasons,
         parsedResponse
     }
 }
@@ -1886,21 +1895,23 @@ Reply again using valid XML output with <message> tags.`
             if (signal?.aborted) return
             const retry =
                 idx < 1 && String(e).includes('Failed to parse response')
-            if (e instanceof ReplyToolError) {
-                logger.warn(
-                    REPLY_TOOL_ERROR_MESSAGE +
-                        (retry
-                            ? '已将错误反馈给模型，尝试在当前轮次重新生成。'
-                            : ''),
-                    e
-                )
-            }
             if (retry) {
                 err = e
-                logger.warn('model response failed, retry once', e)
+                logger.warn(
+                    (e instanceof ReplyToolError
+                        ? REPLY_TOOL_ERROR_MESSAGE
+                        : '模型回复格式有误，本次回复已拦截。') +
+                        '已将错误反馈给模型，尝试在当前轮次重新生成。',
+                    e
+                )
                 continue
             }
-            logger.error('model requests failed', e)
+            logger.error(
+                e instanceof ReplyToolError
+                    ? REPLY_TOOL_ERROR_MESSAGE
+                    : 'model requests failed',
+                e
+            )
             throw e
         }
     }
@@ -2334,20 +2345,7 @@ export async function apply(ctx: Context, config: Config) {
                         hasNonEmptyReplies = true
                     }
 
-                    if (
-                        copyOfConfig.experimentalToolCallReply &&
-                        chunk.toolCalls
-                    ) {
-                        const toolState = parseReplyTools(
-                            copyOfConfig,
-                            chunk.toolCalls
-                        )
-                        nextReplyReasons.push(...toolState.nextReplyReasons)
-                    } else {
-                        nextReplyReasons.push(
-                            ...extractNextReplyReasons(chunk.responseContent)
-                        )
-                    }
+                    nextReplyReasons.push(...chunk.nextReplyReasons)
 
                     const sendResult = await handleParsedResponseChunk(
                         session,

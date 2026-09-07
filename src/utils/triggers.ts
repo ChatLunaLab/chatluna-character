@@ -28,10 +28,10 @@ export function extractNextReplyReasons(response: string): string[] {
         const type = attributes.match(/\btype\s*=\s*['"]([^'"]+)['"]/i)?.[1]
         const userId = attributes.match(/\buser_id\s*=\s*['"]([^'"]+)['"]/i)?.[1]
         const secondsRaw = attributes.match(
-            /\bseconds\s*=\s*['"]([^'"]+)['"]/i
+            /\bseconds\s*=\s*['"]([^'"]*)['"]/i
         )?.[1]
         const maxWaitSecondsRaw = attributes.match(
-            /\bmax_wait_seconds\s*=\s*['"]([^'"]+)['"]/i
+            /\bmax_wait_seconds\s*=\s*['"]([^'"]*)['"]/i
         )?.[1]
 
         let token: string | undefined
@@ -56,9 +56,11 @@ export function extractNextReplyReasons(response: string): string[] {
                     ? Number.parseInt(maxWaitSecondsRaw, 10)
                     : 0
             if (
+                Number.isSafeInteger(seconds) &&
                 seconds > 0 &&
                 userId != null &&
                 /^[\w-]+$/.test(userId) &&
+                Number.isSafeInteger(maxWaitSeconds) &&
                 (maxWaitSecondsRaw == null || maxWaitSeconds > 0) &&
                 (userId !== 'all' || maxWaitSecondsRaw == null)
             ) {
