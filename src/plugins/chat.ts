@@ -56,7 +56,10 @@ let logger: Logger
 
 type ParsedResponse = Awaited<ReturnType<typeof parseResponse>>
 type RuntimeConfig = Config & (GuildConfig | PrivateConfig)
-type StreamedParsedResponseChunk = StreamedModelResponseChunk<ParsedResponse>
+type StreamedParsedResponseChunk =
+    StreamedModelResponseChunk<ParsedResponse> & {
+        nextReplyReasons: string[]
+    }
 
 class ReplyToolError extends Error {}
 
@@ -1092,6 +1095,11 @@ async function parseResponseContent(
         )
     }
 
+    // Validate before parsing side effects and outside the intermediate fallback.
+    const nextReplyReasons = toolState
+        ? toolState.nextReplyReasons
+        : extractNextReplyReasons(responseContent)
+
     if (
         !toolState &&
         isIntermediate &&
@@ -1107,6 +1115,7 @@ async function parseResponseContent(
             responseMessage,
             responseContent: renderedContent,
             toolCalls: calls,
+            nextReplyReasons,
             parsedResponse: {
                 elements: [],
                 rawMessage: responseContent,
@@ -1167,6 +1176,7 @@ async function parseResponseContent(
         responseMessage,
         responseContent: renderedContent,
         toolCalls: calls,
+        nextReplyReasons,
         parsedResponse
     }
 }
@@ -1884,15 +1894,25 @@ Reply again using valid XML output with <message> tags.`
             return
         } catch (e) {
             if (signal?.aborted) return
-            if (e instanceof ReplyToolError) {
-                logger.warn(REPLY_TOOL_ERROR_MESSAGE, e)
-            }
-            if (idx < 1 && String(e).includes('Failed to parse response')) {
+            const retry =
+                idx < 1 && String(e).includes('Failed to parse response')
+            if (retry) {
                 err = e
-                logger.warn('model response failed, retry once', e)
+                logger.warn(
+                    (e instanceof ReplyToolError
+                        ? REPLY_TOOL_ERROR_MESSAGE
+                        : '模型回复格式有误，本次回复已拦截。') +
+                        '已将错误反馈给模型，尝试在当前轮次重新生成。',
+                    e
+                )
                 continue
             }
-            logger.error('model requests failed', e)
+            logger.error(
+                e instanceof ReplyToolError
+                    ? REPLY_TOOL_ERROR_MESSAGE
+                    : 'model requests failed',
+                e
+            )
             throw e
         }
     }
@@ -2326,20 +2346,7 @@ export async function apply(ctx: Context, config: Config) {
                         hasNonEmptyReplies = true
                     }
 
-                    if (
-                        copyOfConfig.experimentalToolCallReply &&
-                        chunk.toolCalls
-                    ) {
-                        const toolState = parseReplyTools(
-                            copyOfConfig,
-                            chunk.toolCalls
-                        )
-                        nextReplyReasons.push(...toolState.nextReplyReasons)
-                    } else {
-                        nextReplyReasons.push(
-                            ...extractNextReplyReasons(chunk.responseContent)
-                        )
-                    }
+                    nextReplyReasons.push(...chunk.nextReplyReasons)
 
                     const sendResult = await handleParsedResponseChunk(
                         session,
@@ -2614,43 +2621,8 @@ function getReplyToolInputError(
         Array.isArray(args.next_reply)
     ) {
         for (const [i, group] of args.next_reply.entries()) {
-            if (
-                !group ||
-                typeof group !== 'object' ||
-                Array.isArray(group) ||
-                !Array.isArray(group.conditions)
-            ) {
-                return `Field next_reply[${i}] must contain a conditions array`
-            }
-
-            if (group.conditions.length < 1) {
-                return `Field next_reply[${i}].conditions must not be empty`
-            }
-
             for (const [j, condition] of group.conditions.entries()) {
                 const path = `next_reply[${i}].conditions[${j}]`
-                if (
-                    !condition ||
-                    typeof condition !== 'object' ||
-                    Array.isArray(condition)
-                ) {
-                    return `Field ${path} must be an object`
-                }
-
-                if (
-                    condition.type !== 'message_from_user' &&
-                    condition.type !== 'no_message_from_user'
-                ) {
-                    return `Field ${path}.type must be message_from_user or no_message_from_user`
-                }
-
-                if (
-                    typeof condition.user_id !== 'string' ||
-                    !/^[\w-]+$/.test(condition.user_id)
-                ) {
-                    return `Field ${path}.user_id must be a non-empty platform user ID`
-                }
-
                 if (condition.type === 'message_from_user') {
                     if (
                         condition.seconds != null ||
@@ -2661,19 +2633,8 @@ function getReplyToolInputError(
                     continue
                 }
 
-                if (
-                    !Number.isInteger(condition.seconds) ||
-                    condition.seconds <= 0
-                ) {
-                    return `Field ${path}.seconds must be a positive integer for type no_message_from_user`
-                }
-
-                if (
-                    condition.max_wait_seconds != null &&
-                    (!Number.isInteger(condition.max_wait_seconds) ||
-                        condition.max_wait_seconds <= 0)
-                ) {
-                    return `Field ${path}.max_wait_seconds must be a positive integer`
+                if (condition.seconds == null) {
+                    return `Field ${path}.seconds is required for type no_message_from_user`
                 }
 
                 if (
