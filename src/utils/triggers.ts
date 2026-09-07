@@ -203,8 +203,9 @@ export function parseNextReplyReason(
     for (const branch of rawReason.split('|').map((it) => it.trim())) {
         if (!branch) return []
 
-        const tokens = branch.split('&')
-        const predicates = tokens.map((it) => parseNextReplyToken(it))
+        const predicates = branch
+            .split('&')
+            .map((it) => parseNextReplyToken(it))
 
         if (predicates.some((it) => it == null)) return []
 

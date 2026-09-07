@@ -475,23 +475,20 @@ function createReplyTools(
                                         'Condition type. message_from_user means a specific user sends a new message. no_message_from_user means no new messages arrive from a target user for a period of time. Use user_id="all" to mean no one sends any new message.'
                                 },
                                 seconds: {
-                                    type: 'number',
+                                    type: 'integer',
                                     minimum: 1,
-                                    multipleOf: 1,
                                     description:
                                         'Waiting time in seconds. Required for no_message_from_user. When user_id is all, counting starts immediately. Otherwise, counting starts only after the target user sends the first new message.'
                                 },
                                 user_id: {
                                     type: 'string',
-                                    minLength: 1,
                                     pattern: '^[\\w-]+$',
                                     description:
                                         'Platform user ID of the target user. Required for message_from_user and no_message_from_user. Use all to mean any user.'
                                 },
                                 max_wait_seconds: {
-                                    type: 'number',
+                                    type: 'integer',
                                     minimum: 1,
-                                    multipleOf: 1,
                                     description:
                                         'Maximum total waiting time in seconds. Optional only for no_message_from_user when user_id is not all. Counting starts after the current turn finishes and this next_reply is registered, and the trigger fires when the limit is reached even if the user never sends the first message.'
                                 }
@@ -2646,7 +2643,7 @@ function getReplyToolInputError(
 
                 if (
                     !Number.isInteger(condition.seconds) ||
-                    Number(condition.seconds) <= 0
+                    condition.seconds <= 0
                 ) {
                     return `Field ${path}.seconds must be a positive integer for type no_message_from_user`
                 }
@@ -2654,7 +2651,7 @@ function getReplyToolInputError(
                 if (
                     condition.max_wait_seconds != null &&
                     (!Number.isInteger(condition.max_wait_seconds) ||
-                        Number(condition.max_wait_seconds) <= 0)
+                        condition.max_wait_seconds <= 0)
                 ) {
                     return `Field ${path}.max_wait_seconds must be a positive integer`
                 }
