@@ -56,9 +56,10 @@ let logger: Logger
 
 type ParsedResponse = Awaited<ReturnType<typeof parseResponse>>
 type RuntimeConfig = Config & (GuildConfig | PrivateConfig)
-type StreamedParsedResponseChunk = StreamedModelResponseChunk<ParsedResponse> & {
-    nextReplyReasons: string[]
-}
+type StreamedParsedResponseChunk =
+    StreamedModelResponseChunk<ParsedResponse> & {
+        nextReplyReasons: string[]
+    }
 
 class ReplyToolError extends Error {}
 
