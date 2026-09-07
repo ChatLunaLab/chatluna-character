@@ -60,6 +60,9 @@ type StreamedParsedResponseChunk = StreamedModelResponseChunk<ParsedResponse>
 
 class ReplyToolError extends Error {}
 
+const REPLY_TOOL_ERROR_MESSAGE =
+    '模型生成的 character_reply 参数有误，本次回复已拦截。该错误通常由模型能力不足或推理质量下降导致，非 API/配置问题。'
+
 interface StreamedResponseContentChunk {
     responseMessage: BaseMessage
     responseContent: string
@@ -1208,6 +1211,7 @@ async function* streamAgentResponseContents(
     }:${session.isDirect ? session.userId : (session.guildId ?? session.channelId)}`
 
     let finalReply = false
+    let reply: StructuredTool | undefined
 
     const responseStream = chain.stream(
         {
@@ -1229,13 +1233,20 @@ async function* streamAgentResponseContents(
     for await (const responseChunk of responseStream) {
         const calls = responseChunk.toolCalls
 
-        if (config.experimentalToolCallReply && calls?.length > 0) {
+        if (
+            config.experimentalToolCallReply &&
+            calls?.some((call) => call.name === 'character_reply')
+        ) {
+            reply ??= createReplyTools(ctx, session, config).find(
+                (tool) => tool.name === 'character_reply'
+            )!
             try {
-                await validateReplyToolCalls(ctx, session, config, calls)
+                await validateReplyToolCalls(reply, calls)
             } catch (err) {
                 if (!(err instanceof ReplyToolError)) throw err
                 logger.warn(
-                    '模型生成的 character_reply 参数有误，本次回复已拦截。该错误通常由模型能力不足或推理质量下降导致，非 API/配置问题。已将错误反馈给模型，尝试在当前轮次重新生成。',
+                    REPLY_TOOL_ERROR_MESSAGE +
+                        '已将错误反馈给模型，尝试在当前轮次重新生成。',
                     err
                 )
                 continue
@@ -1870,10 +1881,7 @@ Reply again using valid XML output with <message> tags.`
         } catch (e) {
             if (signal?.aborted) return
             if (e instanceof ReplyToolError) {
-                logger.warn(
-                    '模型生成的 character_reply 参数有误，本次回复已拦截。该错误通常由模型能力不足或推理质量下降导致，非 API/配置问题。',
-                    e
-                )
+                logger.warn(REPLY_TOOL_ERROR_MESSAGE, e)
             }
             if (idx < 1 && String(e).includes('Failed to parse response')) {
                 err = e
@@ -2600,14 +2608,9 @@ function getReplyToolInputError(
 }
 
 async function validateReplyToolCalls(
-    ctx: Context,
-    session: Session,
-    config: RuntimeConfig,
+    reply: StructuredTool,
     calls: ReplyToolCall[]
 ) {
-    const reply = createReplyTools(ctx, session, config).find(
-        (tool) => tool.name === 'character_reply'
-    )!
     for (const call of calls) {
         if (call.name !== 'character_reply') {
             continue
