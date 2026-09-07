@@ -2597,12 +2597,36 @@ function getReplyToolInputError(
         Array.isArray(args.next_reply)
     ) {
         for (const [i, group] of args.next_reply.entries()) {
+            if (
+                !group ||
+                typeof group !== 'object' ||
+                Array.isArray(group) ||
+                !Array.isArray(group.conditions)
+            ) {
+                return `Field next_reply[${i}] must contain a conditions array`
+            }
+
             if (group.conditions.length < 1) {
                 return `Field next_reply[${i}].conditions must not be empty`
             }
 
             for (const [j, condition] of group.conditions.entries()) {
                 const path = `next_reply[${i}].conditions[${j}]`
+                if (
+                    !condition ||
+                    typeof condition !== 'object' ||
+                    Array.isArray(condition)
+                ) {
+                    return `Field ${path} must be an object`
+                }
+
+                if (
+                    condition.type !== 'message_from_user' &&
+                    condition.type !== 'no_message_from_user'
+                ) {
+                    return `Field ${path}.type must be message_from_user or no_message_from_user`
+                }
+
                 if (
                     typeof condition.user_id !== 'string' ||
                     !/^[\w-]+$/.test(condition.user_id)
