@@ -8,7 +8,11 @@ import {
     HumanMessage,
     SystemMessage
 } from '@langchain/core/messages'
-import { StructuredTool, tool } from '@langchain/core/tools'
+import {
+    StructuredTool,
+    tool,
+    ToolInputParsingException
+} from '@langchain/core/tools'
 import { Context, h, Logger, Random, Session, sleep } from 'koishi'
 import { AgentEvent, MessageQueue } from 'koishi-plugin-chatluna/llm-core/agent'
 import { ChatLunaChatModel } from 'koishi-plugin-chatluna/llm-core/platform/model'
@@ -54,12 +58,16 @@ type ParsedResponse = Awaited<ReturnType<typeof parseResponse>>
 type RuntimeConfig = Config & (GuildConfig | PrivateConfig)
 type StreamedParsedResponseChunk = StreamedModelResponseChunk<ParsedResponse>
 
+class ReplyToolError extends Error {}
+
+const REPLY_TOOL_ERROR_MESSAGE =
+    '模型生成的 character_reply 参数有误，本次回复已拦截。该错误通常由模型能力不足或推理质量下降导致，非 API/配置问题。'
+
 interface StreamedResponseContentChunk {
     responseMessage: BaseMessage
     responseContent: string
     isIntermediate: boolean
     toolCalls?: ReplyToolCall[]
-    toolErrors?: string[]
 }
 
 interface ReplyToolCall {
@@ -532,23 +540,11 @@ function createReplyTools(
                 async (args) => {
                     const input = args as Record<string, unknown>
 
-                    for (const field of ctx.chatluna_character.getReplyToolFields()) {
-                        if (input[field.name] == null) {
-                            continue
-                        }
-
-                        if (
-                            field.isAvailable &&
-                            !field.isAvailable(ctx, session, config)
-                        ) {
-                            continue
-                        }
-
-                        await field.invoke(
-                            ctx,
-                            session,
-                            input[field.name],
-                            config
+                    const err = getReplyToolInputError(config, input)
+                    if (err) {
+                        throw new ToolInputParsingException(
+                            err,
+                            JSON.stringify(input)
                         )
                     }
 
@@ -1070,10 +1066,9 @@ async function parseResponseContent(
 ): Promise<StreamedParsedResponseChunk> {
     let parsedResponse: ParsedResponse
     const { responseMessage, responseContent, isIntermediate } = chunk
-    const toolErrors = chunk.toolErrors ?? []
     const calls =
         config.experimentalToolCallReply && chunk.toolCalls?.length > 0
-            ? filterReplyToolCalls(config, chunk.toolCalls, toolErrors)
+            ? chunk.toolCalls
             : undefined
     const toolState =
         calls && calls.length > 0 ? parseReplyTools(config, calls) : undefined
@@ -1082,19 +1077,13 @@ async function parseResponseContent(
         ? renderReplyToolXml(ctx, session, config, calls)
         : responseContent
 
-    if (!hasCalls && toolErrors.length > 0) {
-        throw new Error(
-            `Failed to parse response: invalid character_reply tool call. ${toolErrors.join('; ')}`
-        )
-    }
-
     if (
         config.experimentalToolCallReply &&
         config.toolCalling &&
         !hasCalls &&
         !isIntermediate
     ) {
-        throw new Error(
+        throw new ReplyToolError(
             'Failed to parse response: missing character_reply tool call'
         )
     }
@@ -1152,7 +1141,7 @@ async function parseResponseContent(
             )
         }
     } catch (error) {
-        if (!isIntermediate || responseMessage.content == null) {
+        if (toolState || !isIntermediate || responseMessage.content == null) {
             throw error
         }
 
@@ -1222,6 +1211,7 @@ async function* streamAgentResponseContents(
     }:${session.isDirect ? session.userId : (session.guildId ?? session.channelId)}`
 
     let finalReply = false
+    let reply: StructuredTool | undefined
 
     const responseStream = chain.stream(
         {
@@ -1241,16 +1231,27 @@ async function* streamAgentResponseContents(
     )
 
     for await (const responseChunk of responseStream) {
-        const toolErrors: string[] = []
-        const calls =
+        const calls = responseChunk.toolCalls
+
+        if (
             config.experimentalToolCallReply &&
-            responseChunk.toolCalls?.length > 0
-                ? filterReplyToolCalls(
-                      config,
-                      responseChunk.toolCalls,
-                      toolErrors
-                  )
-                : responseChunk.toolCalls
+            calls?.some((call) => call.name === 'character_reply')
+        ) {
+            reply ??= createReplyTools(ctx, session, config).find(
+                (tool) => tool.name === 'character_reply'
+            )!
+            try {
+                await validateReplyToolCalls(reply, calls)
+            } catch (err) {
+                if (!(err instanceof ReplyToolError)) throw err
+                logger.warn(
+                    REPLY_TOOL_ERROR_MESSAGE +
+                        '已将错误反馈给模型，尝试在当前轮次重新生成。',
+                    err
+                )
+                continue
+            }
+        }
 
         if (
             calls?.some((call) => {
@@ -1288,18 +1289,16 @@ async function* streamAgentResponseContents(
             config.experimentalToolCallReply && calls && calls.length > 0
                 ? renderReplyToolXml(ctx, session, config, calls)
                 : responseContent
-        if (renderedContent.trim().length < 1) {
-            if (toolErrors.length > 0) {
-                throw new Error(
-                    `Failed to parse response: invalid character_reply tool call. ${toolErrors.join('; ')}`
-                )
-            }
+        if (
+            renderedContent.trim().length < 1 &&
+            !calls?.some((call) => call.name === 'character_reply')
+        ) {
             if (
                 config.experimentalToolCallReply &&
                 responseChunk.phase === 'final' &&
                 !finalReply
             ) {
-                throw new Error(
+                throw new ReplyToolError(
                     'Failed to parse response: missing character_reply tool call'
                 )
             }
@@ -1316,8 +1315,7 @@ async function* streamAgentResponseContents(
             responseMessage,
             responseContent: renderedContent,
             isIntermediate,
-            toolCalls: calls,
-            toolErrors
+            toolCalls: calls
         }
     }
 }
@@ -1835,12 +1833,31 @@ Reply again using valid XML output with <message> tags.`
                     onAgentEvent
                 )) {
                     failedMessage = responseChunk.responseMessage
-                    yield await parseResponseContent(
+                    const parsed = await parseResponseContent(
                         ctx,
                         session,
                         config,
                         responseChunk
                     )
+                    for (const call of parsed.toolCalls ?? []) {
+                        if (call.name !== 'character_reply') continue
+                        for (const field of ctx.chatluna_character.getReplyToolFields()) {
+                            if (call.args[field.name] == null) continue
+                            if (
+                                field.isAvailable &&
+                                !field.isAvailable(ctx, session, config)
+                            ) {
+                                continue
+                            }
+                            await field.invoke(
+                                ctx,
+                                session,
+                                call.args[field.name],
+                                config
+                            )
+                        }
+                    }
+                    yield parsed
                 }
 
                 return
@@ -1863,6 +1880,9 @@ Reply again using valid XML output with <message> tags.`
             return
         } catch (e) {
             if (signal?.aborted) return
+            if (e instanceof ReplyToolError) {
+                logger.warn(REPLY_TOOL_ERROR_MESSAGE, e)
+            }
             if (idx < 1 && String(e).includes('Failed to parse response')) {
                 err = e
                 logger.warn('model response failed, retry once', e)
@@ -2587,23 +2607,23 @@ function getReplyToolInputError(
     return undefined
 }
 
-function filterReplyToolCalls(
-    config: Config | GuildConfig | PrivateConfig,
-    calls: ReplyToolCall[],
-    errors?: string[]
+async function validateReplyToolCalls(
+    reply: StructuredTool,
+    calls: ReplyToolCall[]
 ) {
-    return calls.filter((call) => {
+    for (const call of calls) {
         if (call.name !== 'character_reply') {
-            return true
+            continue
         }
 
-        const err = getReplyToolInputError(config, call.args)
-        if (err) {
-            errors?.push(err)
-            logger.debug(`Skip invalid character_reply tool call: ${err}`)
-            return false
+        try {
+            // Reuse the full tool schema, including registered extension fields.
+            await reply.invoke(call.args)
+        } catch (err) {
+            if (!(err instanceof ToolInputParsingException)) throw err
+            throw new ReplyToolError(
+                `Failed to parse response: invalid character_reply tool call. ${err.message}`
+            )
         }
-
-        return true
-    })
+    }
 }
