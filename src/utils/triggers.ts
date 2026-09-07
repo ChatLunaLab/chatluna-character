@@ -26,7 +26,9 @@ export function extractNextReplyReasons(response: string): string[] {
         }
 
         const type = attributes.match(/\btype\s*=\s*['"]([^'"]+)['"]/i)?.[1]
-        const userId = attributes.match(/\buser_id\s*=\s*['"]([^'"]+)['"]/i)?.[1]
+        const userId = attributes.match(
+            /\buser_id\s*=\s*['"]([^'"]+)['"]/i
+        )?.[1]
         const secondsRaw = attributes.match(
             /\bseconds\s*=\s*['"]([^'"]*)['"]/i
         )?.[1]
