@@ -47,13 +47,14 @@ export function extractNextReplyReasons(response: string): string[] {
         }
 
         if (type === 'no_message_from_user') {
-            const seconds = secondsRaw && /^\d+$/.test(secondsRaw)
-                ? Number.parseInt(secondsRaw, 10)
-                : 0
+            const seconds =
+                secondsRaw && /^\d+$/.test(secondsRaw)
+                    ? Number.parseInt(secondsRaw, 10)
+                    : 0
             const maxWaitSeconds =
                 maxWaitSecondsRaw && /^\d+$/.test(maxWaitSecondsRaw)
-                ? Number.parseInt(maxWaitSecondsRaw, 10)
-                : 0
+                    ? Number.parseInt(maxWaitSecondsRaw, 10)
+                    : 0
             if (
                 seconds > 0 &&
                 userId != null &&
