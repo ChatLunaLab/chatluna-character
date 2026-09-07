@@ -252,7 +252,7 @@ function extractNextReplyReasonsFromTool(value: unknown) {
         }
     }
 
-    return reasons
+    return reasons.length > 0 ? [reasons.join('|')] : []
 }
 
 function buildNextReplyToolTags(value: unknown) {
@@ -467,6 +467,7 @@ function createReplyTools(
                 properties: {
                     conditions: {
                         type: 'array',
+                        minItems: 1,
                         description:
                             'Conditions inside the same group. All of them must be satisfied together as AND.',
                         items: {
@@ -482,22 +483,25 @@ function createReplyTools(
                                         'Condition type. message_from_user means a specific user sends a new message. no_message_from_user means no new messages arrive from a target user for a period of time. Use user_id="all" to mean no one sends any new message.'
                                 },
                                 seconds: {
-                                    type: 'number',
+                                    type: 'integer',
+                                    minimum: 1,
                                     description:
                                         'Waiting time in seconds. Required for no_message_from_user. When user_id is all, counting starts immediately. Otherwise, counting starts only after the target user sends the first new message.'
                                 },
                                 user_id: {
                                     type: 'string',
+                                    pattern: '^[\\w-]+$',
                                     description:
                                         'Platform user ID of the target user. Required for message_from_user and no_message_from_user. Use all to mean any user.'
                                 },
                                 max_wait_seconds: {
-                                    type: 'number',
+                                    type: 'integer',
+                                    minimum: 1,
                                     description:
                                         'Maximum total waiting time in seconds. Optional only for no_message_from_user when user_id is not all. Counting starts after the current turn finishes and this next_reply is registered, and the trigger fires when the limit is reached even if the user never sends the first message.'
                                 }
                             },
-                            required: ['type']
+                            required: ['type', 'user_id']
                         }
                     }
                 },
@@ -2602,6 +2606,84 @@ function getReplyToolInputError(
 
     if (config.toolCallReplyThinkTag && typeof args.think !== 'string') {
         return 'Field think must be a string'
+    }
+
+    if (
+        config.toolCallReplyNextReply &&
+        (!config.enableFixedIntervalTrigger || config.messageInterval !== 0) &&
+        Array.isArray(args.next_reply)
+    ) {
+        for (const [i, group] of args.next_reply.entries()) {
+            if (
+                !group ||
+                typeof group !== 'object' ||
+                Array.isArray(group) ||
+                !Array.isArray(group.conditions)
+            ) {
+                return `Field next_reply[${i}] must contain a conditions array`
+            }
+
+            if (group.conditions.length < 1) {
+                return `Field next_reply[${i}].conditions must not be empty`
+            }
+
+            for (const [j, condition] of group.conditions.entries()) {
+                const path = `next_reply[${i}].conditions[${j}]`
+                if (
+                    !condition ||
+                    typeof condition !== 'object' ||
+                    Array.isArray(condition)
+                ) {
+                    return `Field ${path} must be an object`
+                }
+
+                if (
+                    condition.type !== 'message_from_user' &&
+                    condition.type !== 'no_message_from_user'
+                ) {
+                    return `Field ${path}.type must be message_from_user or no_message_from_user`
+                }
+
+                if (
+                    typeof condition.user_id !== 'string' ||
+                    !/^[\w-]+$/.test(condition.user_id)
+                ) {
+                    return `Field ${path}.user_id must be a non-empty platform user ID`
+                }
+
+                if (condition.type === 'message_from_user') {
+                    if (
+                        condition.seconds != null ||
+                        condition.max_wait_seconds != null
+                    ) {
+                        return `Fields seconds and max_wait_seconds are not allowed for ${path} with type message_from_user`
+                    }
+                    continue
+                }
+
+                if (
+                    !Number.isInteger(condition.seconds) ||
+                    condition.seconds <= 0
+                ) {
+                    return `Field ${path}.seconds must be a positive integer for type no_message_from_user`
+                }
+
+                if (
+                    condition.max_wait_seconds != null &&
+                    (!Number.isInteger(condition.max_wait_seconds) ||
+                        condition.max_wait_seconds <= 0)
+                ) {
+                    return `Field ${path}.max_wait_seconds must be a positive integer`
+                }
+
+                if (
+                    condition.user_id === 'all' &&
+                    condition.max_wait_seconds != null
+                ) {
+                    return `Field ${path}.max_wait_seconds is not allowed when user_id is all`
+                }
+            }
+        }
     }
 
     return undefined
