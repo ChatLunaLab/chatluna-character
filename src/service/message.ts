@@ -1063,12 +1063,18 @@ export class MessageCollector extends Service {
         }
         this._pendingCooldownTriggers[key] = pending
         clearTimeout(this._cooldownTriggerTimers[key])
-        const delay = Math.max(this._getGroupLocks(key).cooldown - Date.now(), 0)
-        this._cooldownTriggerTimers[key] = setTimeout(() => {
-            this._flushCooldownTrigger(key).catch((err) => {
-                this.logger.error(err)
-            })
-        }, Math.min(delay, MAX_TIMEOUT_MS))
+        const delay = Math.max(
+            this._getGroupLocks(key).cooldown - Date.now(),
+            0
+        )
+        this._cooldownTriggerTimers[key] = setTimeout(
+            () => {
+                this._flushCooldownTrigger(key).catch((err) => {
+                    this.logger.error(err)
+                })
+            },
+            Math.min(delay, MAX_TIMEOUT_MS)
+        )
         return true
     }
 
