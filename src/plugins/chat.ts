@@ -2018,8 +2018,9 @@ export async function apply(ctx: Context, config: Config) {
                 )
             }
 
-            const currentPreset = (presetPool[key] ??=
-                preset.getPresetForCache(copyOfConfig.preset))
+            const currentPreset = (presetPool[key] ??= preset.getPresetForCache(
+                copyOfConfig.preset
+            ))
 
             if (
                 copyOfConfig.experimentalToolCallReply &&
@@ -2038,11 +2039,7 @@ export async function apply(ctx: Context, config: Config) {
                         platform,
                         name
                     )
-                    logger.info(
-                        'model loaded %c for session %c',
-                        modelId,
-                        key
-                    )
+                    logger.info('model loaded %c for session %c', modelId, key)
                     return loaded
                 })().catch((err) => {
                     delete modelPool[modelId]

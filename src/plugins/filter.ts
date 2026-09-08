@@ -664,8 +664,9 @@ export async function apply(ctx: Context, config: Config) {
             globalConfig,
             currentGuildConfig
         )
-        const currentPreset = (presetPool[key] ??=
-            preset.getPresetForCache(copyOfConfig.preset))
+        const currentPreset = (presetPool[key] ??= preset.getPresetForCache(
+            copyOfConfig.preset
+        ))
 
         const info = store.get(key) ?? createDefaultGroupInfo(copyOfConfig, now)
 
