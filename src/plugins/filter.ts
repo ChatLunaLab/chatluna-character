@@ -489,7 +489,14 @@ async function processSchedulerTickForGuild(
     const triggerCollectStartedAt = Date.now()
     let triggered = false
     try {
-        triggered = await service.triggerCollect(session, triggerReason)
+        // The scheduler retries cooldown races itself and needs completion time.
+        triggered = await service.triggerCollect(
+            session,
+            triggerReason,
+            undefined,
+            undefined,
+            false
+        )
     } catch (e) {
         logger.error(`triggerCollect failed for session ${key}`, e)
         store.set(key, info)
@@ -759,7 +766,7 @@ export async function apply(ctx: Context, config: Config) {
             }
         }
 
-        const isMute = service.isMute(session)
+        const isMute = service.isForceMute(session)
 
         const isDirectTrigger =
             isAppel ||

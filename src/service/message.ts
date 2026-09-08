@@ -59,13 +59,19 @@ export class MessageCollector extends Service {
     private _pendingCooldownTriggers: Record<string, PendingCooldownTrigger> =
         {}
 
+    private _triggerSeq = 0
+
     private _replyToolFields: CharacterReplyToolField[] = []
 
     private _activePendingMessages: Record<
         string,
         {
             willConsume: boolean
-            append: (message: Message, triggerReason?: string) => void
+            append: (
+                message: Message,
+                triggerReason: string | undefined,
+                seq: number
+            ) => void
         }
     > = {}
 
@@ -134,12 +140,22 @@ export class MessageCollector extends Service {
 
     startPendingMessages(
         session: Session,
-        append: (message: Message, triggerReason?: string) => void
+        append: (
+            message: Message,
+            triggerReason: string | undefined,
+            seq: number
+        ) => void
     ) {
         const key = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
         this._activePendingMessages[key] = {
             willConsume: false,
-            append
+            append: (message, triggerReason, seq) => {
+                if (triggerReason) {
+                    const lock = this._getGroupLocks(key)
+                    lock.triggerSeq = Math.max(lock.triggerSeq, seq)
+                }
+                append(message, triggerReason, seq)
+            }
         }
     }
 
@@ -159,9 +175,8 @@ export class MessageCollector extends Service {
     }
 
     mute(session: Session, time: number) {
-        const lock = this._getGroupLocks(
-            `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
-        )
+        const key = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
+        const lock = this._getGroupLocks(key)
         let mute = lock.mute ?? 0
 
         if (time === 0) {
@@ -172,6 +187,11 @@ export class MessageCollector extends Service {
             mute = mute + time
         }
         lock.mute = mute
+        if (mute > Date.now()) {
+            delete this._pendingCooldownTriggers[key]
+            clearTimeout(this._cooldownTriggerTimers[key])
+            delete this._cooldownTriggerTimers[key]
+        }
     }
 
     async muteAtLeast(session: Session, time: number) {
@@ -179,7 +199,7 @@ export class MessageCollector extends Service {
         const unlock = await this._lockByGroupId(key)
         try {
             const groupLock = this._getGroupLocks(key)
-            groupLock.mute = Math.max(groupLock.mute ?? 0, Date.now() + time)
+            groupLock.cooldown = Math.max(groupLock.cooldown, Date.now() + time)
         } finally {
             unlock()
         }
@@ -201,23 +221,39 @@ export class MessageCollector extends Service {
     }
 
     async triggerMessage(session: Session, msg: Message, reason: string) {
+        const seq = ++this._triggerSeq
         const key = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
         await this._addMessage(session, msg, { silent: true })
 
-        if (this.isMute(session)) {
+        if (this.isForceMute(session)) {
             return false
         }
 
         const active = this._activePendingMessages[key]
         if (active) {
-            active.append(msg, reason)
+            active.append(msg, reason, seq)
             return true
         }
 
-        return await this.triggerCollect(session, reason, msg)
+        return await this.triggerCollect(
+            session,
+            reason,
+            msg,
+            undefined,
+            true,
+            seq
+        )
     }
 
     isMute(session: Session) {
+        const lock = this._getGroupLocks(
+            `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
+        )
+
+        return Math.max(lock.mute, lock.cooldown) > Date.now()
+    }
+
+    isForceMute(session: Session) {
         const lock = this._getGroupLocks(
             `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
         )
@@ -441,6 +477,8 @@ export class MessageCollector extends Service {
         if (!this._groupLocks[groupId]) {
             this._groupLocks[groupId] = {
                 mute: 0,
+                cooldown: 0,
+                triggerSeq: 0,
                 responseLock: false
             }
         }
@@ -653,6 +691,7 @@ export class MessageCollector extends Service {
     }
 
     async broadcast(session: Session) {
+        const seq = ++this._triggerSeq
         const groupId = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
         this.ctx.chatluna_character_trigger.setLastSession(session)
         const guildConfig = session.isDirect
@@ -761,80 +800,53 @@ export class MessageCollector extends Service {
             processImages: config
         })
 
-        const active = this._activePendingMessages[groupId]
-        if (active) {
-            active.append(message, triggerReason)
+        if (this.isForceMute(session)) {
             return true
         }
 
-        if (triggerReason && !this.isMute(session)) {
-            const unlock = await this._lockByGroupId(groupId)
-            try {
-                delete this._pendingCooldownTriggers[groupId]
-
-                const timer = this._cooldownTriggerTimers[groupId]
-                if (timer) {
-                    clearTimeout(timer)
-                    delete this._cooldownTriggerTimers[groupId]
-                }
-            } finally {
-                unlock()
-            }
-
-            const triggered = await this.triggerCollect(
-                session,
-                triggerReason,
-                message
-            )
-            return triggered
+        const active = this._activePendingMessages[groupId]
+        if (active) {
+            active.append(message, triggerReason, seq)
+            return true
         }
 
         if (triggerReason) {
-            const unlock = await this._lockByGroupId(groupId)
-
-            try {
-                this._pendingCooldownTriggers[groupId] = {
-                    session,
-                    triggerReason,
-                    message
-                }
-
-                const lock = this._getGroupLocks(groupId)
-                const delay = Math.max(lock.mute - Date.now(), 0)
-                const timer = this._cooldownTriggerTimers[groupId]
-                if (timer) {
-                    clearTimeout(timer)
-                }
-
-                this._cooldownTriggerTimers[groupId] = setTimeout(
-                    () => {
-                        this._flushCooldownTrigger(groupId).catch((err) => {
-                            this.logger.error(err)
-                        })
-                    },
-                    Math.min(delay, MAX_TIMEOUT_MS)
-                )
-            } finally {
-                unlock()
-            }
-
-            return true
+            return await this.triggerCollect(
+                session,
+                triggerReason,
+                message,
+                undefined,
+                true,
+                seq
+            )
         }
 
         return this.isMute(session)
     }
 
+    // True means executed or queued; defer=false only reports execution.
     async triggerCollect(
         session: Session,
         triggerReason: string,
         message?: Message,
-        signal?: AbortSignal
+        signal?: AbortSignal,
+        defer = true,
+        seq = ++this._triggerSeq
     ) {
-        if (this.isMute(session)) {
+        if (this.isForceMute(session) || signal?.aborted) {
             return false
         }
 
         const groupId = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
+        const lock = this._getGroupLocks(groupId)
+        if (seq < lock.triggerSeq) {
+            return false
+        }
+        // Keep arrival order across queue replay, history pulls and lock waits.
+        // Scheduler retries must not supersede queued work without executing.
+        if (defer) {
+            lock.triggerSeq = seq
+        }
         const focusMessage =
             message ??
             this._messages[groupId]?.at(-1) ??
@@ -844,9 +856,38 @@ export class MessageCollector extends Service {
                 id: session.bot.selfId ?? '0'
             } satisfies Message)
 
-        await this.pullHistory(session, focusMessage)
         if (this.isMute(session)) {
+            return (
+                defer &&
+                this._queueCooldownTrigger({
+                    session,
+                    triggerReason,
+                    message: focusMessage,
+                    signal,
+                    seq
+                })
+            )
+        }
+
+        await this.pullHistory(session, focusMessage)
+        if (
+            this.isForceMute(session) ||
+            signal?.aborted ||
+            seq < lock.triggerSeq
+        ) {
             return false
+        }
+        if (this.isMute(session)) {
+            return (
+                defer &&
+                this._queueCooldownTrigger({
+                    session,
+                    triggerReason,
+                    message: focusMessage,
+                    signal,
+                    seq
+                })
+            )
         }
 
         const acquired = await this.acquireResponseLock(session, focusMessage)
@@ -855,10 +896,32 @@ export class MessageCollector extends Service {
             return false
         }
 
-        if (this.isMute(session)) {
+        if (
+            this.isForceMute(session) ||
+            signal?.aborted ||
+            seq < lock.triggerSeq
+        ) {
             await this.releaseResponseLock(session)
             return false
         }
+        if (this.isMute(session)) {
+            await this.releaseResponseLock(session)
+            return (
+                defer &&
+                this._queueCooldownTrigger({
+                    session,
+                    triggerReason,
+                    message: focusMessage,
+                    signal,
+                    seq
+                })
+            )
+        }
+
+        lock.triggerSeq = seq
+        delete this._pendingCooldownTriggers[groupId]
+        clearTimeout(this._cooldownTriggerTimers[groupId])
+        delete this._cooldownTriggerTimers[groupId]
 
         await this.ctx.parallel(
             'chatluna_character/message_collect',
@@ -988,6 +1051,27 @@ export class MessageCollector extends Service {
         }
     }
 
+    private _queueCooldownTrigger(pending: PendingCooldownTrigger) {
+        if (this.isForceMute(pending.session) || pending.signal?.aborted) {
+            return false
+        }
+
+        const session = pending.session
+        const key = `${session.isDirect ? 'private' : 'group'}:${session.isDirect ? session.userId : session.guildId}`
+        if (pending.seq < this._getGroupLocks(key).triggerSeq) {
+            return false
+        }
+        this._pendingCooldownTriggers[key] = pending
+        clearTimeout(this._cooldownTriggerTimers[key])
+        const delay = Math.max(this._getGroupLocks(key).cooldown - Date.now(), 0)
+        this._cooldownTriggerTimers[key] = setTimeout(() => {
+            this._flushCooldownTrigger(key).catch((err) => {
+                this.logger.error(err)
+            })
+        }, Math.min(delay, MAX_TIMEOUT_MS))
+        return true
+    }
+
     private async _flushCooldownTrigger(groupId: string) {
         const unlock = await this._lockByGroupId(groupId)
 
@@ -1000,8 +1084,13 @@ export class MessageCollector extends Service {
             }
 
             const lock = this._getGroupLocks(groupId)
-            if (lock.mute > Date.now()) {
-                const delay = Math.max(lock.mute - Date.now(), 0)
+            if (lock.mute > Date.now() || pending.signal?.aborted) {
+                delete this._pendingCooldownTriggers[groupId]
+                delete this._cooldownTriggerTimers[groupId]
+                return
+            }
+            if (lock.cooldown > Date.now()) {
+                const delay = Math.max(lock.cooldown - Date.now(), 0)
                 this._cooldownTriggerTimers[groupId] = setTimeout(
                     () => {
                         this._flushCooldownTrigger(groupId).catch((err) => {
@@ -1026,7 +1115,10 @@ export class MessageCollector extends Service {
         await this.triggerCollect(
             pending.session,
             pending.triggerReason,
-            pending.message
+            pending.message,
+            pending.signal,
+            true,
+            pending.seq
         )
     }
 

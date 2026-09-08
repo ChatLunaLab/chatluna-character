@@ -321,6 +321,8 @@ export type MessageCollectorFilter = (
 
 export interface GroupLock {
     mute: number
+    cooldown: number
+    triggerSeq: number
     responseLock: boolean
 }
 
@@ -336,6 +338,8 @@ export type PendingCooldownTrigger = {
     session: Session
     triggerReason: string
     message: Message
+    signal?: AbortSignal
+    seq: number
 }
 
 export const IMAGE_SIZE_CACHE_LIMIT = 512
