@@ -145,7 +145,7 @@ const groupChatBehaviorConfig = Schema.object({
 const commonMuteConfig = Schema.object({
     isForceMute: Schema.boolean()
         .description(
-            '是否启用关键词触发闭嘴（当收到包含关键词的消息时会沉默，一段时间内无法被任何方式触发，关键词需要在预设文件里配置）'
+            '是否启用关键词闭嘴。私聊消息包含预设中的 mute_keyword 即可触发；群聊消息还需 @/引用角色，或包含角色昵称。闭嘴期间角色不会被任何方式触发。'
         )
         .default(false),
     muteTime: Schema.number()

@@ -120,6 +120,7 @@ class PendingMessageQueue extends MessageQueue {
     private _messages: {
         message: Message
         triggerReason?: string
+        seq: number
     }[] = []
 
     constructor(
@@ -129,8 +130,8 @@ class PendingMessageQueue extends MessageQueue {
         super()
     }
 
-    pushRaw(message: Message, triggerReason?: string) {
-        this._messages.push({ message, triggerReason })
+    pushRaw(message: Message, triggerReason: string | undefined, seq: number) {
+        this._messages.push({ message, triggerReason, seq })
         return true
     }
 
@@ -164,15 +165,16 @@ class PendingMessageQueue extends MessageQueue {
     }
 
     takeLatestTrigger() {
-        for (let i = this._messages.length - 1; i >= 0; i--) {
-            const entry = this._messages[i]
-            if (!entry.triggerReason) {
-                continue
+        let latest: (typeof this._messages)[number] | undefined
+        for (const entry of this._messages) {
+            if (entry.triggerReason && (!latest || entry.seq > latest.seq)) {
+                latest = entry
             }
-
-            this._messages = []
-            return entry
         }
+        if (latest) {
+            this._messages = []
+        }
+        return latest
     }
 }
 
@@ -2130,8 +2132,8 @@ export async function apply(ctx: Context, config: Config) {
                 }
             )
 
-            service.startPendingMessages(session, (message, reason) => {
-                queue?.pushRaw(message, reason)
+            service.startPendingMessages(session, (message, reason, seq) => {
+                queue?.pushRaw(message, reason, seq)
             })
 
             try {
@@ -2297,7 +2299,10 @@ export async function apply(ctx: Context, config: Config) {
                 await service.triggerCollect(
                     session,
                     pending.triggerReason!,
-                    pending.message
+                    pending.message,
+                    undefined,
+                    true,
+                    pending.seq
                 )
             }
         }

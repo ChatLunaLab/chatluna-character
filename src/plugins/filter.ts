@@ -489,7 +489,14 @@ async function processSchedulerTickForGuild(
     const triggerCollectStartedAt = Date.now()
     let triggered = false
     try {
-        triggered = await service.triggerCollect(session, triggerReason)
+        // The scheduler retries cooldown races itself and needs completion time.
+        triggered = await service.triggerCollect(
+            session,
+            triggerReason,
+            undefined,
+            undefined,
+            false
+        )
     } catch (e) {
         logger.error(`triggerCollect failed for session ${key}`, e)
         store.set(key, info)
@@ -729,32 +736,39 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         const muteKeywords = currentPreset.mute_keyword ?? []
-        const forceMuteActive =
-            copyOfConfig.isForceMute && isAppel && muteKeywords.length > 0
+        const forceMuteEnabled =
+            copyOfConfig.isForceMute && muteKeywords.length > 0
         const needPlainText =
             copyOfConfig.isNickname ||
             copyOfConfig.isNickNameWithContent ||
-            forceMuteActive
+            forceMuteEnabled
 
         const plainTextContent = needPlainText
-            ? (session.elements ?? [])
-                  .filter((element) => element.type === 'text')
-                  .map((element) => element.attrs?.content ?? '')
-                  .join('')
+            ? session.elements
+                ? session.elements
+                      .filter((element) => element.type === 'text')
+                      .map((element) => element.attrs?.content ?? '')
+                      .join('')
+                : session.content
             : ''
 
-        if (forceMuteActive) {
-            const needMute = muteKeywords.some((value) =>
+        if (forceMuteEnabled) {
+            const hasMuteKeyword = muteKeywords.some((value) =>
                 plainTextContent.includes(value)
             )
+            const hasNickName = currentPreset.nick_name.some((value) =>
+                plainTextContent.includes(value)
+            )
+            const canMute =
+                hasMuteKeyword && (session.isDirect || isAppel || hasNickName)
 
-            if (needMute) {
+            if (canMute) {
                 logger.debug(`mute content: ${message.content}`)
                 service.mute(session, copyOfConfig.muteTime * 1000)
             }
         }
 
-        const isMute = service.isMute(session)
+        const isMute = service.isForceMute(session)
 
         const isDirectTrigger =
             isAppel ||
