@@ -783,9 +783,14 @@ function formatReplyUserPrompt(session: Session, config: RuntimeConfig) {
 
     if (config.experimentalToolCallReply && config.toolCalling) {
         tips.push(
-            'All user-visible reply content must be sent through `character_reply`. Do not end the turn with plain text outside this tool.',
-            'Before calling time-consuming tools (such as searching), send a progress update to the user with `character_reply` and call the time-consuming tool in the same assistant response. Never call `character_reply` with `is_final=false` alone. Quick tools that finish almost instantly, such as reading a voice message, do not need this.'
+            'All user-visible reply content must be sent through `character_reply`. Do not end the turn with plain text outside this tool.'
         )
+
+        if (config.toolCallProgressMessage) {
+            tips.push(
+                'Before calling time-consuming tools (such as searching), send a progress update to the user with `character_reply` and call the time-consuming tool in the same assistant response. Never call `character_reply` with `is_final=false` alone. Quick tools that finish almost instantly, such as reading a voice message, do not need this.'
+            )
+        }
 
         if (config.toolCallReplyStatusTag) {
             tips.push(

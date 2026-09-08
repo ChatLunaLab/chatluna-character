@@ -39,6 +39,7 @@ export interface Config extends ChatLunaPlugin.Config {
     configs: Record<string, GuildConfig>
 
     defaultPreset: string
+    toolCallProgressMessage: boolean
     isNickname: boolean
     isNickNameWithContent: boolean
 
@@ -120,6 +121,9 @@ const commonModelConfig = Schema.object({
     .collapse()
 
 const commonChatBehaviorConfig = Schema.object({
+    toolCallProgressMessage: Schema.boolean()
+        .description('是否要求模型在耗时工具调用时发送进度消息')
+        .default(true),
     splitVoice: Schema.boolean().description('是否分段发送语音').default(false),
     isNickname: Schema.boolean()
         .description('允许 bot 配置中的昵称引发回复')

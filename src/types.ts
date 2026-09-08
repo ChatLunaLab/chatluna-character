@@ -76,6 +76,7 @@ export interface GuildConfig {
     messageActivityScoreUpperLimit: number
     enableActivityScoreTrigger: boolean
     maxTokens: number
+    toolCallProgressMessage: boolean
     isNickname: boolean
     isNickNameWithContent: boolean
     isForceMute: boolean
