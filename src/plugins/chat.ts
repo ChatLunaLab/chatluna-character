@@ -1229,6 +1229,7 @@ async function* streamAgentResponseContents(
     }:${session.isDirect ? session.userId : (session.guildId ?? session.channelId)}`
 
     let finalReply = false
+    let retried = false
     let reply: StructuredTool | undefined
 
     const responseStream = chain.stream(
@@ -1262,6 +1263,8 @@ async function* streamAgentResponseContents(
                 await validateReplyToolCalls(reply, calls)
             } catch (err) {
                 if (!(err instanceof ReplyToolError)) throw err
+                if (retried) throw err
+                retried = true
                 logger.warn(
                     REPLY_TOOL_ERROR_MESSAGE +
                         '已将错误反馈给模型，尝试在当前轮次重新生成。',
