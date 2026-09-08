@@ -2087,7 +2087,6 @@ export async function apply(ctx: Context, config: Config) {
             }
 
             const latestMessages = service.getMessages(key) ?? messages
-            const count = latestMessages.length
             const temp = await service.getTemp(session, latestMessages)
             const focusMessage = latestMessages[latestMessages.length - 1]
 
@@ -2241,13 +2240,10 @@ export async function apply(ctx: Context, config: Config) {
             }
 
             const persistedMessages = service.getMessages(key) ?? latestMessages
-            if (persistedMessages.length > count) {
+            const anchor = persistedMessages[persistedMessages.length - 1]
+            if (anchor && anchor !== focusMessage) {
                 temp.status = latestStatus
-                await service.persistStatus(
-                    session,
-                    latestStatus,
-                    persistedMessages[persistedMessages.length - 1]
-                )
+                await service.persistStatus(session, latestStatus, anchor)
             }
 
             temp.completionMessages.push(persistedHumanMessage)
