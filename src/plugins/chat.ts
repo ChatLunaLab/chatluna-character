@@ -46,7 +46,6 @@ import {
     trimCompletionMessages,
     voiceRender
 } from '../utils/index'
-import { Preset } from '../preset'
 
 import type {} from 'koishi-plugin-chatluna/services/chat'
 import { getMessageContent } from 'koishi-plugin-chatluna/utils/string'
@@ -1356,148 +1355,6 @@ async function registerResponseTriggers(
     }
 }
 
-async function initializeModel(
-    ctx: Context,
-    platform: string,
-    modelName: string
-) {
-    return await ctx.chatluna.createChatModel(platform, modelName)
-}
-
-async function setupModelPool(
-    ctx: Context,
-    config: Config
-): Promise<{
-    globalPrivateModel: ComputedRef<ChatLunaChatModel>
-    globalGroupModel: ComputedRef<ChatLunaChatModel>
-    modelPool: Record<string, Promise<ComputedRef<ChatLunaChatModel>>>
-}> {
-    const [privatePlatform, privateModelName] = parseRawModelName(
-        config.globalPrivateConfig.model
-    )
-    const globalPrivateModel = await initializeModel(
-        ctx,
-        privatePlatform,
-        privateModelName
-    )
-    logger.info(
-        'global private model loaded %c',
-        config.globalPrivateConfig.model
-    )
-
-    const [groupPlatform, groupModelName] = parseRawModelName(
-        config.globalGroupConfig.model
-    )
-    const globalGroupModel = await initializeModel(
-        ctx,
-        groupPlatform,
-        groupModelName
-    )
-    logger.info('global group model loaded %c', config.globalGroupConfig.model)
-
-    const modelPool: Record<
-        string,
-        Promise<ComputedRef<ChatLunaChatModel>>
-    > = {}
-
-    for (const groupId of Object.keys(config.configs)) {
-        const guildConfig = config.configs[groupId]
-        if (!guildConfig.model) {
-            continue
-        }
-
-        if (guildConfig.model === config.globalGroupConfig.model) {
-            continue
-        }
-
-        const key = `group:${groupId}`
-        modelPool[key] = (async () => {
-            const [platform, modelName] = parseRawModelName(guildConfig.model)
-            const loadedModel = await initializeModel(ctx, platform, modelName)
-
-            logger.info(
-                'override model loaded %c for group %c',
-                guildConfig.model,
-                groupId
-            )
-
-            modelPool[key] = Promise.resolve(loadedModel)
-            return loadedModel
-        })()
-    }
-
-    for (const userId of Object.keys(config.privateConfigs)) {
-        const privateConfig = config.privateConfigs[userId]
-        if (!privateConfig.model) {
-            continue
-        }
-
-        if (privateConfig.model === config.globalPrivateConfig.model) {
-            continue
-        }
-
-        const key = `private:${userId}`
-        modelPool[key] = (async () => {
-            const [platform, modelName] = parseRawModelName(privateConfig.model)
-            const loadedModel = await initializeModel(ctx, platform, modelName)
-
-            logger.info(
-                'override model loaded %c for private %c',
-                privateConfig.model,
-                userId
-            )
-
-            modelPool[key] = Promise.resolve(loadedModel)
-            return loadedModel
-        })()
-    }
-
-    return { globalPrivateModel, globalGroupModel, modelPool }
-}
-
-async function getConfigAndPresetForGuild(
-    guildId: string,
-    isDirect: boolean,
-    config: Config,
-    globalPrivatePreset: PresetTemplate,
-    globalGroupPreset: PresetTemplate,
-    presetPool: Record<string, PresetTemplate>,
-    key: string,
-    preset: Preset
-): Promise<{ copyOfConfig: RuntimeConfig; currentPreset: PresetTemplate }> {
-    const globalConfig = isDirect
-        ? config.globalPrivateConfig
-        : config.globalGroupConfig
-    const currentGuildConfig = isDirect
-        ? config.privateConfigs[guildId]
-        : config.configs[guildId]
-    let copyOfConfig = Object.assign({}, config, globalConfig) as RuntimeConfig
-    let currentPreset = isDirect ? globalPrivatePreset : globalGroupPreset
-
-    if (currentGuildConfig) {
-        copyOfConfig = Object.assign(
-            {},
-            copyOfConfig,
-            currentGuildConfig
-        ) as RuntimeConfig
-        currentPreset =
-            presetPool[key] ??
-            (await (async () => {
-                const template = preset.getPresetForCache(
-                    currentGuildConfig.preset
-                )
-                presetPool[key] = template
-                return template
-            })())
-
-        logger.debug(
-            `override config: ${JSON.stringify(copyOfConfig)} for guild ${guildId}`
-        )
-    }
-
-    return { copyOfConfig, currentPreset }
-}
-
 async function prepareMessages(
     ctx: Context,
     messages: Message[],
@@ -2116,57 +1973,12 @@ export async function apply(ctx: Context, config: Config) {
     const preset = service.preset
     logger = service.logger
 
-    if (config.globalPrivateConfig.experimentalToolCallReply) {
-        if (!config.globalPrivateConfig.toolCalling) {
-            throw new Error(
-                'globalPrivateConfig.experimentalToolCallReply 依赖 toolCalling，globalPrivateConfig.toolCalling 不能关闭。'
-            )
-        }
-    }
-
-    if (config.globalGroupConfig.experimentalToolCallReply) {
-        if (!config.globalGroupConfig.toolCalling) {
-            throw new Error(
-                'globalGroupConfig.experimentalToolCallReply 依赖 toolCalling，globalGroupConfig.toolCalling 不能关闭。'
-            )
-        }
-    }
-
-    for (const [id, cfg] of Object.entries(config.privateConfigs)) {
-        if (!cfg.experimentalToolCallReply) {
-            continue
-        }
-
-        if (!cfg.toolCalling) {
-            throw new Error(
-                `privateConfigs.${id}.experimentalToolCallReply 依赖 toolCalling，privateConfigs.${id}.toolCalling 不能关闭。`
-            )
-        }
-    }
-
-    for (const [id, cfg] of Object.entries(config.configs)) {
-        if (!cfg.experimentalToolCallReply) {
-            continue
-        }
-
-        if (!cfg.toolCalling) {
-            throw new Error(
-                `configs.${id}.experimentalToolCallReply 依赖 toolCalling，configs.${id}.toolCalling 不能关闭。`
-            )
-        }
-    }
-
     setLogger(logger)
 
-    const { globalPrivateModel, globalGroupModel, modelPool } =
-        await setupModelPool(ctx, config)
-
-    let globalPrivatePreset = preset.getPresetForCache(
-        config.globalPrivateConfig.preset
-    )
-    let globalGroupPreset = preset.getPresetForCache(
-        config.globalGroupConfig.preset
-    )
+    const modelPool: Record<
+        string,
+        Promise<ComputedRef<ChatLunaChatModel>>
+    > = {}
     let presetPool: Record<string, PresetTemplate> = {}
     const chainPool: Record<
         string,
@@ -2178,12 +1990,6 @@ export async function apply(ctx: Context, config: Config) {
     const replyToolConfigs: Record<string, RuntimeConfig> = {}
 
     ctx.on('chatluna_character/preset_updated', () => {
-        globalPrivatePreset = preset.getPresetForCache(
-            config.globalPrivateConfig.preset
-        )
-        globalGroupPreset = preset.getPresetForCache(
-            config.globalGroupConfig.preset
-        )
         presetPool = {}
     })
 
@@ -2193,22 +1999,57 @@ export async function apply(ctx: Context, config: Config) {
         let queue: PendingMessageQueue | undefined
 
         try {
-            const model = await (modelPool[key] ??
-                Promise.resolve(
-                    session.isDirect ? globalPrivateModel : globalGroupModel
-                ))
+            const globalConfig = session.isDirect
+                ? config.globalPrivateConfig
+                : config.globalGroupConfig
+            const currentGuildConfig = session.isDirect
+                ? config.privateConfigs[guildId]
+                : config.configs[guildId]
+            const copyOfConfig = Object.assign(
+                {},
+                config,
+                globalConfig,
+                currentGuildConfig
+            ) as RuntimeConfig
 
-            const { copyOfConfig, currentPreset } =
-                await getConfigAndPresetForGuild(
-                    guildId,
-                    session.isDirect,
-                    config,
-                    globalPrivatePreset,
-                    globalGroupPreset,
-                    presetPool,
-                    key,
-                    preset
+            if (currentGuildConfig) {
+                logger.debug(
+                    `override config: ${JSON.stringify(copyOfConfig)} for guild ${guildId}`
                 )
+            }
+
+            const currentPreset = (presetPool[key] ??=
+                preset.getPresetForCache(copyOfConfig.preset))
+
+            if (
+                copyOfConfig.experimentalToolCallReply &&
+                !copyOfConfig.toolCalling
+            ) {
+                throw new Error(
+                    `${key} 的 experimentalToolCallReply 依赖 toolCalling，toolCalling 不能关闭。`
+                )
+            }
+
+            const modelId = copyOfConfig.model
+            if (!modelPool[modelId]) {
+                modelPool[modelId] = (async () => {
+                    const [platform, name] = parseRawModelName(modelId)
+                    const loaded = await ctx.chatluna.createChatModel(
+                        platform,
+                        name
+                    )
+                    logger.info(
+                        'model loaded %c for session %c',
+                        modelId,
+                        key
+                    )
+                    return loaded
+                })().catch((err) => {
+                    delete modelPool[modelId]
+                    throw err
+                })
+            }
+            const model = await modelPool[modelId]
 
             if (model.value == null) {
                 logger.warn(
