@@ -744,10 +744,12 @@ export async function apply(ctx: Context, config: Config) {
             forceMuteEnabled
 
         const plainTextContent = needPlainText
-            ? (session.elements ?? [])
-                  .filter((element) => element.type === 'text')
-                  .map((element) => element.attrs?.content ?? '')
-                  .join('')
+            ? session.elements
+                ? session.elements
+                      .filter((element) => element.type === 'text')
+                      .map((element) => element.attrs?.content ?? '')
+                      .join('')
+                : session.content
             : ''
 
         if (forceMuteEnabled) {
