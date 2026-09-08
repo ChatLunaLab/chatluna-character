@@ -182,51 +182,6 @@ function updatePassiveRetryStateAfterTriggered(
     info.currentIdleWaitSeconds = undefined
 }
 
-function resolveGuildPresetContext(
-    guildId: string,
-    key: string,
-    isDirect: boolean,
-    config: Config,
-    globalPrivatePreset: PresetTemplate,
-    globalGroupPreset: PresetTemplate,
-    presetPool: Record<string, PresetTemplate>,
-    preset: {
-        getPresetForCache: (name: string) => PresetTemplate
-    }
-) {
-    const globalConfig = isDirect
-        ? config.globalPrivateConfig
-        : config.globalGroupConfig
-    const currentGuildConfig = isDirect
-        ? config.privateConfigs[guildId]
-        : config.configs[guildId]
-    const copyOfConfig = Object.assign(
-        {},
-        config,
-        globalConfig,
-        currentGuildConfig
-    )
-    if (currentGuildConfig == null) {
-        return {
-            copyOfConfig,
-            currentPreset: isDirect ? globalPrivatePreset : globalGroupPreset
-        }
-    }
-
-    const currentPreset =
-        presetPool[key] ??
-        (() => {
-            const template = preset.getPresetForCache(currentGuildConfig.preset)
-            presetPool[key] = template
-            return template
-        })()
-
-    return {
-        copyOfConfig,
-        currentPreset
-    }
-}
-
 function updateIncomingMessageStats(
     info: GroupInfo,
     copyOfConfig: Config,
@@ -593,21 +548,9 @@ export async function apply(ctx: Context, config: Config) {
     const preset = service.preset
     const logger = service.logger
 
-    let globalPrivatePreset = await preset.getPreset(
-        config.globalPrivateConfig.preset
-    )
-    let globalGroupPreset = await preset.getPreset(
-        config.globalGroupConfig.preset
-    )
     let presetPool: Record<string, PresetTemplate> = {}
 
     ctx.on('chatluna_character/preset_updated', () => {
-        globalPrivatePreset = preset.getPresetForCache(
-            config.globalPrivateConfig.preset
-        )
-        globalGroupPreset = preset.getPresetForCache(
-            config.globalGroupConfig.preset
-        )
         presetPool = {}
     })
 
@@ -709,16 +652,21 @@ export async function apply(ctx: Context, config: Config) {
         const id = isPrivate ? session.userId : session.guildId
         const key = `${isPrivate ? 'private' : 'group'}:${id}`
         const now = Date.now()
-        const { copyOfConfig, currentPreset } = resolveGuildPresetContext(
-            id,
-            key,
-            isPrivate,
+        const globalConfig = isPrivate
+            ? config.globalPrivateConfig
+            : config.globalGroupConfig
+        const currentGuildConfig = isPrivate
+            ? config.privateConfigs[id]
+            : config.configs[id]
+        const copyOfConfig = Object.assign(
+            {},
             config,
-            globalPrivatePreset,
-            globalGroupPreset,
-            presetPool,
-            preset
+            globalConfig,
+            currentGuildConfig
         )
+        const currentPreset = (presetPool[key] ??= preset.getPresetForCache(
+            copyOfConfig.preset
+        ))
 
         const info = store.get(key) ?? createDefaultGroupInfo(copyOfConfig, now)
 

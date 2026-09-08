@@ -8,7 +8,11 @@ import {
     HumanMessage,
     SystemMessage
 } from '@langchain/core/messages'
-import { StructuredTool, tool } from '@langchain/core/tools'
+import {
+    StructuredTool,
+    tool,
+    ToolInputParsingException
+} from '@langchain/core/tools'
 import { Context, h, Logger, Random, Session, sleep } from 'koishi'
 import { AgentEvent, MessageQueue } from 'koishi-plugin-chatluna/llm-core/agent'
 import { ChatLunaChatModel } from 'koishi-plugin-chatluna/llm-core/platform/model'
@@ -42,7 +46,6 @@ import {
     trimCompletionMessages,
     voiceRender
 } from '../utils/index'
-import { Preset } from '../preset'
 
 import type {} from 'koishi-plugin-chatluna/services/chat'
 import { getMessageContent } from 'koishi-plugin-chatluna/utils/string'
@@ -52,14 +55,21 @@ let logger: Logger
 
 type ParsedResponse = Awaited<ReturnType<typeof parseResponse>>
 type RuntimeConfig = Config & (GuildConfig | PrivateConfig)
-type StreamedParsedResponseChunk = StreamedModelResponseChunk<ParsedResponse>
+type StreamedParsedResponseChunk =
+    StreamedModelResponseChunk<ParsedResponse> & {
+        nextReplyReasons: string[]
+    }
+
+class ReplyToolError extends Error {}
+
+const REPLY_TOOL_ERROR_MESSAGE =
+    '模型生成的 character_reply 参数有误，本次回复已拦截。该错误通常由模型能力不足或推理质量下降导致，非 API/配置问题。'
 
 interface StreamedResponseContentChunk {
     responseMessage: BaseMessage
     responseContent: string
     isIntermediate: boolean
     toolCalls?: ReplyToolCall[]
-    toolErrors?: string[]
 }
 
 interface ReplyToolCall {
@@ -244,7 +254,7 @@ function extractNextReplyReasonsFromTool(value: unknown) {
         }
     }
 
-    return reasons
+    return reasons.length > 0 ? [reasons.join('|')] : []
 }
 
 function buildNextReplyToolTags(value: unknown) {
@@ -459,6 +469,7 @@ function createReplyTools(
                 properties: {
                     conditions: {
                         type: 'array',
+                        minItems: 1,
                         description:
                             'Conditions inside the same group. All of them must be satisfied together as AND.',
                         items: {
@@ -474,22 +485,25 @@ function createReplyTools(
                                         'Condition type. message_from_user means a specific user sends a new message. no_message_from_user means no new messages arrive from a target user for a period of time. Use user_id="all" to mean no one sends any new message.'
                                 },
                                 seconds: {
-                                    type: 'number',
+                                    type: 'integer',
+                                    minimum: 1,
                                     description:
                                         'Waiting time in seconds. Required for no_message_from_user. When user_id is all, counting starts immediately. Otherwise, counting starts only after the target user sends the first new message.'
                                 },
                                 user_id: {
                                     type: 'string',
+                                    pattern: '^[\\w-]+$',
                                     description:
                                         'Platform user ID of the target user. Required for message_from_user and no_message_from_user. Use all to mean any user.'
                                 },
                                 max_wait_seconds: {
-                                    type: 'number',
+                                    type: 'integer',
+                                    minimum: 1,
                                     description:
                                         'Maximum total waiting time in seconds. Optional only for no_message_from_user when user_id is not all. Counting starts after the current turn finishes and this next_reply is registered, and the trigger fires when the limit is reached even if the user never sends the first message.'
                                 }
                             },
-                            required: ['type']
+                            required: ['type', 'user_id']
                         }
                     }
                 },
@@ -532,23 +546,11 @@ function createReplyTools(
                 async (args) => {
                     const input = args as Record<string, unknown>
 
-                    for (const field of ctx.chatluna_character.getReplyToolFields()) {
-                        if (input[field.name] == null) {
-                            continue
-                        }
-
-                        if (
-                            field.isAvailable &&
-                            !field.isAvailable(ctx, session, config)
-                        ) {
-                            continue
-                        }
-
-                        await field.invoke(
-                            ctx,
-                            session,
-                            input[field.name],
-                            config
+                    const err = getReplyToolInputError(config, input)
+                    if (err) {
+                        throw new ToolInputParsingException(
+                            err,
+                            JSON.stringify(input)
                         )
                     }
 
@@ -780,9 +782,14 @@ function formatReplyUserPrompt(session: Session, config: RuntimeConfig) {
 
     if (config.experimentalToolCallReply && config.toolCalling) {
         tips.push(
-            'All user-visible reply content must be sent through `character_reply`. Do not end the turn with plain text outside this tool.',
-            'Before calling time-consuming tools (such as searching), send a progress update to the user with `character_reply` and call the time-consuming tool in the same assistant response. Never call `character_reply` with `is_final=false` alone. Quick tools that finish almost instantly, such as reading a voice message, do not need this.'
+            'All user-visible reply content must be sent through `character_reply`. Do not end the turn with plain text outside this tool.'
         )
+
+        if (config.toolCallProgressMessage) {
+            tips.push(
+                'Before calling time-consuming tools (such as searching), send a progress update to the user with `character_reply` and call the time-consuming tool in the same assistant response. Never call `character_reply` with `is_final=false` alone. Quick tools that finish almost instantly, such as reading a voice message, do not need this.'
+            )
+        }
 
         if (config.toolCallReplyStatusTag) {
             tips.push(
@@ -1070,10 +1077,9 @@ async function parseResponseContent(
 ): Promise<StreamedParsedResponseChunk> {
     let parsedResponse: ParsedResponse
     const { responseMessage, responseContent, isIntermediate } = chunk
-    const toolErrors = chunk.toolErrors ?? []
     const calls =
         config.experimentalToolCallReply && chunk.toolCalls?.length > 0
-            ? filterReplyToolCalls(config, chunk.toolCalls, toolErrors)
+            ? chunk.toolCalls
             : undefined
     const toolState =
         calls && calls.length > 0 ? parseReplyTools(config, calls) : undefined
@@ -1082,22 +1088,21 @@ async function parseResponseContent(
         ? renderReplyToolXml(ctx, session, config, calls)
         : responseContent
 
-    if (!hasCalls && toolErrors.length > 0) {
-        throw new Error(
-            `Failed to parse response: invalid character_reply tool call. ${toolErrors.join('; ')}`
-        )
-    }
-
     if (
         config.experimentalToolCallReply &&
         config.toolCalling &&
         !hasCalls &&
         !isIntermediate
     ) {
-        throw new Error(
+        throw new ReplyToolError(
             'Failed to parse response: missing character_reply tool call'
         )
     }
+
+    // Validate before parsing side effects and outside the intermediate fallback.
+    const nextReplyReasons = toolState
+        ? toolState.nextReplyReasons
+        : extractNextReplyReasons(responseContent)
 
     if (
         !toolState &&
@@ -1114,6 +1119,7 @@ async function parseResponseContent(
             responseMessage,
             responseContent: renderedContent,
             toolCalls: calls,
+            nextReplyReasons,
             parsedResponse: {
                 elements: [],
                 rawMessage: responseContent,
@@ -1152,7 +1158,7 @@ async function parseResponseContent(
             )
         }
     } catch (error) {
-        if (!isIntermediate || responseMessage.content == null) {
+        if (toolState || !isIntermediate || responseMessage.content == null) {
             throw error
         }
 
@@ -1174,6 +1180,7 @@ async function parseResponseContent(
         responseMessage,
         responseContent: renderedContent,
         toolCalls: calls,
+        nextReplyReasons,
         parsedResponse
     }
 }
@@ -1222,6 +1229,8 @@ async function* streamAgentResponseContents(
     }:${session.isDirect ? session.userId : (session.guildId ?? session.channelId)}`
 
     let finalReply = false
+    let retried = false
+    let reply: StructuredTool | undefined
 
     const responseStream = chain.stream(
         {
@@ -1241,16 +1250,29 @@ async function* streamAgentResponseContents(
     )
 
     for await (const responseChunk of responseStream) {
-        const toolErrors: string[] = []
-        const calls =
+        const calls = responseChunk.toolCalls
+
+        if (
             config.experimentalToolCallReply &&
-            responseChunk.toolCalls?.length > 0
-                ? filterReplyToolCalls(
-                      config,
-                      responseChunk.toolCalls,
-                      toolErrors
-                  )
-                : responseChunk.toolCalls
+            calls?.some((call) => call.name === 'character_reply')
+        ) {
+            reply ??= createReplyTools(ctx, session, config).find(
+                (tool) => tool.name === 'character_reply'
+            )!
+            try {
+                await validateReplyToolCalls(reply, calls)
+            } catch (err) {
+                if (!(err instanceof ReplyToolError)) throw err
+                if (retried) throw err
+                retried = true
+                logger.warn(
+                    REPLY_TOOL_ERROR_MESSAGE +
+                        '已将错误反馈给模型，尝试在当前轮次重新生成。',
+                    err
+                )
+                continue
+            }
+        }
 
         if (
             calls?.some((call) => {
@@ -1288,18 +1310,16 @@ async function* streamAgentResponseContents(
             config.experimentalToolCallReply && calls && calls.length > 0
                 ? renderReplyToolXml(ctx, session, config, calls)
                 : responseContent
-        if (renderedContent.trim().length < 1) {
-            if (toolErrors.length > 0) {
-                throw new Error(
-                    `Failed to parse response: invalid character_reply tool call. ${toolErrors.join('; ')}`
-                )
-            }
+        if (
+            renderedContent.trim().length < 1 &&
+            !calls?.some((call) => call.name === 'character_reply')
+        ) {
             if (
                 config.experimentalToolCallReply &&
                 responseChunk.phase === 'final' &&
                 !finalReply
             ) {
-                throw new Error(
+                throw new ReplyToolError(
                     'Failed to parse response: missing character_reply tool call'
                 )
             }
@@ -1316,8 +1336,7 @@ async function* streamAgentResponseContents(
             responseMessage,
             responseContent: renderedContent,
             isIntermediate,
-            toolCalls: calls,
-            toolErrors
+            toolCalls: calls
         }
     }
 }
@@ -1342,148 +1361,6 @@ async function registerResponseTriggers(
             }
         }
     }
-}
-
-async function initializeModel(
-    ctx: Context,
-    platform: string,
-    modelName: string
-) {
-    return await ctx.chatluna.createChatModel(platform, modelName)
-}
-
-async function setupModelPool(
-    ctx: Context,
-    config: Config
-): Promise<{
-    globalPrivateModel: ComputedRef<ChatLunaChatModel>
-    globalGroupModel: ComputedRef<ChatLunaChatModel>
-    modelPool: Record<string, Promise<ComputedRef<ChatLunaChatModel>>>
-}> {
-    const [privatePlatform, privateModelName] = parseRawModelName(
-        config.globalPrivateConfig.model
-    )
-    const globalPrivateModel = await initializeModel(
-        ctx,
-        privatePlatform,
-        privateModelName
-    )
-    logger.info(
-        'global private model loaded %c',
-        config.globalPrivateConfig.model
-    )
-
-    const [groupPlatform, groupModelName] = parseRawModelName(
-        config.globalGroupConfig.model
-    )
-    const globalGroupModel = await initializeModel(
-        ctx,
-        groupPlatform,
-        groupModelName
-    )
-    logger.info('global group model loaded %c', config.globalGroupConfig.model)
-
-    const modelPool: Record<
-        string,
-        Promise<ComputedRef<ChatLunaChatModel>>
-    > = {}
-
-    for (const groupId of Object.keys(config.configs)) {
-        const guildConfig = config.configs[groupId]
-        if (!guildConfig.model) {
-            continue
-        }
-
-        if (guildConfig.model === config.globalGroupConfig.model) {
-            continue
-        }
-
-        const key = `group:${groupId}`
-        modelPool[key] = (async () => {
-            const [platform, modelName] = parseRawModelName(guildConfig.model)
-            const loadedModel = await initializeModel(ctx, platform, modelName)
-
-            logger.info(
-                'override model loaded %c for group %c',
-                guildConfig.model,
-                groupId
-            )
-
-            modelPool[key] = Promise.resolve(loadedModel)
-            return loadedModel
-        })()
-    }
-
-    for (const userId of Object.keys(config.privateConfigs)) {
-        const privateConfig = config.privateConfigs[userId]
-        if (!privateConfig.model) {
-            continue
-        }
-
-        if (privateConfig.model === config.globalPrivateConfig.model) {
-            continue
-        }
-
-        const key = `private:${userId}`
-        modelPool[key] = (async () => {
-            const [platform, modelName] = parseRawModelName(privateConfig.model)
-            const loadedModel = await initializeModel(ctx, platform, modelName)
-
-            logger.info(
-                'override model loaded %c for private %c',
-                privateConfig.model,
-                userId
-            )
-
-            modelPool[key] = Promise.resolve(loadedModel)
-            return loadedModel
-        })()
-    }
-
-    return { globalPrivateModel, globalGroupModel, modelPool }
-}
-
-async function getConfigAndPresetForGuild(
-    guildId: string,
-    isDirect: boolean,
-    config: Config,
-    globalPrivatePreset: PresetTemplate,
-    globalGroupPreset: PresetTemplate,
-    presetPool: Record<string, PresetTemplate>,
-    key: string,
-    preset: Preset
-): Promise<{ copyOfConfig: RuntimeConfig; currentPreset: PresetTemplate }> {
-    const globalConfig = isDirect
-        ? config.globalPrivateConfig
-        : config.globalGroupConfig
-    const currentGuildConfig = isDirect
-        ? config.privateConfigs[guildId]
-        : config.configs[guildId]
-    let copyOfConfig = Object.assign({}, config, globalConfig) as RuntimeConfig
-    let currentPreset = isDirect ? globalPrivatePreset : globalGroupPreset
-
-    if (currentGuildConfig) {
-        copyOfConfig = Object.assign(
-            {},
-            copyOfConfig,
-            currentGuildConfig
-        ) as RuntimeConfig
-        currentPreset =
-            presetPool[key] ??
-            (await (async () => {
-                const template = preset.getPresetForCache(
-                    currentGuildConfig.preset
-                )
-                presetPool[key] = template
-                return template
-            })())
-
-        logger.debug(
-            `override config: ${JSON.stringify(copyOfConfig)} for guild ${guildId}`
-        )
-    }
-
-    return { copyOfConfig, currentPreset }
 }
 
 async function prepareMessages(
@@ -1835,12 +1712,31 @@ Reply again using valid XML output with <message> tags.`
                     onAgentEvent
                 )) {
                     failedMessage = responseChunk.responseMessage
-                    yield await parseResponseContent(
+                    const parsed = await parseResponseContent(
                         ctx,
                         session,
                         config,
                         responseChunk
                     )
+                    for (const call of parsed.toolCalls ?? []) {
+                        if (call.name !== 'character_reply') continue
+                        for (const field of ctx.chatluna_character.getReplyToolFields()) {
+                            if (call.args[field.name] == null) continue
+                            if (
+                                field.isAvailable &&
+                                !field.isAvailable(ctx, session, config)
+                            ) {
+                                continue
+                            }
+                            await field.invoke(
+                                ctx,
+                                session,
+                                call.args[field.name],
+                                config
+                            )
+                        }
+                    }
+                    yield parsed
                 }
 
                 return
@@ -1863,12 +1759,25 @@ Reply again using valid XML output with <message> tags.`
             return
         } catch (e) {
             if (signal?.aborted) return
-            if (idx < 1 && String(e).includes('Failed to parse response')) {
+            const retry =
+                idx < 1 && String(e).includes('Failed to parse response')
+            if (retry) {
                 err = e
-                logger.warn('model response failed, retry once', e)
+                logger.warn(
+                    (e instanceof ReplyToolError
+                        ? REPLY_TOOL_ERROR_MESSAGE
+                        : '模型回复格式有误，本次回复已拦截。') +
+                        '已将错误反馈给模型，尝试在当前轮次重新生成。',
+                    e
+                )
                 continue
             }
-            logger.error('model requests failed', e)
+            logger.error(
+                e instanceof ReplyToolError
+                    ? REPLY_TOOL_ERROR_MESSAGE
+                    : 'model requests failed',
+                e
+            )
             throw e
         }
     }
@@ -2072,57 +1981,12 @@ export async function apply(ctx: Context, config: Config) {
     const preset = service.preset
     logger = service.logger
 
-    if (config.globalPrivateConfig.experimentalToolCallReply) {
-        if (!config.globalPrivateConfig.toolCalling) {
-            throw new Error(
-                'globalPrivateConfig.experimentalToolCallReply 依赖 toolCalling，globalPrivateConfig.toolCalling 不能关闭。'
-            )
-        }
-    }
-
-    if (config.globalGroupConfig.experimentalToolCallReply) {
-        if (!config.globalGroupConfig.toolCalling) {
-            throw new Error(
-                'globalGroupConfig.experimentalToolCallReply 依赖 toolCalling，globalGroupConfig.toolCalling 不能关闭。'
-            )
-        }
-    }
-
-    for (const [id, cfg] of Object.entries(config.privateConfigs)) {
-        if (!cfg.experimentalToolCallReply) {
-            continue
-        }
-
-        if (!cfg.toolCalling) {
-            throw new Error(
-                `privateConfigs.${id}.experimentalToolCallReply 依赖 toolCalling，privateConfigs.${id}.toolCalling 不能关闭。`
-            )
-        }
-    }
-
-    for (const [id, cfg] of Object.entries(config.configs)) {
-        if (!cfg.experimentalToolCallReply) {
-            continue
-        }
-
-        if (!cfg.toolCalling) {
-            throw new Error(
-                `configs.${id}.experimentalToolCallReply 依赖 toolCalling，configs.${id}.toolCalling 不能关闭。`
-            )
-        }
-    }
-
     setLogger(logger)
 
-    const { globalPrivateModel, globalGroupModel, modelPool } =
-        await setupModelPool(ctx, config)
-
-    let globalPrivatePreset = preset.getPresetForCache(
-        config.globalPrivateConfig.preset
-    )
-    let globalGroupPreset = preset.getPresetForCache(
-        config.globalGroupConfig.preset
-    )
+    const modelPool: Record<
+        string,
+        Promise<ComputedRef<ChatLunaChatModel>>
+    > = {}
     let presetPool: Record<string, PresetTemplate> = {}
     const chainPool: Record<
         string,
@@ -2134,12 +1998,6 @@ export async function apply(ctx: Context, config: Config) {
     const replyToolConfigs: Record<string, RuntimeConfig> = {}
 
     ctx.on('chatluna_character/preset_updated', () => {
-        globalPrivatePreset = preset.getPresetForCache(
-            config.globalPrivateConfig.preset
-        )
-        globalGroupPreset = preset.getPresetForCache(
-            config.globalGroupConfig.preset
-        )
         presetPool = {}
     })
 
@@ -2149,22 +2007,54 @@ export async function apply(ctx: Context, config: Config) {
         let queue: PendingMessageQueue | undefined
 
         try {
-            const model = await (modelPool[key] ??
-                Promise.resolve(
-                    session.isDirect ? globalPrivateModel : globalGroupModel
-                ))
+            const globalConfig = session.isDirect
+                ? config.globalPrivateConfig
+                : config.globalGroupConfig
+            const currentGuildConfig = session.isDirect
+                ? config.privateConfigs[guildId]
+                : config.configs[guildId]
+            const copyOfConfig = Object.assign(
+                {},
+                config,
+                globalConfig,
+                currentGuildConfig
+            ) as RuntimeConfig
 
-            const { copyOfConfig, currentPreset } =
-                await getConfigAndPresetForGuild(
-                    guildId,
-                    session.isDirect,
-                    config,
-                    globalPrivatePreset,
-                    globalGroupPreset,
-                    presetPool,
-                    key,
-                    preset
+            if (currentGuildConfig) {
+                logger.debug(
+                    `override config: ${JSON.stringify(copyOfConfig)} for guild ${guildId}`
                 )
+            }
+
+            const currentPreset = (presetPool[key] ??= preset.getPresetForCache(
+                copyOfConfig.preset
+            ))
+
+            if (
+                copyOfConfig.experimentalToolCallReply &&
+                !copyOfConfig.toolCalling
+            ) {
+                throw new Error(
+                    `${key} 的 experimentalToolCallReply 依赖 toolCalling，toolCalling 不能关闭。`
+                )
+            }
+
+            const modelId = copyOfConfig.model
+            if (!modelPool[modelId]) {
+                modelPool[modelId] = (async () => {
+                    const [platform, name] = parseRawModelName(modelId)
+                    const loaded = await ctx.chatluna.createChatModel(
+                        platform,
+                        name
+                    )
+                    logger.info('model loaded %c for session %c', modelId, key)
+                    return loaded
+                })().catch((err) => {
+                    delete modelPool[modelId]
+                    throw err
+                })
+            }
+            const model = await modelPool[modelId]
 
             if (model.value == null) {
                 logger.warn(
@@ -2200,7 +2090,6 @@ export async function apply(ctx: Context, config: Config) {
             }
 
             const latestMessages = service.getMessages(key) ?? messages
-            const count = latestMessages.length
             const temp = await service.getTemp(session, latestMessages)
             const focusMessage = latestMessages[latestMessages.length - 1]
 
@@ -2302,20 +2191,7 @@ export async function apply(ctx: Context, config: Config) {
                         hasNonEmptyReplies = true
                     }
 
-                    if (
-                        copyOfConfig.experimentalToolCallReply &&
-                        chunk.toolCalls
-                    ) {
-                        const toolState = parseReplyTools(
-                            copyOfConfig,
-                            chunk.toolCalls
-                        )
-                        nextReplyReasons.push(...toolState.nextReplyReasons)
-                    } else {
-                        nextReplyReasons.push(
-                            ...extractNextReplyReasons(chunk.responseContent)
-                        )
-                    }
+                    nextReplyReasons.push(...chunk.nextReplyReasons)
 
                     const sendResult = await handleParsedResponseChunk(
                         session,
@@ -2367,13 +2243,10 @@ export async function apply(ctx: Context, config: Config) {
             }
 
             const persistedMessages = service.getMessages(key) ?? latestMessages
-            if (persistedMessages.length > count) {
+            const anchor = persistedMessages[persistedMessages.length - 1]
+            if (anchor && anchor !== focusMessage) {
                 temp.status = latestStatus
-                await service.persistStatus(
-                    session,
-                    latestStatus,
-                    persistedMessages[persistedMessages.length - 1]
-                )
+                await service.persistStatus(session, latestStatus, anchor)
             }
 
             temp.completionMessages.push(persistedHumanMessage)
@@ -2584,26 +2457,58 @@ function getReplyToolInputError(
         return 'Field think must be a string'
     }
 
+    if (
+        config.toolCallReplyNextReply &&
+        (!config.enableFixedIntervalTrigger || config.messageInterval !== 0) &&
+        Array.isArray(args.next_reply)
+    ) {
+        for (const [i, group] of args.next_reply.entries()) {
+            for (const [j, condition] of group.conditions.entries()) {
+                const path = `next_reply[${i}].conditions[${j}]`
+                if (condition.type === 'message_from_user') {
+                    if (
+                        condition.seconds != null ||
+                        condition.max_wait_seconds != null
+                    ) {
+                        return `Fields seconds and max_wait_seconds are not allowed for ${path} with type message_from_user`
+                    }
+                    continue
+                }
+
+                if (condition.seconds == null) {
+                    return `Field ${path}.seconds is required for type no_message_from_user`
+                }
+
+                if (
+                    condition.user_id === 'all' &&
+                    condition.max_wait_seconds != null
+                ) {
+                    return `Field ${path}.max_wait_seconds is not allowed when user_id is all`
+                }
+            }
+        }
+    }
+
     return undefined
 }
 
-function filterReplyToolCalls(
-    config: Config | GuildConfig | PrivateConfig,
-    calls: ReplyToolCall[],
-    errors?: string[]
+async function validateReplyToolCalls(
+    reply: StructuredTool,
+    calls: ReplyToolCall[]
 ) {
-    return calls.filter((call) => {
+    for (const call of calls) {
         if (call.name !== 'character_reply') {
-            return true
+            continue
         }
 
-        const err = getReplyToolInputError(config, call.args)
-        if (err) {
-            errors?.push(err)
-            logger.debug(`Skip invalid character_reply tool call: ${err}`)
-            return false
+        try {
+            // Reuse the full tool schema, including registered extension fields.
+            await reply.invoke(call.args)
+        } catch (err) {
+            if (!(err instanceof ToolInputParsingException)) throw err
+            throw new ReplyToolError(
+                `Failed to parse response: invalid character_reply tool call. ${err.message}`
+            )
         }
-
-        return true
-    })
+    }
 }

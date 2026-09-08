@@ -16,48 +16,69 @@ export function extractNextReplyReasons(response: string): string[] {
         const attributes = match[1] ?? ''
         const reason = attributes.match(/\breason\s*=\s*['"]([^'"]+)['"]/i)?.[1]
         if (reason?.trim()) {
+            if (parseNextReplyReason(reason).length < 1) {
+                throw new Error(
+                    `Failed to parse response: invalid <next_reply reason="${reason}" />`
+                )
+            }
             reasons.push(reason.trim())
             continue
         }
 
         const type = attributes.match(/\btype\s*=\s*['"]([^'"]+)['"]/i)?.[1]
-        if (!type?.trim()) {
-            continue
-        }
+        const userId = attributes.match(
+            /\buser_id\s*=\s*['"]([^'"]+)['"]/i
+        )?.[1]
+        const secondsRaw = attributes.match(
+            /\bseconds\s*=\s*['"]([^'"]*)['"]/i
+        )?.[1]
+        const maxWaitSecondsRaw = attributes.match(
+            /\bmax_wait_seconds\s*=\s*['"]([^'"]*)['"]/i
+        )?.[1]
 
         let token: string | undefined
 
-        if (type === 'message_from_user') {
-            const userId = attributes.match(/\buser_id\s*=\s*['"]([^'"]+)['"]/i)?.[1]
-            if (userId?.trim()) {
-                token = `id_${userId.trim()}`
-            }
+        if (
+            type === 'message_from_user' &&
+            userId != null &&
+            /^[\w-]+$/.test(userId) &&
+            secondsRaw == null &&
+            maxWaitSecondsRaw == null
+        ) {
+            token = `id_${userId}`
         }
 
         if (type === 'no_message_from_user') {
-            const seconds = Number.parseInt(
-                attributes.match(/\bseconds\s*=\s*['"]([^'"]+)['"]/i)?.[1] ?? '',
-                10
-            )
-            const userId = attributes.match(/\buser_id\s*=\s*['"]([^'"]+)['"]/i)?.[1]
-            const maxWaitSeconds = Number.parseInt(
-                attributes.match(
-                    /\bmax_wait_seconds\s*=\s*['"]([^'"]+)['"]/i
-                )?.[1] ?? '',
-                10
-            )
-            if (Number.isFinite(seconds) && seconds > 0 && userId?.trim()) {
+            const seconds =
+                secondsRaw && /^\d+$/.test(secondsRaw)
+                    ? Number.parseInt(secondsRaw, 10)
+                    : 0
+            const maxWaitSeconds =
+                maxWaitSecondsRaw && /^\d+$/.test(maxWaitSecondsRaw)
+                    ? Number.parseInt(maxWaitSecondsRaw, 10)
+                    : 0
+            if (
+                Number.isSafeInteger(seconds) &&
+                seconds > 0 &&
+                userId != null &&
+                /^[\w-]+$/.test(userId) &&
+                Number.isSafeInteger(maxWaitSeconds) &&
+                (maxWaitSecondsRaw == null || maxWaitSeconds > 0) &&
+                (userId !== 'all' || maxWaitSecondsRaw == null)
+            ) {
                 token =
-                    userId.trim() === 'all'
+                    userId === 'all'
                         ? `time_${seconds}s`
-                        : Number.isFinite(maxWaitSeconds) && maxWaitSeconds > 0
-                          ? `time_${seconds}s_id_${userId.trim()}_max_${maxWaitSeconds}s`
-                          : `time_${seconds}s_id_${userId.trim()}`
+                        : maxWaitSeconds > 0
+                          ? `time_${seconds}s_id_${userId}_max_${maxWaitSeconds}s`
+                          : `time_${seconds}s_id_${userId}`
             }
         }
 
         if (!token) {
-            continue
+            throw new Error(
+                `Failed to parse response: invalid <next_reply${attributes} />`
+            )
         }
 
         const group =
@@ -74,7 +95,7 @@ export function extractNextReplyReasons(response: string): string[] {
         }
     }
 
-    return reasons
+    return reasons.length > 0 ? [reasons.join('|')] : []
 }
 
 export interface WakeUpReplyTag {
@@ -199,17 +220,16 @@ export function parseNextReplyReason(
     const groups: PendingNextReplyConditionGroup[] = []
 
     for (const branch of rawReason.split('|').map((it) => it.trim())) {
-        if (!branch) continue
+        if (!branch) return []
 
         const predicates = branch
             .split('&')
             .map((it) => parseNextReplyToken(it))
-            .filter((it): it is NextReplyPredicate => it != null)
 
-        if (predicates.length < 1) continue
+        if (predicates.some((it) => it == null)) return []
 
         groups.push({
-            predicates,
+            predicates: predicates as NextReplyPredicate[],
             naturalReason: predicates
                 .map((predicate) => {
                     if (predicate.type === 'time_id') {
@@ -273,7 +293,9 @@ export function evaluateNextReplyGroup(
         }
 
         const lastMessageTimeByUserId =
-            info.messageTimestampsByUserId?.[predicate.userId] ?? 0
+            predicate.userId === 'all'
+                ? info.lastUserMessageTime
+                : (info.messageTimestampsByUserId?.[predicate.userId] ?? 0)
         return lastMessageTimeByUserId >= sentAt
     })
 }

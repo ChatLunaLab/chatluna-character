@@ -1,4 +1,5 @@
 /* eslint-disable generator-star-spacing */
+import { randomUUID } from 'node:crypto'
 import {
     AIMessageChunk,
     BaseMessage,
@@ -8,9 +9,11 @@ import { StructuredTool } from '@langchain/core/tools'
 import { Context, Session } from 'koishi'
 import { computed, ComputedRef, shallowRef } from 'koishi-plugin-chatluna'
 import {
+    AgentRunContext,
     AgentStep,
     createAgentExecutor,
-    createToolsRef
+    createToolsRef,
+    ToolMask
 } from 'koishi-plugin-chatluna/llm-core/agent'
 import {
     ChatLunaChatPrompt,
@@ -152,6 +155,26 @@ function createAsyncChunkQueue<T>(): AsyncChunkQueue<T> {
     }
 }
 
+function createAgentRunContext(
+    options: ChatLunaRunnableConfig | undefined,
+    toolMask: ToolMask | undefined
+): AgentRunContext {
+    const session = options?.configurable?.session
+    const conversationId = options?.configurable?.conversationId
+    return {
+        kind: 'main',
+        agentId: conversationId,
+        agentName: options?.configurable?.preset ?? conversationId,
+        conversationId,
+        requestId: randomUUID(),
+        source: 'character',
+        userId: session?.userId,
+        guildId: session?.guildId,
+        channelId: session?.channelId,
+        ...(toolMask != null ? { toolMask } : {})
+    }
+}
+
 export async function createChatLunaChain(
     ctx: Context,
     llmRef: ComputedRef<ChatLunaChatModel>,
@@ -244,12 +267,12 @@ export async function createChatLunaChain(
             options?: ChatLunaRunnableConfig
         ): AsyncGenerator<ChatLunaChainStreamChunk> {
             const toolMask = await updateToolsIfNeeded(input, options)
+            const agentContext = createAgentRunContext(options, toolMask)
             const nextInput = {
                 ...input,
                 configurable: {
                     ...(input.configurable ?? {}),
-                    source: 'character',
-                    ...(toolMask != null ? { toolMask } : {})
+                    agentContext
                 }
             }
 
@@ -305,8 +328,7 @@ export async function createChatLunaChain(
                 signal: ctl.signal,
                 configurable: {
                     ...(options?.configurable ?? {}),
-                    source: 'character',
-                    ...(toolMask != null ? { toolMask } : {})
+                    agentContext
                 },
                 callbacks: [
                     ...existingCallbacks,
@@ -409,12 +431,12 @@ export async function createChatLunaChain(
         return {
             async invoke(input, options) {
                 const toolMask = await updateToolsIfNeeded(input, options)
+                const agentContext = createAgentRunContext(options, toolMask)
                 const nextInput = {
                     ...input,
                     configurable: {
                         ...(input.configurable ?? {}),
-                        source: 'character',
-                        ...(toolMask != null ? { toolMask } : {})
+                        agentContext
                     }
                 }
 
@@ -422,8 +444,7 @@ export async function createChatLunaChain(
                     ...(options ?? {}),
                     configurable: {
                         ...(options?.configurable ?? {}),
-                        source: 'character',
-                        ...(toolMask != null ? { toolMask } : {})
+                        agentContext
                     }
                 }
 
