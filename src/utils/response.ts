@@ -18,15 +18,28 @@ function parseMessageContent(response: string) {
     for (const pattern of patterns) {
         const matches = Array.from(response.matchAll(pattern))
         if (matches.length > 0) {
-            rawMessage =
+            const captured =
                 pattern === patterns[2]
                     ? matches[matches.length - 1][0]
                     : matches[matches.length - 1][1]
-            break
+            if (captured && captured.trim() !== '') {
+                rawMessage = captured
+                break
+            }
         }
     }
 
     if (!rawMessage) {
+        const lastOutputMatch = response.match(/<output>(.*?)<\/output>\s*$/s)
+        if (lastOutputMatch && lastOutputMatch[1].trim() === '') {
+            return {
+                rawMessage: '',
+                messageType: 'message',
+                status,
+                sticker: undefined,
+                isSilent: true as const
+            }
+        }
         throw new Error('Failed to parse response: ' + response)
     }
 
@@ -48,8 +61,18 @@ export async function parseResponse(
     config?: Config
 ) {
     try {
-        const { rawMessage, messageType, status, sticker } =
+        const { rawMessage, messageType, status, sticker, isSilent } =
             parseMessageContent(response)
+        if (isSilent) {
+            return {
+                elements: [],
+                rawMessage: '',
+                status,
+                sticker,
+                messageType,
+                isSilent: true as const
+            }
+        }
         const renders = createResponseElementRenders(ctx, session, config)
 
         const { currentElements, parsedMessage } = parseMessageElements(
