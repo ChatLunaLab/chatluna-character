@@ -343,10 +343,11 @@ async function toBotMsg(
     const session = cfg.session
     const text = msg.content ?? ''
     const id = msg.user?.id ?? '0'
-    const elements = (msg.elements ?? h.parse(text)).filter((element) => {
-        return element.type === 'text'
-    })
-    const content = mapElementToString(session, text, elements)
+    const content = mapElementToString(
+        session,
+        text,
+        msg.elements ?? h.parse(text)
+    )
 
     if (content.length < 1) {
         return null
@@ -388,10 +389,7 @@ async function toOneBotMsg(
 ): Promise<Message | null> {
     const session = cfg.session
     const raw = msg.raw_message ?? ''
-    const elements = parseCQCode(raw).filter((element) => {
-        return element.type === 'text'
-    })
-    const content = mapElementToString(session, raw, elements)
+    const content = mapElementToString(session, raw, parseCQCode(raw))
 
     if (content.length < 1) {
         return null
