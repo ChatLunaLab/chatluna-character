@@ -1,7 +1,6 @@
 import { BaseMessage } from '@langchain/core/messages'
 import { ChatLunaChatModel } from 'koishi-plugin-chatluna/llm-core/platform/model'
 import { Context, h, Session } from 'koishi'
-import { isForwardMessageElement } from 'koishi-plugin-chatluna/utils/koishi'
 import {
     getMessageContent,
     hashString,
@@ -38,7 +37,10 @@ export function formatTimestamp(timestamp: number | Date): string {
     })
 }
 
-export function formatMessageString(message: Message, enableMessageId: boolean) {
+export function formatMessageString(
+    message: Message,
+    enableMessageId: boolean
+) {
     let xmlMessage = `<message name='${message.name}'`
 
     const id = message.id
@@ -326,8 +328,19 @@ export function mapElementToString(
             }
 
             filteredBuffer.push(`<video>${escapeXml(String(url))}</video>`)
-        } else if (isForwardMessageElement(element)) {
-            filteredBuffer.push('[聊天记录]')
+        } else if (element.type === 'forward') {
+            filteredBuffer.push(
+                h('forward', { id: element.attrs.id }).toString()
+            )
+        } else if (element.type === 'message') {
+            if (['true', '1'].includes(String(element.attrs.forward))) {
+                filteredBuffer.push(
+                    h('forward', { id: element.attrs.id }).toString()
+                )
+            }
+            filteredBuffer.push(
+                mapElementToString(session, '', element.children, images)
+            )
         }
     }
 
